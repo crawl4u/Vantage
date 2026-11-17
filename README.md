@@ -1,36 +1,29 @@
-# Cinnabar
+# Vantage
 
 > An independent, unofficial client compatible with Minecraft: Bedrock Edition. Not approved by
 > or associated with Mojang or Microsoft. Minecraft is a trademark of Microsoft Corporation.
 
+> [!NOTE]
+> Vantage is a fork of [Cinnabar](https://github.com/cinnabar-mc/cinnabar) by cinnabar-mc, taken
+> at `08446aa`. It keeps Cinnabar's client and adds the Vantage HUD and world tools running
+> natively inside it. Cinnabar's work stays under its own license; see [FORK.md](FORK.md) and
+> [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 > [!WARNING]
-> Cinnabar is a non-vanilla client and still in development. Its movement and combat may not yet
+> Vantage is a non-vanilla client and still in development. Its movement and combat may not yet
 > match the official client exactly, so server anticheats may flag you and some servers may ban
 > you. Play on servers at your own risk.
 
-A Minecraft: Bedrock Edition client written from scratch in Rust. It plays on real servers, Realms
-and friends' worlds with vanilla behaviour, and it's built to run much faster than the official
-client.
-
-[![Discord](https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white)](https://discord.gg/MeEz7BEHcM)
-[![Website](https://img.shields.io/badge/Website-cinnabar.gg-B22222)](https://cinnabar.gg/)
-
-<img width="1282" height="752" alt="Cinnabar in game" src="https://github.com/user-attachments/assets/ca040799-e00e-4a6e-85f8-a0e28af6ea72" />
-
-| | |
-| --- | --- |
-| <img alt="Sunset with a shader pack" src="https://github.com/user-attachments/assets/25a2e8fa-23d8-4aeb-8e80-aca9d09dcee3" /> | <img alt="Moonlit river with a shader pack" src="https://github.com/user-attachments/assets/c0a8cdd8-03f2-4188-ae3c-36f516260060" /> |
-| <img alt="Light shafts in a cave with a shader pack" src="https://github.com/user-attachments/assets/1622104f-7ea2-4dde-a433-219a5f09103b" /> | <img alt="PvP on iOS" src="https://github.com/user-attachments/assets/b6135da0-ff6a-4b75-ade0-56439be56ca0" /> |
+Vantage by Crawl: HUD elements (Keystrokes, CPS, Coordinates, Armor status, Potion status and
+more), world tools (chunk borders, hitboxes, WAILA, block outline, waypoints) and mechanics (zoom,
+fullbright, freelook, CPS limiter) built into a Minecraft: Bedrock Edition client written in Rust.
+The Vantage mod is also available on its own as a wasm component for the upstream host.
 
 ## Download
 
-- **Stable:** [latest release](https://github.com/cinnabar-mc/cinnabar/releases/latest)
-- **Nightly:** daily builds of `dev` for macOS, Windows and Linux ([nightly](https://github.com/cinnabar-mc/cinnabar/releases/tag/nightly))
+- **Windows installer and the Vantage wasm mod:** [latest release](https://github.com/crawl4u/Vantage/releases/latest)
 
-Linux downloads include x86_64 and Raspberry Pi Linux (64-bit ARM). Raspberry Pi Linux targets
-64-bit Raspberry Pi OS Bookworm or newer, with Vulkan graphics drivers.
-
-On first launch, Cinnabar downloads the vanilla resource pack after you accept the Minecraft EULA.
+On first launch, Vantage downloads the vanilla resource pack after you accept the Minecraft EULA.
 No Mojang assets are bundled. The release notes explain how to open unsigned builds.
 No sound? See [docs/audio-troubleshooting.md](docs/audio-troubleshooting.md).
 

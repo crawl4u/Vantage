@@ -64,3 +64,11 @@ assets/licenses/GeyserMC-Geyser-MIT.txt text eol=lf
 plan.md merge=union
 docs/evidence/*-completion-ledger.md merge=union
 crates/render-model/src/hats/**/*.json text eol=lf
+
+# Vantage fork: keep our own versions of these when upstream changes them too
+# (the merge driver is enabled by tools/sync-upstream.ps1).
+assets/branding/icon.png merge=ours
+assets/branding/title.png merge=ours
+README.md merge=ours
+FORK.md merge=ours
+packaging/release-assets.json merge=ours
