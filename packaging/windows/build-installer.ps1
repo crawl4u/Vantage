@@ -40,22 +40,22 @@ $font = Join-Path $root "assets/fonts/$($fontSource.font_file)"
 if (-not (Test-Path $font)) { throw "missing $font" }
 Copy-Item $font (Join-Path $resources "fonts")
 
-$icon = Join-Path $outPath "cinnabar.ico"
-magick -background none -density 384 (Join-Path $PSScriptRoot "../icons/cinnabar.svg") -define icon:auto-resize=256,128,64,48,32,16 $icon
+$icon = Join-Path $outPath "vantage.ico"
+magick -background none (Join-Path $root "assets/branding/icon.png") -define icon:auto-resize=256,128,64,48,32,16 $icon
 if ($LASTEXITCODE -ne 0) { throw "icon rendering failed" }
-$logo = Join-Path $outPath "cinnabar.png"
-magick -background none (Join-Path $PSScriptRoot "../icons/cinnabar.svg") -resize 64x64 $logo
+$logo = Join-Path $outPath "vantage.png"
+magick -background none (Join-Path $root "assets/branding/icon.png") -resize 64x64 $logo
 if ($LASTEXITCODE -ne 0) { throw "logo rendering failed" }
 & (Join-Path $PSScriptRoot "set-executable-icon.ps1") -Executable (Join-Path $payload "cinnabar.exe") -Icon $icon
 
 $signPaths = @($runtimeNames | ForEach-Object { Join-Path $payload $_ }) + @(Join-Path $kit "bin/assetc.exe")
 & (Join-Path $PSScriptRoot "execution-level.ps1") -Executable $signPaths -Embed
 & (Join-Path $PSScriptRoot "sign.ps1") -Path $signPaths
-$msi = Join-Path $outPath "Cinnabar-$version-x64.msi"
+$msi = Join-Path $outPath "Vantage-$version-x64.msi"
 wix build -arch x64 -d Version=$version -d Payload=$payload -d Icon=$icon -o $msi (Join-Path $PSScriptRoot "cinnabar.wxs")
 if ($LASTEXITCODE -ne 0) { throw "wix build failed" }
 & (Join-Path $PSScriptRoot "sign.ps1") -Path $msi
-$setup = Join-Path $outPath "Cinnabar-$version-x64-setup.exe"
+$setup = Join-Path $outPath "Vantage-$version-x64-setup.exe"
 wix build -arch x64 -ext WixToolset.BootstrapperApplications.wixext -d Version=$version -d Msi=$msi -d Icon=$icon -d Logo=$logo -o $setup (Join-Path $PSScriptRoot "setup.wxs")
 if ($LASTEXITCODE -ne 0) { throw "setup bundle build failed" }
 & (Join-Path $PSScriptRoot "execution-level.ps1") -Executable $setup

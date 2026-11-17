@@ -7,7 +7,7 @@
       "arm64": "Cinnabar-aarch64.AppImage"
     },
     "windows": {
-      "x86_64": "Cinnabar-x64-setup.exe"
+      "x86_64": "Vantage-x64-setup.exe"
     },
     "macos": {
       "arm64": "Cinnabar-arm64.dmg",
@@ -35,7 +35,7 @@
   },
   "update_assets": {
     "windows": {
-      "x86_64": "Cinnabar-x64.msi"
+      "x86_64": "Vantage-x64.msi"
     }
   }
 }
