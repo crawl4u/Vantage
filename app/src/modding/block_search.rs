@@ -75,6 +75,53 @@ impl BlockSearches {
         }
     }
 
+    /// Answers native Vantage's searches, then advances the stalest scans.
+    pub(super) fn refresh_native(
+        &mut self,
+        searches: &mut [(BlockSearch, Option<Result<FoundBlocks, TerrainReadError>>)],
+        stream: &chunk_pipeline::WorldStream,
+        observation: &mod_host::WorldObservation,
+    ) {
+        use mod_host::BlockSearchSource as _;
+        let authority = stream.authority();
+        let scope = (
+            observation.session,
+            observation.dimension,
+            authority.block_name_revision(),
+            std::sync::Arc::as_ptr(stream.runtime_assets()) as usize,
+            stream.network_id_mode(),
+        );
+        if self.scope != Some(scope) {
+            self.scope = Some(scope);
+            self.scans.clear();
+        }
+        self.frame += 1;
+        for scan in &mut self.scans {
+            scan.requested = false;
+        }
+        let (x, y, z) = observation.position;
+        let mut source = Source {
+            searches: self,
+            authority,
+            feet: [x, y, z],
+            session: observation.session,
+            dimension: observation.dimension,
+            updates: 0,
+        };
+        for (search, sample) in searches.iter_mut() {
+            *sample = Some(source.find(search));
+        }
+        let remaining = SCAN_UPDATES_PER_FRAME.saturating_sub(source.updates);
+        self.scans.retain(|scan| scan.requested);
+        let mut stalest: Vec<_> = (0..self.scans.len())
+            .filter(|index| self.scans[*index].updated != Some(self.frame))
+            .collect();
+        stalest.sort_by_key(|index| self.scans[*index].updated);
+        for index in stalest.into_iter().take(remaining) {
+            self.update(index, authority.terrain(), [x, y, z], observation.dimension);
+        }
+    }
+
     /// Advances one scan by its bounded per-call work around the feet.
     fn update(&mut self, index: usize, store: &world::ChunkStore, feet: [f32; 3], dimension: i32) {
         let scan = &mut self.scans[index];

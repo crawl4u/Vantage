@@ -22,13 +22,13 @@ pub mod splashes;
 /// title, so it draws unstretched and the splash meets its right edge.
 const TITLE_PANEL_OVERLAY: &[u8] = br#"{
   "namespace": "common_art",
-  "title_panel_win10": { "size": ["55%", "33.35%x"] },
-  "title_panel_osx": { "size": ["55%", "33.35%x"] },
-  "title_panel_pocket": { "size": ["55%", "33.35%x"] },
+  "title_panel_win10": { "size": ["55%", "29.68%x"] },
+  "title_panel_osx": { "size": ["55%", "29.68%x"] },
+  "title_panel_pocket": { "size": ["55%", "29.68%x"] },
   "pause_logo_panel": { "variables": [
     { "requires": "($win10_edition or $osx_edition or $pocket_edition or $console_edition)",
       "$title_panel": "common_art.title_image",
-      "$logo_max_size": [275, "33.35%x"], "$logo_size": ["90%", "33.35%x"] }
+      "$logo_max_size": [275, "29.68%x"], "$logo_size": ["90%", "29.68%x"] }
   ] }
 }"#;
 

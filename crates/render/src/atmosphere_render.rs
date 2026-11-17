@@ -67,7 +67,8 @@ struct AtmosphereRenderInstalled;
 
 pub(crate) fn install_atmosphere(app: &mut App) {
     app.init_resource::<AtmosphereFrame>();
-    app.init_resource::<render_scene::SkyboxSettings>();
+    app.init_resource::<render_scene::SkyboxSettings>()
+        .init_resource::<render_scene::SkyboxFollowsTime>();
     app.init_resource::<render_scene::AtmosphereViewInputs>();
     app.init_resource::<AtmosphereTextureAssets>();
     app.init_resource::<PrecipitationScene>();
@@ -92,6 +93,7 @@ pub(crate) fn install_atmosphere(app: &mut App) {
     app.add_plugins((
         ExtractResourcePlugin::<AtmosphereFrame>::default(),
         ExtractResourcePlugin::<render_scene::SkyboxSettings>::default(),
+        ExtractResourcePlugin::<render_scene::SkyboxFollowsTime>::default(),
         ExtractResourcePlugin::<render_scene::AtmosphereViewInputs>::default(),
         ExtractResourcePlugin::<AtmosphereTextureAssets>::default(),
         ExtractResourcePlugin::<PrecipitationScene>::default(),
@@ -207,6 +209,7 @@ fn init_atmosphere_gpu(mut commands: Commands, render_device: Res<RenderDevice>)
 fn prepare_atmosphere_uniform(
     frame: Res<AtmosphereFrame>,
     settings: Res<render_scene::SkyboxSettings>,
+    follows_time: Option<Res<render_scene::SkyboxFollowsTime>>,
     assets: Res<AtmosphereTextureAssets>,
     mut gpu: ResMut<AtmosphereGpu>,
     uploads: crate::upload_staging::FrameUploads,
@@ -216,7 +219,8 @@ fn prepare_atmosphere_uniform(
         .skybox(crate::pack_skybox::dimension(*frame))
         .map_or(0, assets::PackSkybox::face_mask);
     gpu.skybox_active = mask != 0 && settings.visible;
-    let skybox = crate::pack_skybox::SkyboxUniform::new(*frame, *settings, mask);
+    let skybox =
+        crate::pack_skybox::SkyboxUniform::new(*frame, *settings, mask).following_time(follows_time.is_some_and(|follows| follows.0));
     let (frame_changed, skybox_changed) = gpu.uploaded.as_ref().map_or((true, true), |old| {
         (
             bytemuck::bytes_of(&old.0) != bytemuck::bytes_of(&*frame),

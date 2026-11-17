@@ -30,6 +30,10 @@ pub(super) struct ModObservation<'w, 's> {
     native_camera: Local<'s, native_camera::NativeCamera>,
     bindings: Local<'s, bindings::Bindings>,
     input_settings: Option<Res<'w, client_state::RuntimeSettings>>,
+    native_hud: Option<Res<'w, super::vantage::NativeHud>>,
+    native_use_pulse: Option<ResMut<'w, super::vantage::NativeUsePulse>>,
+    native_touch: Option<ResMut<'w, super::vantage::NativeTouch>>,
+    native_render: Option<Res<'w, super::vantage::NativeRenderOutput>>,
     #[cfg(all(feature = "developer-control", not(target_arch = "wasm32")))]
     pointer_isolation: Option<ResMut<'w, crate::developer_control::cursor_isolation::Isolation>>,
 }
@@ -75,6 +79,10 @@ pub(super) fn drive_mod(
         mut native_camera,
         mut bindings,
         input_settings,
+        native_hud,
+        native_render,
+        mut native_use_pulse,
+        mut native_touch,
         #[cfg(all(feature = "developer-control", not(target_arch = "wasm32")))]
         mut pointer_isolation,
     } = observation;
@@ -125,12 +133,38 @@ pub(super) fn drive_mod(
     let (Some(mut extension), Some(mut time_override), Some(mut interaction)) =
         (extension, time_override, interaction)
     else {
-        action_filter::inactive(
+        // Native Vantage's CPS limiter filters the actions, under the same source gates as a mod.
+        let scope = gameplay
+            .world_observation(&ui)
+            .map(|world| (world.session, world.dimension));
+        let source_admitted = gameplay
+            .input
+            .as_ref()
+            .and_then(|input| input.snapshot())
+            .is_some_and(|input| {
+                crate::semantic_controls::physical::admits_input_mode(
+                    input.input_mode,
+                    focused,
+                    captured,
+                )
+            });
+        if *action_scope != scope || !source_admitted || absorbed {
+            action_filter.reset();
+        }
+        *action_scope = scope;
+        let requested = native_use_pulse
+            .as_deref_mut()
+            .is_some_and(|pulse| std::mem::take(&mut pulse.0));
+        let [_, use_pulse] = action_filter::apply_native(
             &mut action_filter,
             gameplay.input.as_deref_mut(),
+            source_admitted && !absorbed && scope.is_some(),
             time.elapsed().as_micros(),
+            [false, requested],
         );
-        *action_scope = None;
+        if let Some(policy) = item_use.as_deref_mut() {
+            policy.pulse = use_pulse;
+        }
         let output = exchange_native_frame(
             packets.as_deref(),
             &mut native_camera,
@@ -145,7 +179,7 @@ pub(super) fn drive_mod(
                 packet_render::session(&gameplay),
             );
             if let Some(scene) = render_scene.as_deref_mut() {
-                packet_render::publish_alone(scene, drawing);
+                packet_render::publish_alone(scene, drawing, native_render.as_deref());
             }
         }
         let source = output.as_ref().map_or(0, |output| output.camera_sequence);
@@ -176,7 +210,7 @@ pub(super) fn drive_mod(
                 pitch: delta.pitch,
             });
         gameplay.apply_native_controls(effects.as_ref(), delta, &ui);
-        clear_touch_buttons(&mut presentation);
+        super::vantage::present_touch(&mut presentation, native_touch.as_deref_mut(), std::iter::empty());
         gameplay.apply_movement_intents(None, false);
         gameplay.apply_control_modes(None);
         gameplay.apply_movement_input(None, false, &ui);
@@ -197,7 +231,7 @@ pub(super) fn drive_mod(
         if let Some(drawing) = drawing.as_deref_mut() {
             drawing.update(None, packet_render::session(&gameplay));
             if let Some(scene) = render_scene.as_deref_mut() {
-                packet_render::publish_alone(scene, drawing);
+                packet_render::publish_alone(scene, drawing, native_render.as_deref());
             }
         }
         if let Some(packets) = packets.as_ref() {
@@ -216,7 +250,7 @@ pub(super) fn drive_mod(
                 now,
             );
         }
-        clear_touch_buttons(&mut presentation);
+        super::vantage::present_touch(&mut presentation, native_touch.as_deref_mut(), std::iter::empty());
         return;
     }
     // Screen authority and cursor capture may change after wheel input was staged.
@@ -226,8 +260,18 @@ pub(super) fn drive_mod(
         }
     }
     // Taps completed this frame reach their owners before frame callbacks read them.
+    // Taps on Vantage's own buttons wait for its frame; the rest reach their mod.
+    let mut native_taps = Vec::new();
     for (owner, id) in presentation.take_mod_touch_taps() {
-        extension.hosts.queue_touch_press(owner, &id);
+        if owner == super::vantage::NATIVE_TOUCH_OWNER {
+            native_taps.push(id);
+        } else {
+            extension.hosts.queue_touch_press(owner, &id);
+        }
+    }
+    if let Some(native) = native_touch.as_deref_mut() {
+        native.taps.extend(native_taps);
+        native.taps.truncate(ui::mod_touch::MAX_QUEUED_TOUCH_PRESSES);
     }
     drawing_policy::bind(&mut extension.hosts, &gameplay);
     anchors::reconcile(&mut extension.hosts, &gameplay);
@@ -447,6 +491,9 @@ pub(super) fn drive_mod(
         .hosts
         .iter_mut()
         .any(|host| host.attack_pulse_requested());
+    let native_use_requested = native_use_pulse
+        .as_deref_mut()
+        .is_some_and(|pulse| std::mem::take(&mut pulse.0));
     let use_requested = extension
         .hosts
         .iter_mut()
@@ -457,7 +504,7 @@ pub(super) fn drive_mod(
         &mut extension.hosts,
         enabled,
         time.elapsed().as_micros(),
-        [attack_requested, use_requested],
+        [attack_requested, use_requested || native_use_requested],
     );
     interaction.attack_pulse = attack_pulse;
     if let Some(policy) = item_use.as_deref_mut() {
@@ -584,7 +631,12 @@ pub(super) fn drive_mod(
             packet_render::session(&gameplay),
         );
     }
-    render::publish(render_scene, &mut extension, drawing.as_deref());
+    render::publish(
+        render_scene,
+        &mut extension,
+        drawing.as_deref(),
+        native_render.as_deref(),
+    );
     let native_source = native_output
         .as_ref()
         .map_or(0, |output| output.camera_sequence);
@@ -655,7 +707,11 @@ pub(super) fn drive_mod(
     }
     let hidden = extension.hosts.hidden_hud_elements();
     let mod_ui = presentation.mod_ui_mut();
-    mod_ui.set_hud_surfaces(extension.hud_surfaces());
+    mod_ui.set_hud_surfaces(
+        extension
+            .hud_surfaces()
+            .chain(native_hud.iter().flat_map(|hud| super::vantage::published(hud))),
+    );
     mod_ui.set_hidden_hud_elements(hidden);
     let mod_presentation = extension.hosts.merged_presentation();
     if let Some(style) = actor_style.as_mut()
@@ -686,7 +742,9 @@ pub(super) fn drive_mod(
         present_frame_panel(&mut extension, &mut presentation);
     }
     let hosts = &extension.hosts;
-    presentation.set_mod_touch_buttons(
+    super::vantage::present_touch(
+        &mut presentation,
+        native_touch.as_deref_mut(),
         hosts
             .touch_buttons()
             .into_iter()
@@ -697,12 +755,6 @@ pub(super) fn drive_mod(
     } else {
         presentation.set_mod_screens(None);
     }
-}
-
-/// Removes mod touch buttons and drops their taps while no mod can receive them.
-fn clear_touch_buttons(presentation: &mut UiPresentationResource) {
-    presentation.take_mod_touch_taps();
-    presentation.set_mod_touch_buttons(std::iter::empty());
 }
 
 /// Builds this frame's packet observation with its captured look and real time, hands it to

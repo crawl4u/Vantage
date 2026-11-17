@@ -49,6 +49,7 @@ fn direct_block_outline_respects_the_nearer_actor() {
         world.init_resource::<client_state::RuntimeSettings>();
         world.init_resource::<render_scene::BlockSelectionFrameResource>();
         world.init_resource::<crate::block_selection::CrosshairActor>();
+        world.init_resource::<crate::block_selection::SuppressBlockOutline>();
         world
             .run_system_cached(crate::block_selection::publish)
             .unwrap();
@@ -78,6 +79,7 @@ fn hidden_hud_draws_no_block_selection_but_keeps_the_actor_pick() {
         world.init_resource::<client_state::RuntimeSettings>();
         world.init_resource::<render_scene::BlockSelectionFrameResource>();
         world.init_resource::<crate::block_selection::CrosshairActor>();
+        world.init_resource::<crate::block_selection::SuppressBlockOutline>();
         world
             .resource_mut::<client_state::GameplayScreenControls>()
             .hide_hud = hide_hud;
@@ -194,6 +196,7 @@ fn nametag_pick_reuses_eye_ray_reach_occlusion_and_mount_exclusion() {
         world.init_resource::<client_state::RuntimeSettings>();
         world.init_resource::<render_scene::BlockSelectionFrameResource>();
         world.init_resource::<crate::block_selection::CrosshairActor>();
+        world.init_resource::<crate::block_selection::SuppressBlockOutline>();
         world
             .run_system_cached(crate::block_selection::publish)
             .unwrap();
@@ -224,6 +227,7 @@ fn unchanged_selection_leaves_its_published_resources_unchanged() {
     world.init_resource::<client_state::RuntimeSettings>();
     world.init_resource::<render_scene::BlockSelectionFrameResource>();
     world.init_resource::<crate::block_selection::CrosshairActor>();
+    world.init_resource::<crate::block_selection::SuppressBlockOutline>();
     world
         .run_system_cached(crate::block_selection::publish)
         .unwrap();
@@ -258,4 +262,26 @@ fn unchanged_selection_leaves_its_published_resources_unchanged() {
             .revision,
         revision
     );
+}
+
+/// While Vantage draws its own block outline, the default one is not published.
+#[test]
+fn suppressed_block_outline_draws_no_native_selection() {
+    for suppress in [false, true] {
+        let (mut world, _) = fixture();
+        let origin = frame_origin(&world, Vec3::new(4.5, 2.5, 8.5), Quat::IDENTITY);
+        world.insert_resource(origin);
+        world.init_resource::<client_state::RuntimeSettings>();
+        world.init_resource::<render_scene::BlockSelectionFrameResource>();
+        world.init_resource::<crate::block_selection::CrosshairActor>();
+        world.insert_resource(crate::block_selection::SuppressBlockOutline(suppress));
+        world
+            .run_system_cached(crate::block_selection::publish)
+            .unwrap();
+        let frame = world.resource::<render_scene::BlockSelectionFrameResource>();
+        assert_eq!(
+            frame.outline.is_empty() && frame.highlight.is_empty(),
+            suppress
+        );
+    }
 }

@@ -1,6 +1,7 @@
 //! Routes granted personal controls before the ordinary gameplay sample.
 
 mod field;
+mod native;
 mod physical;
 mod scroll;
 use field::PanelSample;
@@ -36,6 +37,8 @@ pub(super) struct PanelInput<'w> {
     wheel_events: Option<Res<'w, Messages<MouseWheel>>>,
     reserved: Option<ResMut<'w, super::ReservedControls>>,
 }
+
+pub(super) use native::{NativePanel, prepare_native_input};
 
 pub(super) const POINTER_BUTTONS: [(MouseButton, &str); 3] = [
     (MouseButton::Left, "MouseLeft"),

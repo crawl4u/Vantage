@@ -22,6 +22,8 @@ use {
     std::{path::Path, time::Duration},
 };
 
+mod vantage;
+
 const COMPONENT_ENV: &str = "CINNABAR_MOD_COMPONENT";
 /// A mod package directory (`mod.toml`, `mod.wasm`, templates, textures); it takes precedence
 /// over a bare component.
@@ -53,6 +55,7 @@ mod pointer;
 pub(crate) mod registration;
 mod teleport_handler;
 pub(crate) use teleport_handler::handle_move_player_rotation;
+pub(crate) use vantage::handlers::{filter_sounds as filter_native_sounds, wants_sounds as native_wants_sounds};
 mod terrain;
 
 /// Every loaded mod's presentation cues committed this frame, in load order.
@@ -165,16 +168,17 @@ impl ModRuntime {
     /// Each live guest's committed HUD surface in load order, with its stable UI owner and
     /// the actors its projections may follow.
     fn hud_surfaces(&self) -> impl Iterator<Item = mod_ui::PublishedHudSurface<'_>> {
-        (0..self.hosts.host_count()).filter_map(|index| {
-            let host = self.hosts.host(index);
-            let (surface, revision) = host.hud_surface()?;
-            Some(mod_ui::PublishedHudSurface {
-                owner: self.panel_ui_owner(index),
-                revision,
-                surface,
-                authority: actor_authority(host.grants()),
+        (0..self.hosts.host_count())
+            .filter_map(|index| {
+                let host = self.hosts.host(index);
+                let (surface, revision) = host.hud_surface()?;
+                Some(mod_ui::PublishedHudSurface {
+                    owner: self.panel_ui_owner(index),
+                    revision,
+                    surface,
+                    authority: actor_authority(host.grants()),
+                })
             })
-        })
     }
 
     /// Existing mod order chooses one active, explicitly authorized local menu brand.
@@ -246,6 +250,31 @@ pub(crate) fn configure_from_environment(app: &mut App) {
     } else if let Some(path) = path.as_deref() {
         configure(app, Some(Path::new(path)));
     }
+    app.init_resource::<vantage::NativeHud>()
+        .init_resource::<vantage::NativeFullbright>()
+        .init_resource::<vantage::NativeUsePulse>()
+        .init_resource::<vantage::NativeTouch>()
+        .init_resource::<vantage::NativeRenderOutput>()
+        .init_resource::<terrain_surfaces::NativeSurfaceRules>()
+        .init_resource::<input::NativePanel>()
+        .init_resource::<crate::environment::VisualTimeOverride>()
+        .init_resource::<crate::environment::VisualWeatherOverride>()
+        .init_resource::<native_input::NativeInput>()
+        .init_resource::<ModControlModes>()
+        .init_resource::<ModMovementInputActive>()
+        .init_resource::<client_presentation::actor_publication::ActorPresentationStyle>();
+    app.add_systems(
+        Update,
+        input::prepare_native_input
+            .after(input::prepare_mod_input)
+            .before(ClientFrameSet::RawInput),
+    );
+    app.add_systems(
+        Update,
+        vantage::update
+            .after(input::prepare_native_input)
+            .after(drive_mod),
+    );
     {
         let configured = app.world().contains_resource::<ModRuntime>();
         let layout =

@@ -19,6 +19,8 @@ const SKYBOX_HALF_EXTENT: f32 = 0.5;
 #[derive(Clone, Copy, Pod, Zeroable, ShaderType)]
 pub(crate) struct SkyboxUniform {
     pub(crate) parameters: Vec4,
+    /// Whether the cube follows the time of day (x); the rest is reserved.
+    pub(crate) time: Vec4,
 }
 
 impl SkyboxUniform {
@@ -41,7 +43,14 @@ impl SkyboxUniform {
                     8.0
                 },
             ),
+            time: Vec4::ZERO,
         }
+    }
+
+    /// Dims the cube with the time of day when `follow`.
+    pub(crate) fn following_time(mut self, follow: bool) -> Self {
+        self.time.x = f32::from(u8::from(follow));
+        self
     }
 }
 

@@ -44,6 +44,7 @@ members = [
     "crates/oreui",
     "crates/meshing",
     "crates/mod-api",
+    "crates/vantage",
     "crates/mod-host",
     "crates/mod-render",
     "crates/mod-ui",

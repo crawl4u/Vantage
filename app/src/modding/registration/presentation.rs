@@ -7,6 +7,9 @@ pub(in crate::modding) fn refresh_presentation(world: &mut World) {
     if !world.contains_resource::<ModRuntime>() {
         return;
     }
+    let native = world
+        .get_resource::<crate::modding::vantage::NativeHud>()
+        .cloned();
     world.resource_scope(|world, mut runtime: Mut<ModRuntime>| {
         let Some(mut presentation) = world.get_resource_mut::<UiPresentationResource>() else {
             return;
@@ -23,7 +26,11 @@ pub(in crate::modding) fn refresh_presentation(world: &mut World) {
             .set_mod_panel_open(runtime.hosts.host(owner).panel_open());
         let hidden = runtime.hosts.hidden_hud_elements();
         let mod_ui = presentation.mod_ui_mut();
-        mod_ui.set_hud_surfaces(runtime.hud_surfaces());
+        mod_ui.set_hud_surfaces(
+            runtime
+                .hud_surfaces()
+                .chain(native.iter().flat_map(|hud| crate::modding::vantage::published(hud))),
+        );
         mod_ui.set_hidden_hud_elements(hidden);
         presentation.set_mod_presentation(runtime.hosts.merged_presentation());
         let _ = presentation

@@ -16,6 +16,28 @@ pub(super) fn inactive(
     }
 }
 
+/// Applies native Vantage's action filter when no component host exists; returns the admitted pulses.
+pub(super) fn apply_native(
+    state: &mut input::ActionFilterState,
+    input: Option<&mut SemanticInputSnapshot>,
+    enabled: bool,
+    time_us: u128,
+    repeat: [bool; 2],
+) -> [bool; 2] {
+    let Some(input) = input else {
+        state.reset();
+        return [false; 2];
+    };
+    let native = enabled && super::vantage::handlers::wants_actions();
+    input.filter_actions(
+        state,
+        native.then_some(super::vantage::handlers::ACTION_OWNER),
+        clock(time_us),
+        repeat.map(|repeat| enabled && repeat),
+        |frame| native.then(|| super::vantage::handlers::filter_actions(frame)),
+    )
+}
+
 /// Resolves one owner and applies its return value before gameplay consumes the input.
 /// `repeat` holds the attack and item-use pulses mods requested; returns those admitted.
 pub(super) fn apply(
@@ -31,7 +53,13 @@ pub(super) fn apply(
         return ([false; 2], None);
     };
     let owner = enabled.then(|| hosts.action_filter_owner()).flatten();
-    let identity = owner.and_then(|i| hosts.host(i).action_filter_identity());
+    // Native Vantage filters while no component does.
+    let native = enabled && owner.is_none() && super::vantage::handlers::wants_actions();
+    let identity = if native {
+        Some(super::vantage::handlers::ACTION_OWNER)
+    } else {
+        owner.and_then(|i| hosts.host(i).action_filter_identity())
+    };
     let mut error = None;
     let pulse = input.filter_actions(
         state,
@@ -39,6 +67,9 @@ pub(super) fn apply(
         clock(time_us),
         repeat.map(|repeat| enabled && repeat),
         |frame| {
+            if native {
+                return Some(super::vantage::handlers::filter_actions(frame));
+            }
             let index = owner?;
             match hosts.host_mut(index).filter_actions(to_guest(frame)) {
                 Ok(verdict) => Some(input::ActionVerdict {

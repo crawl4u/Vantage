@@ -13,6 +13,10 @@ struct Cache {
     compiled: Arc<[meshing::surface::SurfaceRule]>,
 }
 
+/// The visual rules native Vantage last set.
+#[derive(Default, Resource)]
+pub(crate) struct NativeSurfaceRules(pub(crate) Vec<mod_api::terrain_surface::Rule>);
+
 /// Applies visual rules after callbacks and before presentation consumes world geometry.
 pub(super) fn configure(app: &mut App) {
     app.add_systems(
@@ -29,6 +33,7 @@ fn publish(
     mut world: Option<ResMut<ClientWorld>>,
     fatal: Option<Res<FatalError>>,
     mut cache: Local<Cache>,
+    native: Option<Res<NativeSurfaceRules>>,
 ) {
     let Some(stream) = world.as_mut().and_then(|world| world.stream.as_mut()) else {
         return;
@@ -42,6 +47,7 @@ fn publish(
             (0..runtime.hosts.host_count())
                 .flat_map(|index| runtime.hosts.host(index).terrain_surface_rules())
         })
+        .chain(native.iter().flat_map(|native| native.0.iter()))
         .collect();
     let scope = (
         stream.authority().actor_session_id(),

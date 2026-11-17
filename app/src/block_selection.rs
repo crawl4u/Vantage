@@ -54,12 +54,18 @@ impl SelectionContext<'_> {
 /// Updates after the completed pose and interaction authorities have been published.
 pub(crate) fn configure(app: &mut App) {
     app.init_resource::<render_scene::BlockSelectionFrameResource>()
+        .init_resource::<SuppressBlockOutline>()
         .init_resource::<CrosshairActor>()
         .add_systems(Update, publish.in_set(ClientFrameSet::WorldPublication));
 }
 
 /// A missing, stale or menu-owned ray clears last frame's target immediately.
+/// Set while Vantage draws its own block outline, which replaces the default one.
+#[derive(Default, bevy::prelude::Resource)]
+pub(crate) struct SuppressBlockOutline(pub(crate) bool);
+
 pub(crate) fn publish(
+    suppress: Res<SuppressBlockOutline>,
     context: SelectionContext,
     mut frame: ResMut<render_scene::BlockSelectionFrameResource>,
     mut picked: ResMut<CrosshairActor>,
@@ -70,7 +76,9 @@ pub(crate) fn publish(
     // An unchanged selection leaves the resource unchanged, so render extraction skips its clone.
     let revision = frame.revision;
     frame.bypass_change_detection().update(
-        target.as_ref().filter(|_| context.selection_visible()),
+        target
+            .as_ref()
+            .filter(|_| context.selection_visible() && !suppress.0),
         context
             .settings
             .user_settings_update()

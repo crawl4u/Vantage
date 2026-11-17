@@ -1,0 +1,13 @@
+[package]
+name = "vantage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT AND LGPL-3.0-or-later"
+publish = false
+description = "Vantage's settings, HUD documents, menu and share codes, ported from the Vantage mod."
+
+[dependencies]
+mod-api = { path = "../mod-api" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

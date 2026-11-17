@@ -37,6 +37,7 @@ fn block_pick_reach_diagonal_and_upward_edges_trim_outline_and_mining_together()
         world.init_resource::<client_state::RuntimeSettings>();
         world.init_resource::<render_scene::BlockSelectionFrameResource>();
         world.init_resource::<crate::block_selection::CrosshairActor>();
+        world.init_resource::<crate::block_selection::SuppressBlockOutline>();
         world
             .run_system_cached(crate::block_selection::publish)
             .unwrap();
@@ -72,6 +73,7 @@ fn block_pick_reach_trims_from_ticked_position_instead_of_the_interpolated_eye()
     world.init_resource::<client_state::RuntimeSettings>();
     world.init_resource::<render_scene::BlockSelectionFrameResource>();
     world.init_resource::<crate::block_selection::CrosshairActor>();
+    world.init_resource::<crate::block_selection::SuppressBlockOutline>();
     world
         .run_system_cached(crate::block_selection::publish)
         .unwrap();

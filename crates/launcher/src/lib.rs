@@ -4,7 +4,7 @@
 #[macro_export]
 macro_rules! product_name {
     () => {
-        "Cinnabar"
+        "Vantage"
     };
 }
 

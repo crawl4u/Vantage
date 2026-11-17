@@ -96,7 +96,7 @@ pub(super) fn physical_control(name: &str) -> Option<PhysicalControl> {
 }
 
 /// Translates a mod's binding request into a Controls row edit for a known action and control.
-fn key_change(write: &InputBindingWrite) -> Result<(Action, KeyBindingChange), &'static str> {
+pub(super) fn key_change(write: &InputBindingWrite) -> Result<(Action, KeyBindingChange), &'static str> {
     let action = Action::from_binding_name(&write.action).ok_or("unknown action")?;
     let change = match &write.change {
         InputBindingChange::Assign(key) => {

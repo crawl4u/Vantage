@@ -43,6 +43,106 @@ pub(super) struct TerrainSampling {
     generation: u64,
 }
 
+/// The latest outcome of one native subscription.
+pub(super) enum Sample {
+    Pending,
+    Region(Box<TerrainRegion>),
+    Failed(TerrainReadError),
+}
+
+/// Region subscriptions and block searches that native Vantage's last frame made, with their
+/// latest answers. They are answered before its next frame, like a loaded mod's.
+#[derive(Default)]
+pub(super) struct NativeTerrain {
+    pub(super) subscriptions: Vec<(TerrainQuery, Sample)>,
+    pub(super) pending: Vec<TerrainQuery>,
+    pub(super) searches: Vec<(mod_host::BlockSearch, Option<Result<mod_host::FoundBlocks, TerrainReadError>>)>,
+    pub(super) pending_searches: Vec<mod_host::BlockSearch>,
+    cursor: usize,
+    revision: u64,
+}
+
+impl NativeTerrain {
+    /// Starts a frame: the reads it makes become the subscriptions.
+    pub(super) fn begin(&mut self) {
+        self.pending.clear();
+        self.pending_searches.clear();
+    }
+
+    /// Replaces the subscriptions with this frame's reads, keeping the samples of those repeated.
+    pub(super) fn commit(&mut self) {
+        let mut previous = std::mem::take(&mut self.subscriptions);
+        for query in self.pending.drain(..) {
+            let sample = previous
+                .iter()
+                .position(|(candidate, _)| *candidate == query)
+                .map_or(Sample::Pending, |index| previous.swap_remove(index).1);
+            self.subscriptions.push((query, sample));
+        }
+        let mut previous = std::mem::take(&mut self.searches);
+        for search in self.pending_searches.drain(..) {
+            let sample = previous
+                .iter()
+                .position(|(candidate, _)| *candidate == search)
+                .and_then(|index| previous.swap_remove(index).1);
+            self.searches.push((search, sample));
+        }
+    }
+
+    /// Forgets the world's samples when the world changes.
+    fn clear_world(&mut self) {
+        self.subscriptions.clear();
+        self.searches.clear();
+    }
+
+    /// Samples stale subscriptions in turn under one cell budget, as the host scheduler does.
+    fn refresh(&mut self, budget: usize, source: &mut Source<'_>) {
+        use mod_host::TerrainSource as _;
+        if self.subscriptions.is_empty() {
+            return;
+        }
+        let count = self.subscriptions.len();
+        let start = self.cursor % count;
+        let (mut remaining, mut turned_away) = (budget, None);
+        for offset in 0..count {
+            let index = (start + offset) % count;
+            let (query, sample) = &mut self.subscriptions[index];
+            let region = match sample {
+                Sample::Region(region) => Some(&**region),
+                _ => None,
+            };
+            let refresh = match source.check(query, region) {
+                TerrainCheck::Current => TerrainRefresh::Keep,
+                TerrainCheck::Failed(error) => TerrainRefresh::Failed(error),
+                TerrainCheck::Stale { cells } if turned_away.is_none() && cells <= remaining => {
+                    remaining -= cells;
+                    source.sample(query)
+                }
+                TerrainCheck::Stale { .. } => {
+                    turned_away.get_or_insert(index);
+                    TerrainRefresh::Pending
+                }
+            };
+            *sample = match refresh {
+                TerrainRefresh::Keep => continue,
+                TerrainRefresh::Replace(region)
+                    if mod_host::terrain_region_bytes(&region) > mod_api::MAX_TERRAIN_RESPONSE_BYTES =>
+                {
+                    Sample::Failed(TerrainReadError::LimitExceeded)
+                }
+                TerrainRefresh::Replace(mut region) => {
+                    self.revision += 1;
+                    region.stamp.revision = self.revision;
+                    Sample::Region(region)
+                }
+                TerrainRefresh::Pending => Sample::Pending,
+                TerrainRefresh::Failed(error) => Sample::Failed(error),
+            };
+        }
+        self.cursor = turned_away.unwrap_or(start);
+    }
+}
+
 /// The block registry's metadata in the session's runtime-ID space.
 struct Metadata<'a>(&'a PhysicsCollisionRegistries, NetworkIdMode);
 impl mod_host::TerrainMetadata for Metadata<'_> {
@@ -107,6 +207,44 @@ impl TerrainSampling {
         self.scheduler
             .refresh(&mut hosts, mod_api::MAX_TERRAIN_FRAME_CELLS, &mut source);
         self.searches.refresh(&mut hosts, stream, observation);
+    }
+}
+
+impl TerrainSampling {
+    /// Answers native Vantage's region subscriptions and block searches for this frame.
+    pub(super) fn refresh_native(
+        &mut self,
+        native: &mut NativeTerrain,
+        context: &GameplayContext<'_>,
+        observation: Option<&mod_host::WorldObservation>,
+    ) {
+        let stream = context.world.as_ref().and_then(|world| world.stream.as_ref());
+        let (Some(observation), Some(stream), Some(registries)) =
+            (observation, stream, context.collisions.as_ref())
+        else {
+            return;
+        };
+        let authority = stream.authority();
+        let mode = authority.network_id_mode();
+        let scope = Some((observation.session, mode));
+        if self.scope != scope || registries.is_changed() {
+            if self.scope.map(|(session, _)| session) != Some(observation.session) {
+                native.clear_world();
+            }
+            self.scope = scope;
+            self.generation += 1;
+        }
+        let mut source = Source {
+            store: authority.terrain(),
+            registries,
+            mode,
+            observation,
+            generation: self.generation,
+            sampler: &mut self.sampler,
+            descriptors: &mut self.descriptors,
+        };
+        native.refresh(mod_api::MAX_TERRAIN_FRAME_CELLS, &mut source);
+        self.searches.refresh_native(&mut native.searches, stream, observation);
     }
 }
 

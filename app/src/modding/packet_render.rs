@@ -419,9 +419,29 @@ pub(super) fn session(gameplay: &super::gameplay::GameplayContext<'_>) -> Drawin
     }
 }
 /// Supports a packet-only configuration without introducing an empty component host.
-pub(super) fn publish_alone(scene: &mut render_scene::ModRenderScene, drawing: &Drawing) {
+pub(super) fn publish_alone(
+    scene: &mut render_scene::ModRenderScene,
+    drawing: &Drawing,
+    native: Option<&super::vantage::NativeRenderOutput>,
+) {
     drawing.publish_blocks(scene);
-    scene.apply_if_changed(&drawing.output);
+    match native {
+        // Native Vantage has no primitives or passes of its own: its retained drawings and masks
+        // ride on the packet output.
+        Some(native) if !native.output.retained.is_empty() || !native.output.masks.is_empty() => {
+            let mut combined = drawing.output.clone();
+            combined.retained.extend(native.output.retained.iter().cloned());
+            combined.masks = drawing
+                .output
+                .masks
+                .iter()
+                .chain(native.output.masks.iter())
+                .cloned()
+                .collect();
+            scene.apply_if_changed(&combined);
+        }
+        _ => scene.apply_if_changed(&drawing.output),
+    }
 }
 
 #[cfg(test)]
@@ -492,7 +512,7 @@ mod tests {
             },
             1,
         );
-        publish_alone(&mut scene, &drawing);
+        publish_alone(&mut scene, &drawing, None);
         assert_eq!(scene.retained.len(), 2);
         assert!(
             scene
@@ -501,7 +521,7 @@ mod tests {
                 .any(|layer| Arc::ptr_eq(layer, &server))
         );
         let generation = scene.generation();
-        publish_alone(&mut scene, &drawing);
+        publish_alone(&mut scene, &drawing, None);
         assert_eq!(scene.generation(), generation);
     }
 
@@ -518,10 +538,10 @@ mod tests {
         );
         let mut scene = render_scene::ModRenderScene::default();
         scene.apply(&RenderOutput::default(), drawing.generation);
-        publish_alone(&mut scene, &drawing);
+        publish_alone(&mut scene, &drawing, None);
         assert!(!scene.retained.is_empty());
         let generation = scene.generation();
-        publish_alone(&mut scene, &drawing);
+        publish_alone(&mut scene, &drawing, None);
         assert_eq!(scene.generation(), generation);
     }
 }

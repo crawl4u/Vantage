@@ -9,6 +9,7 @@ pub(super) fn publish(
     scene: Option<ResMut<ModRenderScene>>,
     runtime: &mut super::ModRuntime,
     drawing: Option<&super::packet_render::Drawing>,
+    native: Option<&super::vantage::NativeRenderOutput>,
 ) {
     let Some(mut scene) = scene else { return };
     if let Some(drawing) = drawing {
@@ -18,7 +19,8 @@ pub(super) fn publish(
         .hosts
         .render_outputs()
         .map(|(_, generation)| generation)
-        .chain(drawing.map(|drawing| drawing.output().1)));
+        .chain(drawing.map(|drawing| drawing.output().1))
+        .chain(native.map(|native| native.generation)));
     if unchanged {
         return;
     }
@@ -28,7 +30,8 @@ pub(super) fn publish(
             .hosts
             .render_outputs()
             .map(|(output, _)| output)
-            .chain(drawing.map(|drawing| drawing.output().0)),
+            .chain(drawing.map(|drawing| drawing.output().0))
+            .chain(native.map(|native| &native.output)),
     );
     runtime.render_merge = cache;
     let generation = scene.generation().wrapping_add(1);
@@ -38,6 +41,7 @@ pub(super) fn publish(
         .render_outputs()
         .map(|(_, generation)| generation)
         .chain(drawing.map(|drawing| drawing.output().1))
+        .chain(native.map(|native| native.generation))
         .collect();
 }
 
@@ -153,6 +157,6 @@ mod tests {
         mut runtime: ResMut<super::super::ModRuntime>,
         drawing: Res<super::super::packet_render::Drawing>,
     ) {
-        publish(Some(scene), &mut runtime, Some(&drawing));
+        publish(Some(scene), &mut runtime, Some(&drawing), None);
     }
 }

@@ -7,7 +7,9 @@ pub(crate) fn handle_move_player_rotation(
     mods: Option<&mut super::ModRuntime>,
     rotation: MovePlayerRotation,
 ) -> Option<[f32; 2]> {
-    let hosts = mods?.teleport_handlers()?;
+    let Some(hosts) = mods.and_then(|mods| mods.teleport_handlers()) else {
+        return super::vantage::handlers::teleport_rotation(rotation);
+    };
     let degrees = |[yaw, pitch]: [f32; 2]| TeleportRotation { yaw, pitch };
     let handled = hosts.handle_teleport(TeleportContext {
         mode: match rotation.mode {

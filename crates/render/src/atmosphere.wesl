@@ -20,7 +20,7 @@ struct AtmosphereUniform {
 @group(0) @binding(5) var end_sky_texture: texture_2d<f32>;
 @group(0) @binding(6) var<storage, read> stars: array<vec4<f32>>;
 
-struct SkyboxUniform { parameters: vec4<f32> }
+struct SkyboxUniform { parameters: vec4<f32>, time: vec4<f32> }
 @group(0) @binding(7) var<uniform> skybox: SkyboxUniform;
 @group(0) @binding(8) var skybox_face0: texture_2d<f32>;
 @group(0) @binding(9) var skybox_face1: texture_2d<f32>;
@@ -318,5 +318,12 @@ fn pack_skybox_fragment(in: VertexOutput) -> PackSkyboxOutput {
     let exit = pack_skybox_exit(ray, skybox.parameters.x);
     let distance = min(exit.x, min(exit.y, exit.z)) * skybox.parameters.w;
     let clip = view.clip_from_world * vec4(ray * distance + view.world_position, 1.0);
-    return PackSkyboxOutput(tint_to_linear(sampled), clamp(clip.z / clip.w, 0.0, 1.0));
+    var colour = tint_to_linear(sampled);
+    if (skybox.time.x > 0.5) {
+        // The cube covers the stock sky, so it carries the time of day itself: dim it with the
+        // daylight, keeping enough of the pack's night to see.
+        let daylight = clamp(atmosphere.sun_direction_daylight.w, 0.0, 1.0);
+        colour = vec4(colour.rgb * mix(0.12, 1.0, daylight), colour.a);
+    }
+    return PackSkyboxOutput(colour, clamp(clip.z / clip.w, 0.0, 1.0));
 }

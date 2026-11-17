@@ -95,6 +95,7 @@ pub(super) fn publish(
     packet_drawing: Option<ResMut<super::packet_render::Drawing>>,
     context: GameplayContext,
     mut scene: ResMut<render_scene::ModRenderScene>,
+    native: Option<Res<super::vantage::NativeRenderOutput>>,
     actors: Option<Res<render_scene::ActorRenderFrame>>,
     cameras: Query<&Transform, With<client_presentation::camera::FlyCamera>>,
 ) {
@@ -125,7 +126,9 @@ pub(super) fn publish(
     }
     let Some(mut runtime) = runtime else {
         if let Some(packet_drawing) = packet_drawing.as_deref() {
-            super::packet_render::publish_alone(&mut scene, packet_drawing);
+            super::packet_render::publish_alone(&mut scene, packet_drawing, native.as_deref());
+        } else if let Some(native) = native.as_deref() {
+            scene.apply_if_changed(&native.output);
         }
         return;
     };
@@ -135,7 +138,12 @@ pub(super) fn publish(
         runtime.render_sources.clear();
     }
     reconcile(&mut runtime.hosts, &context);
-    super::render::publish(Some(scene), &mut runtime, packet_drawing.as_deref());
+    super::render::publish(
+        Some(scene),
+        &mut runtime,
+        packet_drawing.as_deref(),
+        native.as_deref(),
+    );
 }
 
 /// Rebuilds availability once from every current contributor, even without personal publishers.

@@ -698,3 +698,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Vantage (native port)
+
+- Location: `crates/vantage` (driven by `app/src/modding/vantage/`); the same code is built as the `vantage-mod/vantage.wasm` component.
+- Original work: Vantage by Crawl, made from Technic Tweaks and Keystrokes by Emil Chill (MIT); license in `crates/vantage/LICENSE-VANTAGE`.
+- Boldy-derived code: MIT; license in `crates/vantage/LICENSE-BOLDY`.
+- Zoomify port (the Zoom page): https://github.com/isXander/Zoomify, LGPL-3.0; license in `crates/vantage/LICENSE-ZOOMIFY`. The ported source is in this repository.
+- Lucide icons: ISC; license in `crates/vantage/LICENSE-LUCIDE`.
+- `crates/vantage/assets/vantage-ui.ttf` is built from Inter 4.1 Medium (SIL Open Font License 1.1, `assets/licenses/Inter-OFL-1.1.txt`, also `crates/vantage/LICENSE-INTER`) and Lucide icons.
+- `crates/vantage/assets/base-icon.png` is original Vantage artwork.
+- No Minecraft or Mojang assets are included; users supply their own compiled carriers exactly as for upstream Cinnabar.

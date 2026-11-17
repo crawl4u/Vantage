@@ -251,6 +251,18 @@ pub(crate) fn pump_audio(
         );
         return;
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    if crate::modding::native_wants_sounds() {
+        client_audio::audio::systems::pump_audio_filtered(
+            time,
+            listener,
+            settings,
+            engine,
+            device,
+            |events| Some(crate::modding::filter_native_sounds(events)),
+        );
+        return;
+    }
     client_audio::audio::systems::pump_audio(time, listener, settings, engine, device);
 }
 

@@ -13,6 +13,9 @@ use super::*;
 #[derive(Resource, Default)]
 pub(super) struct Pending(Option<Request>);
 
+/// The owner of a request staged by native Vantage rather than by a mod.
+pub(super) const NATIVE_OWNER: usize = usize::MAX;
+
 struct Request {
     owner: usize,
     instance: u64,
@@ -84,29 +87,36 @@ fn apply(
     authority: Authority,
     _main_thread: NonSendMarker,
 ) {
-    let Some(runtime) = authority.runtime.as_deref() else {
-        pending.0 = None;
-        return;
-    };
     let Some(request) = pending.0.as_ref() else {
         return;
     };
+    let runtime = authority.runtime.as_deref();
+    if runtime.is_none() && request.owner != NATIVE_OWNER {
+        pending.0 = None;
+        return;
+    }
     let Ok((entity, window, cursor)) = authority.windows.single() else {
         pending.0 = None;
         return;
     };
+    let owner_invalid = |runtime: &ModRuntime| {
+        request.owner != NATIVE_OWNER
+            && (runtime.suspended
+                || request.owner >= runtime.hosts.host_count()
+                || runtime.hosts.host(request.owner).touch_owner() != request.instance
+                || !runtime.hosts.host(request.owner).is_active()
+                || !runtime.hosts.host(request.owner).grants().controls)
+    };
     let invalid = authority.driven.is_some()
         || (!cursor.visible && cursor.grab_mode == CursorGrabMode::None)
-        || runtime.suspended
-        || request.owner >= runtime.hosts.host_count()
-        || runtime.hosts.host(request.owner).touch_owner() != request.instance
-        || !runtime.hosts.host(request.owner).is_active()
-        || !runtime.hosts.host(request.owner).grants().controls
-        || runtime.hosts.host(runtime.hosts.panel_owner()).panel_open()
-        || runtime
-            .hosts
-            .screen_owner()
-            .is_some_and(|owner| runtime.hosts.host(owner).screens().view.is_some())
+        || runtime.is_some_and(|runtime| {
+            owner_invalid(runtime)
+                || runtime.hosts.host(runtime.hosts.panel_owner()).panel_open()
+                || runtime
+                    .hosts
+                    .screen_owner()
+                    .is_some_and(|owner| runtime.hosts.host(owner).screens().view.is_some())
+        })
         || drive::observed_container_screen(&authority.player, &authority.ui)
             != Some(request.screen)
         || !drive::container_pointer_available(

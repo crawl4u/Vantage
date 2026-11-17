@@ -60,6 +60,7 @@ pub use runtime::legacy_input::{
 };
 pub use screens::{DataSource, KeyModifiers, LoadedPackage, ModEvent, ModScreens};
 
+pub use runtime::{effect_facts, item_facts};
 pub use runtime::cinnabar::extension::gameplay::{
     BlockPosition as GameplayBlockPosition, CameraPose as GameplayCameraPose,
     CameraRig as GameplayCameraRig, ControlModes as GameplayControlModes,

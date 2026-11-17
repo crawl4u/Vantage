@@ -447,12 +447,9 @@ fn mesh_sub_chunk_core<
                                     if visible_quad_mask & (1 << index) == 0 {
                                         continue;
                                     }
-                                    if quad.material == DIAGNOSTIC_MATERIAL
-                                        || visuals.material(quad.material).flags
-                                            & (assets::MATERIAL_FLAG_ALPHA_BLEND
-                                                | assets::MATERIAL_FLAG_ALPHA_CUTOUT)
-                                            == 0
-                                    {
+                                    // Coverage is geometric, so a pack whose texture is opaque (or has
+                                    // no alpha at all) cannot keep faces the rule removes.
+                                    if quad.material == DIAGNOSTIC_MATERIAL {
                                         continue;
                                     }
                                     if let Some(face) = crate::surface::full_face(quad) {

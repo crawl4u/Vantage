@@ -57,6 +57,7 @@ mod drawing_tests;
 mod exports;
 #[path = "facts_host.rs"]
 mod facts_host;
+pub use facts_host::{effect_facts, item_facts};
 #[path = "gameplay.rs"]
 mod gameplay;
 #[path = "hud.rs"]

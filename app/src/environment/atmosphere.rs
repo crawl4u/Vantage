@@ -41,6 +41,7 @@ pub(crate) struct AtmospherePreferences<'w> {
     clouds: Option<ResMut<'w, render_scene::CloudVisibility>>,
     cloud_distance: Option<ResMut<'w, render_scene::CloudDistanceChunks>>,
     skybox: Option<ResMut<'w, render_scene::SkyboxSettings>>,
+    follows_time: Option<ResMut<'w, render_scene::SkyboxFollowsTime>>,
 }
 
 /// The renderer-clock overrides, in [`super::rendered_clock`] precedence order.
@@ -106,6 +107,10 @@ pub(crate) fn update_atmosphere_frame(
     let clouds = preferences.clouds;
     let cloud_distance = preferences.cloud_distance;
     let skybox = preferences.skybox;
+    if let Some(mut follows) = preferences.follows_time {
+        // A time the player forced shows in a pack's sky too.
+        follows.0 = time_override.as_deref().is_some_and(|visual| visual.0.is_some());
+    }
     let cloud_chunks = options
         .as_ref()
         .map(|options| options.value(SettingId::CloudDistance).clamp(8, 128) as u16);

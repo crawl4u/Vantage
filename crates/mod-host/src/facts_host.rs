@@ -94,7 +94,7 @@ fn food_items(catalog: Option<&assets::RuntimeEquipmentCatalog>) -> Arc<[wit::Fo
 
 /// Resolves an identifier through the pinned item facts and installed food; none when neither
 /// knows it.
-fn item_facts(
+pub fn item_facts(
     identifier: &str,
     metadata: u32,
     food: Option<&assets::RuntimeEquipmentCatalog>,
@@ -156,7 +156,7 @@ fn potion_effects(
 
 /// The effect's name key and its HUD icon as JSON-UI names textures: the pack path without
 /// extension, empty for effects without an icon.
-fn effect_facts(effect_id: i32) -> Option<wit::EffectFacts> {
+pub fn effect_facts(effect_id: i32) -> Option<wit::EffectFacts> {
     let effect = assets::effect_descriptor(effect_id)?;
     Some(wit::EffectFacts {
         name_key: effect.name_key.into(),

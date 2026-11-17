@@ -19,14 +19,16 @@ fn publish(
     world: Option<Res<ClientWorld>>,
     fatal_error: Option<Res<FatalError>>,
     mut lighting: ResMut<WorldFullbright>,
+    native: Option<Res<super::vantage::NativeFullbright>>,
 ) {
     let enabled = world.as_deref().is_some_and(|world| world.stream.is_some())
         && fatal_error.as_deref().is_none_or(|fatal| fatal.0.is_none())
-        && runtime.as_deref().is_some_and(|runtime| {
-            !runtime.suspended
-                && (0..runtime.hosts.host_count())
-                    .any(|index| runtime.hosts.host(index).fullbright())
-        });
+        && (native.as_deref().is_some_and(|native| native.0)
+            || runtime.as_deref().is_some_and(|runtime| {
+                !runtime.suspended
+                    && (0..runtime.hosts.host_count())
+                        .any(|index| runtime.hosts.host(index).fullbright())
+            }));
     if lighting.0 != enabled {
         lighting.0 = enabled;
     }
