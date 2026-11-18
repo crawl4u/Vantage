@@ -350,13 +350,13 @@ fn the_java_options_list_every_section_and_each_page_offers_its_registry_options
 }
 
 #[test]
-fn a_java_page_with_no_registry_options_falls_back_to_the_bedrock_page() {
+fn the_bedrock_page_opened_from_a_java_page_is_the_bedrock_page() {
     use launcher::menu::JavaSettingsView;
     let mut view = java_view();
     view.screen = MenuScreen::Settings;
     view.settings.java_view = JavaSettingsView::Page;
     view.settings.section = SettingSection::Language.definition().index;
-    assert!(!options::shows_java(&view));
+    assert!(options::shows_java(&view));
     view.settings.section = SettingSection::Video.definition().index;
     assert!(options::shows_java(&view));
     view.settings.java_view = JavaSettingsView::Bedrock;

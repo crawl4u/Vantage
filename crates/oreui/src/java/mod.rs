@@ -8,6 +8,7 @@ mod font;
 pub(super) mod frame;
 pub(crate) use button::label_style;
 pub(super) mod home;
+mod language;
 pub(super) mod options;
 pub(crate) mod pack_drag;
 mod packs;

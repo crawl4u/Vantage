@@ -9,10 +9,17 @@
 use assets::audio_category::AudioCategory;
 use launcher::menu::{
     JavaSettingsAction, JavaSettingsView, MenuAction, MenuView,
-    settings_options::{SETTINGS_OPTIONS, SettingId, SettingKind, layout::SettingPanel},
+    auth::AuthState,
+    settings_options::{
+        BindingId, EXTRA_GAMEPAD, EXTRA_KEYS, GAMEPAD_BINDINGS, GAMEPAD_OFFSET, KEY_BINDINGS,
+        SETTINGS_OPTIONS, SettingId, SettingKind, SettingsOptions, layout::SettingPanel,
+    },
     settings_sections::{SECTION_DEFINITIONS, SettingSection},
+    settings_support::{SupportAction, SupportLink},
 };
 use ui_engine::engine::screen::{PaintError, Translate};
+
+use super::frame::put;
 
 use super::{button, unit};
 use crate::{
@@ -63,14 +70,112 @@ const HANDLE_SIZE: [f32; 2] = [8.0, 20.0];
 enum Entry {
     Option(SettingId),
     Link(String, MenuAction),
+    /// A button that does nothing, which says something: who is signed in.
+    Label(String),
+    /// A line of text over what follows, across the whole list.
+    Heading(String),
+    /// A key binding: the action's name, the button that captures a key for it and, when the key
+    /// is not the default, a button that restores it. Its place among the bindings is the index.
+    Binding(usize),
 }
 
 impl Entry {
     /// Whether the widget spans the list's whole width: the master volume, which Java sets above
-    /// the other volumes.
+    /// the other volumes, headings and key bindings.
     fn wide(&self) -> bool {
-        matches!(self, Self::Option(id)
-            if SETTINGS_OPTIONS[id.index()].volume == Some(AudioCategory::Master))
+        match self {
+            Self::Option(id) => SETTINGS_OPTIONS[id.index()].volume == Some(AudioCategory::Master),
+            Self::Heading(_) | Self::Binding(_) => true,
+            Self::Link(..) | Self::Label(_) => false,
+        }
+    }
+}
+
+/// What a page holds beyond the registry's options for its section: buttons for an account, for
+/// the touch layout, and the key bindings.
+fn extras(view: &MenuView, section: SettingSection) -> Vec<Entry> {
+    let link = |label: &str, action: MenuAction| Entry::Link(label.to_owned(), action);
+    match section {
+        SettingSection::Account => {
+            if matches!(view.auth_state, AuthState::Authenticated) {
+                vec![
+                    Entry::Label(format!(
+                        "Signed in: {}",
+                        launcher::menu::profile::current_name(view)
+                    )),
+                    link(
+                        "Change Gamertag",
+                        MenuAction::SettingsSupport(SupportAction::Open(SupportLink::Gamertag)),
+                    ),
+                    link(
+                        "Manage Account",
+                        MenuAction::SettingsSupport(SupportAction::Open(SupportLink::Account)),
+                    ),
+                    link("Sign Out", MenuAction::SignOut),
+                ]
+            } else {
+                vec![link("Sign In", MenuAction::StartSignIn)]
+            }
+        }
+        SettingSection::Touch => {
+            if view.touch_available {
+                vec![link("Edit Layout...", MenuAction::EditTouchControls)]
+            } else {
+                vec![Entry::Label("No touch screen found".to_owned())]
+            }
+        }
+        SettingSection::KeyboardAndMouse => {
+            let count = KEY_BINDINGS.len() + EXTRA_KEYS.len();
+            let mut entries = vec![Entry::Heading("Key Binds".to_owned())];
+            entries.extend((0..count).map(Entry::Binding));
+            entries.push(link(
+                "Reset Key Binds",
+                MenuAction::SettingsResetBindings(false),
+            ));
+            entries
+        }
+        SettingSection::ControllerAndSwitch => {
+            let count = GAMEPAD_BINDINGS.len() + EXTRA_GAMEPAD.len();
+            let mut entries = vec![Entry::Heading("Controller Binds".to_owned())];
+            entries.extend((0..count).map(|index| Entry::Binding(GAMEPAD_OFFSET + index)));
+            entries.push(link(
+                "Reset Controller Binds",
+                MenuAction::SettingsResetBindings(true),
+            ));
+            entries
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Whether the Java page of `section` has anything to list.
+fn page_has_content(view: &MenuView, section: SettingSection) -> bool {
+    !page_options(view, section).is_empty() || !extras(view, section).is_empty()
+}
+
+/// The text of the key binding at `index` in the bindings' order, a localization key.
+fn binding_label(index: usize) -> &'static str {
+    if index >= GAMEPAD_OFFSET {
+        let place = index - GAMEPAD_OFFSET;
+        GAMEPAD_BINDINGS
+            .get(place)
+            .map(|(_, label)| *label)
+            .or_else(|| {
+                EXTRA_GAMEPAD
+                    .get(place - GAMEPAD_BINDINGS.len())
+                    .map(|(label, _)| *label)
+            })
+            .unwrap_or("")
+    } else {
+        KEY_BINDINGS
+            .get(index)
+            .map(|(_, label)| *label)
+            .or_else(|| {
+                EXTRA_KEYS
+                    .get(index - KEY_BINDINGS.len())
+                    .map(|(label, _)| *label)
+            })
+            .unwrap_or("")
     }
 }
 
@@ -101,7 +206,7 @@ fn page_options(view: &MenuView, section: SettingSection) -> Vec<SettingId> {
 fn has_page(section: SettingSection) -> bool {
     matches!(
         section,
-        SettingSection::GlobalTexturePack | SettingSection::Shaders
+        SettingSection::GlobalTexturePack | SettingSection::Shaders | SettingSection::Language
     )
 }
 
@@ -117,7 +222,7 @@ pub(crate) fn shows_java(view: &MenuView) -> bool {
     match view.settings.java_view {
         JavaSettingsView::Hub => true,
         JavaSettingsView::Page | JavaSettingsView::Direct => {
-            has_page(section(view)) || !page_options(view, section(view)).is_empty()
+            has_page(section(view)) || page_has_content(view, section(view))
         }
         JavaSettingsView::Bedrock => false,
     }
@@ -180,7 +285,7 @@ fn hub_entries(view: &MenuView, translate: Translate<'_>) -> Vec<Entry> {
             .unwrap_or(JAVA_PAGE_ORDER.len())
     });
     for definition in sections {
-        let action = if !has_page(definition.id) && page_options(view, definition.id).is_empty() {
+        let action = if !has_page(definition.id) && !page_has_content(view, definition.id) {
             JavaSettingsAction::Bedrock(definition.index)
         } else {
             JavaSettingsAction::Page(definition.index)
@@ -200,6 +305,7 @@ fn page_entries(view: &MenuView, section: SettingSection) -> Vec<Entry> {
         .into_iter()
         .map(Entry::Option)
         .collect();
+    entries.extend(extras(view, section));
     entries.push(Entry::Link(
         "More settings...".to_owned(),
         MenuAction::JavaSettings(JavaSettingsAction::Bedrock(section.definition().index)),
@@ -220,6 +326,7 @@ pub(crate) fn draw(
         return match open {
             SettingSection::GlobalTexturePack => super::packs::draw(canvas, view, size),
             SettingSection::Shaders => super::shaders::draw(canvas, view, size),
+            SettingSection::Language => super::language::draw(canvas, view, size),
             _ => Ok(()),
         };
     }
@@ -357,6 +464,7 @@ fn list(
         format!("java_options/{}", open.definition().name)
     };
     let places = places(entries);
+    let defaults = SettingsOptions::default();
     let rows = places.last().map_or(0, |place| place.row + 1) as f32;
     let content = (LIST_PADDING * 2.0 + rows * ROW) * unit;
     let max = (content - (viewport[3] - viewport[1])).max(0.0);
@@ -392,9 +500,90 @@ fn list(
                 button::draw(canvas, view, bounds, label, Some(*action), unit)?;
             }
             Entry::Option(id) => widget(canvas, view, translate, bounds, *id, unit)?,
+            Entry::Label(label) => button::draw(canvas, view, bounds, label, None, unit)?,
+            Entry::Heading(text) => put(
+                canvas,
+                text,
+                [bounds[0], bounds[1] + 6.0 * unit],
+                unit,
+                TEXT,
+                bounds[2] - bounds[0],
+            )?,
+            Entry::Binding(index) => {
+                binding(canvas, view, translate, bounds, *index, &defaults, unit)?;
+            }
         }
     }
     canvas.end_scroll(scroll, content)
+}
+
+/// Draws one key binding across `bounds`: its name, the button that captures a key for it, which
+/// reads "> ... <" while it waits, and a Reset button once the key is not the default.
+fn binding(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    translate: Translate<'_>,
+    bounds: Bounds,
+    index: usize,
+    defaults: &SettingsOptions,
+    unit: f32,
+) -> Result<(), PaintError> {
+    let label = binding_label(index);
+    let options = &view.settings_options;
+    let capturing = view.settings.key_remap == Some(index as u16);
+    let control = options.key_control(index);
+    let changed = control != defaults.key_control(index);
+    let mut value = control.map_or_else(
+        || settings::text(view, translate, "controllerLayoutScreen.unassigned"),
+        |control| options.key_name(control),
+    );
+    if index < GAMEPAD_OFFSET
+        && let Some(binding) = BindingId::from_name(label)
+        && let Some(second) = options.secondary_key_control(binding)
+    {
+        value.push_str(" / ");
+        value.push_str(&options.key_name(second));
+    }
+    let shown = if capturing {
+        "> ... <".to_owned()
+    } else {
+        value
+    };
+    let reset_width = 50.0 * unit;
+    let gap = 4.0 * unit;
+    let key = [
+        bounds[2] - reset_width - gap - 100.0 * unit,
+        bounds[1],
+        bounds[2] - reset_width - gap,
+        bounds[3],
+    ];
+    let name = settings::text(view, translate, label);
+    put(
+        canvas,
+        &name,
+        [bounds[0], bounds[1] + 6.0 * unit],
+        unit,
+        TEXT,
+        key[0] - bounds[0] - gap,
+    )?;
+    button::draw_lit(
+        canvas,
+        view,
+        key,
+        &shown,
+        Some(MenuAction::SettingsKey(index as u16)),
+        capturing,
+        unit,
+    )?;
+    let reset = [bounds[2] - reset_width, bounds[1], bounds[2], bounds[3]];
+    button::draw(
+        canvas,
+        view,
+        reset,
+        "Reset",
+        (changed && !capturing).then_some(MenuAction::SettingsResetKey(index as u16)),
+        unit,
+    )
 }
 
 /// Draws the widget of the option `id`: a slider, or a button naming its value.
@@ -561,7 +750,7 @@ mod tests {
             .into_iter()
             .filter_map(|entry| match entry {
                 Entry::Link(label, _) => Some(label),
-                Entry::Option(_) => None,
+                _ => None,
             })
             .collect();
         let at = |name: &str| labels.iter().position(|label| label == name);
@@ -590,6 +779,81 @@ mod tests {
         assert_eq!((places[1].row, places[1].column), (1, 0));
         assert_eq!((places[2].row, places[2].column), (1, 1));
         assert!(places.iter().skip(1).all(|place| !place.wide));
+    }
+
+    #[test]
+    fn account_touch_and_the_bindings_have_java_pages_of_their_own() {
+        let mut view = view();
+        let opens_page = |view: &MenuView, section: SettingSection| {
+            hub_entries(view, &|_| None)
+                .into_iter()
+                .any(|entry| match entry {
+                    Entry::Link(_, MenuAction::JavaSettings(JavaSettingsAction::Page(index))) => {
+                        index == section.definition().index
+                    }
+                    _ => false,
+                })
+        };
+        for section in [
+            SettingSection::Account,
+            SettingSection::Touch,
+            SettingSection::KeyboardAndMouse,
+            SettingSection::ControllerAndSwitch,
+        ] {
+            assert!(opens_page(&view, section), "{section:?}");
+        }
+        // Signed out, the account page offers signing in; signed in, it offers the rest.
+        let labels = |view: &MenuView, section| -> Vec<String> {
+            extras(view, section)
+                .into_iter()
+                .filter_map(|entry| match entry {
+                    Entry::Link(label, _) | Entry::Label(label) => Some(label),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(labels(&view, SettingSection::Account), ["Sign In"]);
+        view.auth_state = AuthState::Authenticated;
+        let signed_in = labels(&view, SettingSection::Account);
+        assert!(signed_in.iter().any(|label| label == "Sign Out"));
+        assert!(signed_in[0].starts_with("Signed in: "));
+        // Without a touch screen the touch page says so and offers no layout editor.
+        view.touch_available = false;
+        assert_eq!(
+            labels(&view, SettingSection::Touch),
+            ["No touch screen found"]
+        );
+        view.touch_available = true;
+        assert_eq!(labels(&view, SettingSection::Touch), ["Edit Layout..."]);
+    }
+
+    #[test]
+    fn every_key_binding_has_a_name_and_a_row_of_its_own() {
+        let view = view();
+        let keys = extras(&view, SettingSection::KeyboardAndMouse);
+        let bindings: Vec<usize> = keys
+            .iter()
+            .filter_map(|entry| match entry {
+                Entry::Binding(index) => Some(*index),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(bindings.len(), KEY_BINDINGS.len() + EXTRA_KEYS.len());
+        let pad = extras(&view, SettingSection::ControllerAndSwitch);
+        let pad_bindings = pad
+            .iter()
+            .filter(|entry| matches!(entry, Entry::Binding(_)))
+            .count();
+        assert_eq!(pad_bindings, GAMEPAD_BINDINGS.len() + EXTRA_GAMEPAD.len());
+        for entry in keys.iter().chain(&pad) {
+            if let Entry::Binding(index) = entry {
+                assert!(!binding_label(*index).is_empty(), "binding {index}");
+                // A binding and a heading span the list, so each sits on a row of its own.
+                assert!(entry.wide());
+            }
+        }
+        let placed = places(&keys);
+        assert!(placed.iter().filter(|place| place.wide).count() >= bindings.len());
     }
 
     #[test]
@@ -645,9 +909,10 @@ mod tests {
                 SettingSection::Video.definition().index
             ))
         );
+        // A section with a page laid out by hand opens it too.
         assert_eq!(
             target(SettingSection::Language),
-            Some(JavaSettingsAction::Bedrock(
+            Some(JavaSettingsAction::Page(
                 SettingSection::Language.definition().index
             ))
         );

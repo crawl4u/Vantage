@@ -71,6 +71,18 @@ pub(super) const STATES: &[State] = &[
         fixture: java_pack_folder,
     },
     State {
+        name: "java-options-controls",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || java_settings(JavaSettingsView::Page, SettingSection::KeyboardAndMouse),
+    },
+    State {
+        name: "java-options-account",
+        size: SMALL_SIZE,
+        gui_scale: 1,
+        fixture: || java_settings(JavaSettingsView::Page, SettingSection::Account),
+    },
+    State {
         name: "java-shaders",
         size: SIZE,
         gui_scale: GUI_SCALE,

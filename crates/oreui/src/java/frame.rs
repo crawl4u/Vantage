@@ -23,6 +23,7 @@ const SEPARATOR: f32 = 2.0;
 const BUTTON_HEIGHT: f32 = 20.0;
 const BUTTON_WIDTH: f32 = 100.0;
 const BUTTON_GAP: f32 = 5.0;
+const WIDE_BUTTON_WIDTH: f32 = 200.0;
 /// The width a row of buttons shares, as Java's three and four button rows do.
 const ROW_WIDTH: f32 = 310.0;
 /// Where the rows of buttons start below the footer's top edge, and the distance between rows.
@@ -127,7 +128,12 @@ pub(super) fn draw(
     let top = size[1] / unit - FOOTER;
     for (index, row) in spec.rows.iter().enumerate() {
         let count = row.len().max(1) as f32;
-        let width = BUTTON_WIDTH.min((ROW_WIDTH - BUTTON_GAP * (count - 1.0)) / count);
+        // A button alone on its row is Java's wide Done.
+        let width = if row.len() == 1 {
+            WIDE_BUTTON_WIDTH
+        } else {
+            BUTTON_WIDTH.min((ROW_WIDTH - BUTTON_GAP * (count - 1.0)) / count)
+        };
         let total = count * width + (count - 1.0) * BUTTON_GAP;
         let y = top + FIRST_ROW + index as f32 * ROW_STEP;
         for (place, item) in row.iter().enumerate() {
