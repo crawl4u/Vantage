@@ -258,6 +258,8 @@ fn the_java_title_is_drawn_at_the_chosen_java_gui_scale() {
 fn the_java_pause_menu_offers_every_pause_action_inside_the_window() {
     let view = java_view();
     let toggle = view.settings_options.menu_style_switch();
+    let section =
+        |section: SettingSection| MenuAction::OpenSettingsSection(section.definition().index);
     for size in [[1280.0, 720.0], [640.0, 360.0], [360.0, 240.0]] {
         let (hits, _) = paint(true, size, |canvas| {
             pause::draw(canvas, &view, size).unwrap()
@@ -267,6 +269,13 @@ fn the_java_pause_menu_offers_every_pause_action_inside_the_window() {
             MenuAction::PauseSettings,
             MenuAction::PauseDisconnect,
             MenuAction::Navigate(MenuScreen::DressingRoom),
+            MenuAction::Navigate(MenuScreen::Friends),
+            MenuAction::Navigate(MenuScreen::Inbox),
+            MenuAction::StartSignIn,
+            section(SettingSection::Mods),
+            section(SettingSection::Discord),
+            section(SettingSection::Updates),
+            section(SettingSection::World),
             MenuAction::SettingsOption(toggle.0, toggle.1),
         ] {
             let bounds = hits
@@ -295,17 +304,23 @@ fn the_java_pause_rows_sit_where_java_puts_them() {
     let unit = unit_for(size, None, 1.0);
     let bounds = |action| hits.iter().find(|(found, _)| *found == action).unwrap().1;
     let resume = bounds(MenuAction::PauseResume);
-    let quit = bounds(MenuAction::PauseDisconnect);
+    let friends = bounds(MenuAction::Navigate(MenuScreen::Friends));
+    let inbox = bounds(MenuAction::Navigate(MenuScreen::Inbox));
+    let mods = bounds(MenuAction::OpenSettingsSection(
+        SettingSection::Mods.definition().index,
+    ));
     let options = bounds(MenuAction::PauseSettings);
-    let wardrobe = bounds(MenuAction::Navigate(MenuScreen::DressingRoom));
+    let quit = bounds(MenuAction::PauseDisconnect);
     let java_height = (size[1] / unit).ceil();
     // The first row is at a quarter of the height plus 8, each row 24 below the last.
     assert_eq!(resume.min().y(), ((java_height / 4.0).floor() + 8.0) * unit);
-    assert_eq!(wardrobe.min().y() - resume.min().y(), 24.0 * unit);
-    assert_eq!(quit.min().y() - wardrobe.min().y(), 24.0 * unit);
+    assert_eq!(friends.min().y() - resume.min().y(), 24.0 * unit);
+    assert_eq!(mods.min().y() - friends.min().y(), 24.0 * unit);
+    assert_eq!(options.min().y() - mods.min().y(), 24.0 * unit);
+    assert_eq!(quit.min().y() - options.min().y(), 24.0 * unit);
     assert_eq!(resume.width(), 204.0 * unit);
     assert_eq!(quit.width(), 204.0 * unit);
-    assert_eq!(wardrobe.width(), 98.0 * unit);
-    assert_eq!(options.width(), 98.0 * unit);
-    assert_eq!(options.min().x() - wardrobe.max().x(), 8.0 * unit);
+    assert_eq!(friends.width(), 98.0 * unit);
+    assert_eq!(mods.width(), 48.0 * unit);
+    assert_eq!(inbox.min().x() - friends.max().x(), 8.0 * unit);
 }

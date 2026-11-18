@@ -1,10 +1,14 @@
 //! The Java-style pause menu, laid out as Java Edition lays its game menu out: the title 40 Java
 //! pixels down and the buttons in 24-pixel rows from a quarter of the height plus 8, the first and
-//! last 204 pixels wide and the ones between in pairs 98 pixels wide. Java's own rows for
-//! advancements, statistics and feedback have no counterpart here, so the rows hold what this
-//! menu offers: resume, wardrobe, options and save and quit. The world shows dimmed behind it.
+//! last 204 pixels wide and the rows between in pairs 98 pixels wide or four 48 wide. Java's rows
+//! for advancements, statistics and the icon links hold what this client has instead: friends and
+//! inbox, then account, mods, Discord and updates, with options beside world options. The
+//! wardrobe, which Java has no place for, sits in the left margin as on the title. The world shows
+//! dimmed behind it.
 
-use launcher::menu::{MenuAction, MenuScreen, MenuView};
+use launcher::menu::{
+    MenuAction, MenuScreen, MenuView, auth::AuthState, settings_sections::SettingSection,
+};
 use ui_engine::engine::screen::PaintError;
 
 use super::{button, home, unit};
@@ -15,8 +19,13 @@ const FULL: f32 = 204.0;
 const HALF: f32 = 98.0;
 const HEIGHT: f32 = 20.0;
 const STEP: f32 = 24.0;
-/// Space between the two buttons of a pair.
+/// Space between the two buttons of a pair, and between those of the row of four.
 const PAIR_GAP: f32 = 8.0;
+const FOUR_GAP: f32 = 4.0;
+const QUARTER: f32 = 48.0;
+/// The wardrobe button's width and its distance from the window's edge.
+const SIDE_WIDTH: f32 = 56.0;
+const EDGE: f32 = 2.0;
 /// Where the title's text starts, and how tall Java's text is.
 const TITLE_TOP: f32 = 40.0;
 const TEXT_HEIGHT: f32 = 8.0;
@@ -29,9 +38,13 @@ type Rect = [f32; 4];
 struct Layout {
     title: Rect,
     resume: Rect,
-    wardrobe: Rect,
+    friends: Rect,
+    inbox: Rect,
+    links: [Rect; 4],
     options: Rect,
+    world: Rect,
     quit: Rect,
+    wardrobe: Rect,
     toggle: Rect,
 }
 
@@ -43,12 +56,27 @@ impl Layout {
             let y = top + STEP * row;
             [x, y, x + w, y + HEIGHT]
         };
+        let left = centre - FULL / 2.0;
+        let pair = |row: f32| {
+            (
+                rect(centre - PAIR_GAP / 2.0 - HALF, row, HALF),
+                rect(centre + PAIR_GAP / 2.0, row, HALF),
+            )
+        };
+        let (friends, inbox) = pair(1.0);
+        let (options, world) = pair(3.0);
+        let side = SIDE_WIDTH.min(left - 2.0 * EDGE);
         Self {
             title: [0.0, TITLE_TOP, width, TITLE_TOP + TEXT_HEIGHT],
-            resume: rect(centre - FULL / 2.0, 0.0, FULL),
-            wardrobe: rect(centre - PAIR_GAP / 2.0 - HALF, 1.0, HALF),
-            options: rect(centre + PAIR_GAP / 2.0, 1.0, HALF),
-            quit: rect(centre - FULL / 2.0, 2.0, FULL),
+            resume: rect(left, 0.0, FULL),
+            friends,
+            inbox,
+            links: [0.0, 1.0, 2.0, 3.0]
+                .map(|k| rect(left + k * (QUARTER + FOUR_GAP), 2.0, QUARTER)),
+            options,
+            world,
+            quit: rect(left, 4.0, FULL),
+            wardrobe: rect(EDGE, 1.0, side),
             toggle: [width - 2.0 - 120.0, 2.0, width - 2.0, 2.0 + HEIGHT],
         }
     }
@@ -68,19 +96,33 @@ pub(crate) fn draw(
         canvas.begin_focus_region(focus::SCREEN, [0.0, 0.0, size[0], size[1]], None, true)?;
     canvas.focus_delegate(Some(MenuAction::PauseResume), None);
     button::label_centred(canvas, "Game Menu", px(layout.title), unit, TEXT)?;
+    let go = MenuAction::Navigate;
+    let section =
+        |section: SettingSection| MenuAction::OpenSettingsSection(section.definition().index);
+    let (account, account_action) = match view.auth_state {
+        AuthState::SignedOut | AuthState::Failed(_) => ("Sign in", MenuAction::StartSignIn),
+        _ => ("Account", MenuAction::OpenAccounts),
+    };
     for (rect, label, action) in [
         (layout.resume, "Back to Game", MenuAction::PauseResume),
-        (
-            layout.wardrobe,
-            "Wardrobe",
-            MenuAction::Navigate(MenuScreen::DressingRoom),
-        ),
+        (layout.friends, "Friends", go(MenuScreen::Friends)),
+        (layout.inbox, "Inbox", go(MenuScreen::Inbox)),
+        (layout.links[0], account, account_action),
+        (layout.links[1], "Mods", section(SettingSection::Mods)),
+        (layout.links[2], "Discord", section(SettingSection::Discord)),
+        (layout.links[3], "Updates", section(SettingSection::Updates)),
         (layout.options, "Options...", MenuAction::PauseSettings),
+        (
+            layout.world,
+            "World Options...",
+            section(SettingSection::World),
+        ),
         (
             layout.quit,
             "Save and Quit to Title",
             MenuAction::PauseDisconnect,
         ),
+        (layout.wardrobe, "Wardrobe", go(MenuScreen::DressingRoom)),
     ] {
         button::draw(canvas, view, px(rect), label, Some(action), unit)?;
     }
