@@ -32,6 +32,43 @@ impl Canvas<'_> {
         Some((originals.page.checked_add(sprite.page)?, sprite))
     }
 
+    /// Whether the artwork `key` is installed.
+    pub(in super::super) fn has_sprite(&self, key: &str) -> bool {
+        self.native_sprite(key).is_some()
+    }
+
+    /// Draws the texel rectangle `region` (x, y, width, height from the artwork's corner) of the
+    /// artwork `key` into `b`; false when the artwork is unavailable or the region leaves it.
+    pub(in super::super) fn sprite_region(
+        &mut self,
+        key: &str,
+        region: [u16; 4],
+        b: Bounds,
+        color: Rgba,
+    ) -> Result<bool, PaintError> {
+        let Some((texture_page, sprite)) = self.native_sprite(key) else {
+            return Ok(false);
+        };
+        let [left, top, right, bottom] = sprite.bounds;
+        let [x, y, width, height] = region;
+        let (Some(x1), Some(y1)) = (left.checked_add(x + width), top.checked_add(y + height))
+        else {
+            return Ok(false);
+        };
+        if x1 > right || y1 > bottom || width == 0 || height == 0 {
+            return Ok(false);
+        }
+        self.push(
+            b,
+            UiVisual::Sprite {
+                texture_page,
+                uv: [left + x, top + y, x1, y1],
+                color,
+            },
+        )?;
+        Ok(true)
+    }
+
     /// Draws original installed pixels; false means the named artwork is unavailable.
     pub(in super::super) fn sprite(
         &mut self,

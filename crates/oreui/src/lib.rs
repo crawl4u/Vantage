@@ -25,6 +25,7 @@ mod friends;
 mod grid;
 mod home;
 mod icons;
+mod java;
 pub mod images;
 mod inbox;
 mod launcher_popup;

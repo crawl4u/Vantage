@@ -37,20 +37,50 @@ The textures come from the player's own Java Edition install at runtime; none ar
 
 ## Status
 
-- Milestone 1 is in: the `menu_style` setting (Options, General), a toggle button in the top
-  right of the home and pause screens (`crates/oreui/src/style_toggle.rs`), and the Java asset
-  locator and sprite cache (`crates/launcher-host/src/java_ui.rs`, run in the background at
-  startup, logged as `JAVA_UI`). Choosing Java does not change how the menus draw yet; the Java
-  renderer is milestone 2.
+- Milestone 1 (committed): the `menu_style` setting (Options, General), a toggle in the top right
+  of the home and pause screens (`crates/oreui/src/style_toggle.rs`), and the Java asset locator
+  and sprite cache (`crates/launcher-host/src/java_ui.rs`), run at startup before the menu
+  artwork loads and logged as `JAVA_UI`.
+- Milestone 2: the cached sprites join the OreUI texture pages under `java/` keys
+  (`crates/oreui/src/images/java.rs`, with their nine-slice borders), and `crates/oreui/src/java`
+  draws the Java-style title screen (`java::home`) with nine-slice buttons. It draws only when
+  the Java style is chosen and the sprites are installed. Check it offline with
+  `cargo run -p ui-snapshot -- --state java-home --out home.png` (also `java-home-small`).
 - Run the locator test against a real install with `VANTAGE_JAVA_DIR` set to a Java Edition
   folder (the test skips itself without it).
 
+## Requirements (from the owner)
+
+1. The menus use Java Edition's own bitmap font, drawn as the game draws it (8-pixel glyphs,
+   per-glyph advance, one-pixel shadow). This matters a great deal.
+2. The font and the widget sprites follow the selected resource pack, as in Java: a pack's
+   replacement wins over the vanilla files from the Java install.
+3. The menus work well with Bedrock: every Bedrock screen, setting and feature stays reachable,
+   backed by the same state.
+4. The menus behave exactly like Java's, not only look like them: keyboard navigation, focus and
+   hover, press feedback and sounds, scrolling lists, sliders, text fields, Escape to go back.
+
+## What following the selected pack needs
+
+The client imports a Java pack by translating it into a Bedrock pack (`crates/java-resource-pack`)
+and drops files Bedrock cannot use, which includes `assets/minecraft/textures/gui/sprites/widget`
+and the font files. Following the pack therefore needs: (a) the translator keeping the Java GUI
+and font files in the imported pack under a private folder; (b) one resolver that reads a Java UI
+file from the active pack stack, top pack first, then from the vanilla cache; (c) rebuilding the
+Java sprites and font when the active packs change, as the other pack-driven art does.
+
 ## Milestones
 
-1. Style setting, toggle action and title-screen button; Java asset locator and cache.
-2. Java widget kit (nine-slice buttons, sliders, checkboxes, text fields, list backgrounds) and the
-   Java-style title screen, with `ui-snapshot` states to check it offline.
-3. Java-style pause menu.
-4. Java-style Options pages generated from the settings definitions, plus "More settings".
+1. Style setting, toggle action and title-screen button; Java asset locator and cache. Done.
+2. Java title screen with nine-slice widgets from the cached sprites. Done.
+3. Java font. Done: glyph tables and sheets from the cached font files
+   (`images/java_font.rs`), Java layout (advance, one-pixel quarter-colour shadow, centring on an
+   8-pixel line) in `java/font.rs`, used by the Java title; the client's font is the fallback for
+   characters the sheets lack, or when no Java font is installed.
+4. Title fidelity: Java's exact positions and sizes, panorama, splash text, small icon buttons.
+5. Resource pack following (the three steps above) for sprites and font together.
+6. Pause menu.
+7. Options pages generated from the settings definitions, plus "More settings".
+8. Behaviour parity across the Java screens (the fourth requirement), checked screen by screen.
 
 Later rounds: world and server lists, create world, mods, the rest of the menus.

@@ -48,6 +48,20 @@ pub const REQUIRED: &[&str] = &[
     "sprites/widget/button_disabled.png",
 ];
 
+/// The font definitions copied from the jar, as (jar path, cached name). The bitmap sheets they
+/// name are copied too, as `font/<file>`.
+const FONT_DEFINITIONS: &[(&str, &str)] = &[
+    ("assets/minecraft/font/include/default.json", "font/default.json"),
+    ("assets/minecraft/font/include/space.json", "font/space.json"),
+];
+
+/// Where the bitmap sheets a font definition names sit in the jar.
+const JAR_FONT_TEXTURES: &str = "assets/minecraft/textures/font/";
+
+/// What the cache holds. A cache written under an older number is read from the jar again, so a
+/// new kind of file reaches players whose jar has not changed.
+const CACHE_FORMAT: u32 = 2;
+
 /// No single sprite is larger than this; anything bigger is not a GUI sprite.
 const MAX_SPRITE_BYTES: u64 = 2 * 1024 * 1024;
 
@@ -62,6 +76,9 @@ pub struct ClientJar {
 /// What the cache holds, written beside the sprites.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Manifest {
+    /// The cache layout this was written under; older caches have none.
+    #[serde(default)]
+    pub format: u32,
     pub version: String,
     /// Size and modified time of the jar the sprites came from, to notice a changed install.
     pub jar_len: u64,
@@ -70,6 +87,10 @@ pub struct Manifest {
     pub files: Vec<String>,
     /// The listed sprites the jar did not hold.
     pub missing: Vec<String>,
+    /// The font definitions and bitmap sheets copied, as `font/...` cached names. The Java text
+    /// is drawn from them; without them the menus keep the client's own font.
+    #[serde(default)]
+    pub font_files: Vec<String>,
 }
 
 /// Whether the Java style can be drawn.
@@ -178,6 +199,7 @@ pub fn extract(jar: &ClientJar, cache: &Path) -> Result<Manifest, String> {
     let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
     std::fs::create_dir_all(cache).map_err(|error| error.to_string())?;
     let mut manifest = Manifest {
+        format: CACHE_FORMAT,
         version: jar.version.clone(),
         jar_len: meta.len(),
         jar_modified: meta
@@ -199,9 +221,57 @@ pub fn extract(jar: &ClientJar, cache: &Path) -> Result<Manifest, String> {
             write_cached(cache, &meta_name, &bytes)?;
         }
     }
+    extract_font(&mut archive, cache, &mut manifest)?;
     let json = serde_json::to_vec_pretty(&manifest).map_err(|error| error.to_string())?;
     std::fs::write(manifest_path(cache), json).map_err(|error| error.to_string())?;
     Ok(manifest)
+}
+
+/// Copies the font definitions and the bitmap sheets the default font names. A jar without them
+/// (an older version) just has no Java font.
+fn extract_font(
+    archive: &mut zip::ZipArchive<std::fs::File>,
+    cache: &Path,
+    manifest: &mut Manifest,
+) -> Result<(), String> {
+    let mut sheets = Vec::new();
+    for (jar_name, cached) in FONT_DEFINITIONS {
+        let Some(bytes) = read_entry(archive, jar_name)? else {
+            continue;
+        };
+        write_cached(cache, cached, &bytes)?;
+        manifest.font_files.push((*cached).to_owned());
+        sheets.extend(bitmap_sheets(&bytes));
+    }
+    for sheet in sheets {
+        let cached = format!("font/{sheet}");
+        if manifest.font_files.contains(&cached) {
+            continue;
+        }
+        if let Some(bytes) = read_entry(archive, &format!("{JAR_FONT_TEXTURES}{sheet}"))? {
+            write_cached(cache, &cached, &bytes)?;
+            manifest.font_files.push(cached);
+        }
+    }
+    Ok(())
+}
+
+/// The file names of the bitmap sheets a font definition names, such as `ascii.png`.
+fn bitmap_sheets(definition: &[u8]) -> Vec<String> {
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(definition) else {
+        return Vec::new();
+    };
+    json["providers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|provider| provider["type"] == "bitmap")
+        .filter_map(|provider| provider["file"].as_str())
+        .filter_map(|file| file.strip_prefix("minecraft:font/"))
+        // Only plain sheet names: nothing may reach outside the font folder.
+        .filter(|name| name.ends_with(".png") && !name.contains(['/', '\\']) && !name.contains(".."))
+        .map(str::to_owned)
+        .collect()
 }
 
 /// One archive entry's bytes, none when absent. An oversized entry is an error.
@@ -279,7 +349,8 @@ pub fn prepare_from(layout: &InstallLayout, roots: &[PathBuf]) -> Status {
             .ok()
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
             .map_or(0, |elapsed| elapsed.as_secs());
-        if manifest.version == jar.version
+        if manifest.format == CACHE_FORMAT
+            && manifest.version == jar.version
             && manifest.jar_len == meta.len()
             && manifest.jar_modified == modified
         {

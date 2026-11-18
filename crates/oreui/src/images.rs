@@ -1,6 +1,8 @@
 //! OreUI artwork is decoded once at runtime from the shipped original images.
 
 pub mod dimensions;
+pub mod java;
+pub mod java_font;
 mod packing;
 pub mod panorama;
 mod shipped;
@@ -247,10 +249,12 @@ static IMAGES: OnceLock<Option<OreUiImages>> = OnceLock::new();
 pub fn load_optional_oreui_images(compiled_dir: &Path) -> Option<OreUiImages> {
     IMAGES
         .get_or_init(|| {
-            let art = shipped::read(compiled_dir).unwrap_or_else(|reason| {
+            let mut art = shipped::read(compiled_dir).unwrap_or_else(|reason| {
                 tracing::warn!("{reason}");
                 Vec::new()
             });
+            // The Java-style menus' sprites, when the player's Java install has been read.
+            art.extend(java::read(compiled_dir));
             let mut images = pack(art).unwrap_or_else(|reason| {
                 tracing::warn!("OreUI artwork unusable ({reason})");
                 OreUiImages {

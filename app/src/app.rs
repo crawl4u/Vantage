@@ -319,15 +319,10 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     UiRuntime::configure_crafting_observation(args.address.as_deref());
     render_scene::ViewmodelCompletionGate::configure_observation(args.address.as_deref());
     let layout = InstallLayout::discover().context("resolve install and user runtime layout")?;
-    // The Java-style menus draw sprites read from the player's own Java Edition install; finding
-    // it and caching them stays off the startup path, and no install just keeps the Bedrock look.
-    let java_layout = layout.clone();
-    let _ = std::thread::Builder::new()
-        .name("java-ui-assets".into())
-        .spawn(move || {
-            let status = launcher_host::java_ui::prepare(&java_layout);
-            bevy::log::info!("JAVA_UI menu sprites: {status:?}");
-        });
+    // The Java-style menus draw sprites read from the player's own Java Edition install, cached
+    // before the menu artwork loads; no install just keeps the Bedrock look.
+    let java_status = launcher_host::java_ui::prepare(&layout);
+    bevy::log::info!("JAVA_UI menu sprites: {java_status:?}");
     let global_pack_root = layout.global_resource_packs_dir();
     let minecraft_import_config_root = layout.user_config_root.clone();
     pack_runtime::compile_cache::set_compile_cache_dir(layout.compiled_pack_cache_dir());

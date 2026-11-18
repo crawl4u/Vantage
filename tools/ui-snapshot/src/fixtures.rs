@@ -12,6 +12,7 @@ pub(crate) mod hud_surface;
 mod local_identity;
 mod minecraft_import;
 mod mods;
+mod java_menus;
 mod out_of_game;
 mod registry;
 mod roster;
@@ -170,6 +171,7 @@ pub fn states() -> impl Iterator<Item = &'static State> {
     registry::STATES
         .iter()
         .chain(armor_trims::STATES)
+        .chain(java_menus::STATES)
         .chain(out_of_game::STATES)
         .chain(out_of_game::WORLD_FORM_STATES)
         .chain(graphics_recovery::STATES)

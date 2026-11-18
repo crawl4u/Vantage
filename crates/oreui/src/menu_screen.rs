@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use ui::{IconRef, UiNode, UiRect};
 
 use super::{
-    CharacterPreview, Look, OreUiScreen, add_server, death, dressing_room, friends, home, inbox,
+    CharacterPreview, Look, OreUiScreen, add_server, death, dressing_room, friends, home, inbox, java,
     modal, motion, paint,
     paint::{Canvas, EntranceScope},
     pause, play, profile, progress, scroll_focus, settings, theme, world_settings,
@@ -303,6 +303,11 @@ impl Screen for OreUiScreen {
                 MenuScreen::Death => {
                     canvas.capture_focus = true;
                     death::draw(&mut canvas, view, size, translate)?;
+                    focus = Some(focus_actions(&canvas));
+                }
+                MenuScreen::Home if java::selected(view, &canvas) => {
+                    canvas.capture_focus = true;
+                    java::home::draw(&mut canvas, view, size)?;
                     focus = Some(focus_actions(&canvas));
                 }
                 MenuScreen::Home => {

@@ -154,6 +154,88 @@ fn a_real_java_install_caches_every_menu_sprite() {
         let bytes = std::fs::read(cache_dir(&layout).join(sprite)).unwrap();
         assert!(bytes.starts_with(b"\x89PNG"), "{sprite} is not a PNG");
     }
+    // The Java font's definitions and its bitmap sheets come along.
+    for file in ["font/default.json", "font/space.json", "font/ascii.png"] {
+        assert!(manifest.font_files.iter().any(|cached| cached == file), "{file} not cached");
+        assert!(cache_dir(&layout).join(file).is_file());
+    }
     // The widget sprites carry nine-slice borders.
     assert!(cache_dir(&layout).join("sprites/widget/button.png.mcmeta").is_file());
+}
+
+#[test]
+fn the_font_definitions_and_the_sheets_they_name_are_cached() {
+    let game = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let dir = game.path().join("versions/1.21.8");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("1.21.8.json"), r#"{"type":"release","releaseTime":"2025-07-17"}"#).unwrap();
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(dir.join("1.21.8.jar")).unwrap());
+    let options = zip::write::SimpleFileOptions::default();
+    let mut add = |name: &str, bytes: &[u8]| {
+        zip.start_file(name, options).unwrap();
+        zip.write_all(bytes).unwrap();
+    };
+    for sprite in SPRITES {
+        add(&format!("{JAR_GUI_ROOT}{sprite}"), b"png");
+    }
+    add(
+        "assets/minecraft/font/include/default.json",
+        br#"{"providers":[
+            {"type":"bitmap","file":"minecraft:font/ascii.png","ascent":7,"chars":["ab"]},
+            {"type":"bitmap","file":"minecraft:font/../../secret.png","ascent":7,"chars":["a"]},
+            {"type":"bitmap","file":"minecraft:font/sub/dir.png","ascent":7,"chars":["a"]},
+            {"type":"ttf","file":"minecraft:font/x.ttf"}]}"#,
+    );
+    add(
+        "assets/minecraft/font/include/space.json",
+        br#"{"providers":[{"type":"space","advances":{" ":4}}]}"#,
+    );
+    add("assets/minecraft/textures/font/ascii.png", b"sheet");
+    add("assets/minecraft/textures/secret.png", b"no");
+    zip.finish().unwrap();
+
+    let layout = layout(home.path());
+    assert!(prepare_from(&layout, &[game.path().to_owned()]).ready());
+    let manifest = read_manifest(&cache_dir(&layout)).unwrap();
+    assert_eq!(
+        manifest.font_files,
+        ["font/default.json", "font/space.json", "font/ascii.png"]
+    );
+    let cache = cache_dir(&layout);
+    assert_eq!(std::fs::read(cache.join("font/ascii.png")).unwrap(), b"sheet");
+    // Names that would leave the font folder, and non-bitmap providers, are never fetched.
+    assert!(!cache.join("secret.png").exists() && !cache.join("font/x.ttf").exists());
+}
+
+#[test]
+fn a_jar_without_font_files_has_no_java_font_but_still_works() {
+    let game = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    install_version(game.path(), "1.21.8", "release", "2025-07-17T00:00:00+00:00", SPRITES);
+    let layout = layout(home.path());
+    assert!(prepare_from(&layout, &[game.path().to_owned()]).ready());
+    assert!(read_manifest(&cache_dir(&layout)).unwrap().font_files.is_empty());
+}
+
+#[test]
+fn a_cache_from_an_older_format_is_read_from_the_jar_again() {
+    let game = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let layout = layout(home.path());
+    install_version(game.path(), "1.21.8", "release", "2025-07-17T00:00:00+00:00", SPRITES);
+    assert!(prepare_from(&layout, &[game.path().to_owned()]).ready());
+    let button = cache_dir(&layout).join("sprites/widget/button.png");
+    std::fs::write(&button, "edited").unwrap();
+    // The same jar, but a manifest written before the format number existed.
+    let mut manifest = read_manifest(&cache_dir(&layout)).unwrap();
+    manifest.format = 0;
+    std::fs::write(
+        manifest_path(&cache_dir(&layout)),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    assert!(prepare_from(&layout, &[game.path().to_owned()]).ready());
+    assert_eq!(std::fs::read_to_string(&button).unwrap(), "1.21.8:sprites/widget/button.png");
+    assert_eq!(read_manifest(&cache_dir(&layout)).unwrap().format, CACHE_FORMAT);
 }
