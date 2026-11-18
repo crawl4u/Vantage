@@ -13,6 +13,7 @@ pub mod keybindings;
 pub mod language;
 pub mod layout;
 pub mod macro_modifier;
+pub mod menu_style;
 pub mod persistence;
 pub mod render_distance;
 pub mod render_resolution;

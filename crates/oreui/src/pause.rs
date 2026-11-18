@@ -59,9 +59,11 @@ pub(super) fn draw(
     let compact = width < canvas.r(58.0) || size[1] < canvas.r(44.0);
     let minimum = minimum_height(compact, canvas.title_artwork.is_some());
     let scale = ((size[1] - margin * 2.0) / canvas.r(minimum)).min(1.0);
-    canvas.with_scale(scale, |canvas| {
+    let preview = canvas.with_scale(scale, |canvas| {
         draw_layout(canvas, view, size, translate, margin, compact, minimum)
-    })
+    })?;
+    super::style_toggle::draw(canvas, view, size)?;
+    Ok(preview)
 }
 
 /// Draws the pause group with its original layout and a shared geometry and text scale.

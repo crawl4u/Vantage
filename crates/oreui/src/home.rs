@@ -35,6 +35,7 @@ pub(super) fn draw(
         draw_layout(canvas, view, size, portrait, translate, layout)
     })?;
     super::updates::notice(canvas, view, size)?;
+    super::style_toggle::draw(canvas, view, size)?;
     Ok(preview)
 }
 

@@ -8,6 +8,7 @@ pub mod catalog_art;
 pub mod client_random_id;
 pub mod core_process;
 pub mod desktop;
+pub mod java_ui;
 pub mod launcher_account;
 pub mod launcher_core;
 pub mod lifecycle;

@@ -94,7 +94,8 @@ fn assert_fits(
     );
     assert_eq!(
         hits.len(),
-        9 + usize::from(event) + usize::from(update_ready)
+        // The nine actions, the menu style toggle, and the live event and update notice when shown.
+        10 + usize::from(event) + usize::from(update_ready)
     );
     if update_ready {
         assert!(

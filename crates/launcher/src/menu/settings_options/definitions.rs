@@ -570,5 +570,7 @@ settings! {
         [(SettingPanel::Touch, 1)], [], None, None;
     NametagBackgroundOpacity => "nametag_background_opacity", slider("options.nametagBackgroundOpacity", 0, 100, 25),
         [(SettingPanel::VideoCustomization, 15)], [SettingsGroup::Video], None, None;
+    MenuStyle => "menu_style", dropdown("Menu style", super::menu_style::CHOICES, super::menu_style::DEFAULT),
+        [(SettingPanel::General, 1)], [], None, None;
 
 }
