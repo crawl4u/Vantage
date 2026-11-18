@@ -93,9 +93,21 @@ pub(super) struct Canvas<'a> {
     pub(super) bundle: Bundle,
     pub(super) appearance: Appearance,
     pub(super) settings_scrollbars: bool,
+    /// Sprites to draw the next scroll view's bar with, in place of the built-in one.
+    pub(super) sprite_scrollbar: Option<SpriteScrollbar>,
     pub(super) capture_focus: bool,
     /// The clipping node drawing attaches to, and its bounds.
     clip: Option<(UiNodeId, Bounds)>,
+}
+
+/// The sprites and place of a scroll bar a style draws itself, all in canvas pixels.
+pub(super) struct SpriteScrollbar {
+    pub(super) track: String,
+    pub(super) thumb: String,
+    pub(super) x: f32,
+    pub(super) width: f32,
+    /// The least height of the thumb.
+    pub(super) min_thumb: f32,
 }
 
 /// A scroll view being drawn: restore `outer` when it ends.
@@ -148,6 +160,7 @@ impl<'a> Canvas<'a> {
             bundle: Bundle::Menus,
             appearance: Appearance::Default,
             settings_scrollbars: false,
+            sprite_scrollbar: None,
             capture_focus: false,
             clip: None,
         }
@@ -787,7 +800,25 @@ impl<'a> Canvas<'a> {
         let max = (content - height).max(0.0);
         let offset = scroll.offset.min(max);
         let (mut track, mut thumb) = (None, None);
-        if max > 0.0 {
+        if let Some(bar) = self.sprite_scrollbar.take() {
+            if max > 0.0 {
+                let side =
+                    (height * height / content).clamp(bar.min_thumb, height - bar.min_thumb / 4.0);
+                let top = v[1] + offset / max * (height - side);
+                let column = [bar.x, v[1], bar.x + bar.width, v[3]];
+                let handle = [bar.x, top, bar.x + bar.width, top + side];
+                for (key, area, fallback) in [
+                    (&bar.track, column, [0, 0, 0, 255]),
+                    (&bar.thumb, handle, [128, 128, 128, 255]),
+                ] {
+                    if !self.nine_slice(key, area, [0; 4], [0.0; 4], true, [255; 4])? {
+                        self.fill(area, fallback)?;
+                    }
+                }
+                track = Some(rect(column[0], column[1], column[2], column[3])?);
+                thumb = Some(rect(handle[0], handle[1], handle[2], handle[3])?);
+            }
+        } else if max > 0.0 {
             let width = self.r(if self.settings_scrollbars { 1.2 } else { 0.6 });
             let side = (height * height / content).max(self.r(2.0));
             let top = v[1] + offset / max * (height - side);

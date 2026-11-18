@@ -16,7 +16,7 @@ use ui_engine::engine::screen::{PaintError, Translate};
 use super::{button, unit};
 use crate::{
     focus,
-    paint::{Bounds, Canvas},
+    paint::{Bounds, Canvas, SpriteScrollbar},
     settings,
     theme::TEXT,
 };
@@ -36,6 +36,14 @@ const SEPARATOR: f32 = 2.0;
 /// The shade over the world behind the screen, and over the list on it.
 const DIM: [u8; 4] = [16, 16, 16, 170];
 const LIST_SHADE: [u8; 4] = [0, 0, 0, 90];
+
+/// The list's scroll bar: its sprites, its width, how far right of the centre it sits (the list's
+/// row edge plus 6) and its thumb's least height, in Java pixels.
+const SCROLLER_TRACK: &str = "sprites/widget/scroller_background.png";
+const SCROLLER: &str = "sprites/widget/scroller.png";
+const SCROLLBAR_WIDTH: f32 = 6.0;
+const SCROLLBAR_OFFSET: f32 = 161.0;
+const SCROLLER_MIN: f32 = 32.0;
 
 /// Sprites of a slider and its handle, at rest and highlighted.
 const SLIDER: [&str; 2] = [
@@ -246,8 +254,15 @@ fn list(
     if let Some(offset) = canvas.offsets.get_mut(&key) {
         *offset = offset.min(max);
     }
-    let scroll = canvas.begin_scroll(&key, viewport)?;
     let centre = (java_width / 2.0).floor();
+    canvas.sprite_scrollbar = Some(SpriteScrollbar {
+        track: crate::images::java::key(SCROLLER_TRACK),
+        thumb: crate::images::java::key(SCROLLER),
+        x: (centre + SCROLLBAR_OFFSET) * unit,
+        width: SCROLLBAR_WIDTH * unit,
+        min_thumb: SCROLLER_MIN * unit,
+    });
+    let scroll = canvas.begin_scroll(&key, viewport)?;
     let columns = [
         centre - COLUMN_GAP / 2.0 - WIDGET_WIDTH,
         centre + COLUMN_GAP / 2.0,

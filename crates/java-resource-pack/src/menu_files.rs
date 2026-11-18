@@ -24,6 +24,8 @@ pub const GUI_FILES: &[&str] = &[
     "sprites/widget/checkbox_highlighted.png",
     "sprites/widget/checkbox_selected.png",
     "sprites/widget/checkbox_selected_highlighted.png",
+    "sprites/widget/scroller.png",
+    "sprites/widget/scroller_background.png",
     "sprites/widget/text_field.png",
     "sprites/widget/text_field_highlighted.png",
     "sprites/icon/language.png",
