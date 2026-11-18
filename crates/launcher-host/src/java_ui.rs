@@ -308,7 +308,7 @@ pub fn extract(jar: &ClientJar, cache: &Path) -> Result<Manifest, String> {
             .map_or(0, |elapsed| elapsed.as_secs()),
         ..Manifest::default()
     };
-    let mut keep = |manifest: &mut Manifest, path: String, bytes: Vec<u8>| -> Result<(), String> {
+    let keep = |manifest: &mut Manifest, path: String, bytes: Vec<u8>| -> Result<(), String> {
         write_cached(cache, &path, &bytes)?;
         manifest.files.push(path);
         Ok(())

@@ -1,7 +1,8 @@
 //! Keyboard and gamepad focus: the actions each launcher screen cycles
 //! through, and moving or activating the focused one.
 
-use launcher::menu::settings_options::{SETTINGS_OPTIONS, SettingKind};
+use launcher::menu::JavaSettingsView;
+use launcher::menu::settings_options::{SETTINGS_OPTIONS, SettingKind, menu_style::MenuStyle};
 use launcher::menu::view::{SettingsFocusAxis, SettingsFocusLandmark, SettingsFocusTarget};
 use {
     super::*,
@@ -227,6 +228,16 @@ impl MenuRuntime {
             self.move_focus(direction);
             return;
         }
+        // Java has no separate "select to adjust" step: arrows move a focused slider's handle.
+        if axis == SettingsFocusAxis::Horizontal
+            && self.java_option_page_open()
+            && let Some(row) = self
+                .focus_actions()
+                .get(self.focused)
+                .and_then(|action| action.settings_slider_row())
+        {
+            self.settings.slider_selected = Some(row);
+        }
         self.retain_settings_slider_selection();
         if axis == SettingsFocusAxis::Horizontal && self.step_selected_gui_scale(direction) {
             return;
@@ -282,6 +293,17 @@ impl MenuRuntime {
             self.settings_input.geometry.remember(next);
             self.retain_settings_slider_selection();
         }
+    }
+
+    /// Whether the Java-style option list or one of its pages is showing.
+    fn java_option_page_open(&self) -> bool {
+        self.screen == MenuScreen::Settings
+            && self.dialog.is_none()
+            && self.settings_options.menu_style() == MenuStyle::Java
+            && matches!(
+                self.settings.java_view,
+                JavaSettingsView::Page | JavaSettingsView::Direct
+            )
     }
 
     /// Selects or releases the GUI-scale slider for directional adjustment, like other

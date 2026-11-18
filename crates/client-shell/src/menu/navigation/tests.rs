@@ -244,3 +244,39 @@ fn the_bedrock_style_ignores_the_java_settings_view() {
     menu.activate(MenuAction::AddBack);
     assert_eq!(menu.screen(), MenuScreen::Home);
 }
+
+#[test]
+fn arrows_move_a_focused_slider_on_a_java_option_page_without_selecting_it_first() {
+    use launcher::menu::{
+        JavaSettingsAction, JavaSettingsView,
+        settings_options::{SETTINGS_OPTIONS, SettingId, SettingKind, menu_style::MenuStyle},
+        settings_sections::SettingSection,
+    };
+
+    let mut menu = MenuRuntime::new(true, 2, "Player".into());
+    std::sync::Arc::make_mut(&mut menu.settings_options)
+        .set(SettingId::MenuStyle.index(), MenuStyle::Java.value());
+    let video = SettingSection::Video.definition().index;
+    menu.show_home();
+    menu.activate(MenuAction::Navigate(MenuScreen::Settings));
+    menu.activate(MenuAction::JavaSettings(JavaSettingsAction::Page(video)));
+    assert_eq!(menu.view().settings.java_view, JavaSettingsView::Page);
+    let index = SETTINGS_OPTIONS
+        .iter()
+        .position(|option| {
+            matches!(option.kind, SettingKind::Slider)
+                && option.step > 0
+                && option.min < option.max
+                && option.id != SettingId::GuiScale
+        })
+        .expect("a slider option");
+    let option = &SETTINGS_OPTIONS[index];
+    let index = index as u16;
+    menu.settings_input.actions = vec![MenuAction::SettingsOption(index, option.min)];
+    menu.focused = 0;
+    let before = menu.settings_options.get(usize::from(index));
+    menu.move_horizontal_focus(1);
+    assert!(menu.settings_options.get(usize::from(index)) > before);
+    menu.move_horizontal_focus(-1);
+    assert_eq!(menu.settings_options.get(usize::from(index)), before);
+}
