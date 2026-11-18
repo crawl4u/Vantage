@@ -60,6 +60,22 @@ pub const CHOICES: &[SettingChoice] = &[
 /// The saved value of the default style.
 pub const DEFAULT: i32 = MenuStyle::Bedrock.value();
 
+/// The Java menus' GUI scale choices as Java offers them: Auto, then a fixed number of physical
+/// pixels per Java pixel. A fixed number stays the same windowed and fullscreen and only drops when
+/// it does not fit the window; Auto is the largest that fits. The saved value is the number, with
+/// zero for Auto.
+pub const JAVA_GUI_SCALE_CHOICES: &[SettingChoice] = &[
+    SettingChoice { name: "java_gui_scale_auto", label: "Auto" },
+    SettingChoice { name: "java_gui_scale_1", label: "1" },
+    SettingChoice { name: "java_gui_scale_2", label: "2" },
+    SettingChoice { name: "java_gui_scale_3", label: "3" },
+    SettingChoice { name: "java_gui_scale_4", label: "4" },
+    SettingChoice { name: "java_gui_scale_5", label: "5" },
+    SettingChoice { name: "java_gui_scale_6", label: "6" },
+    SettingChoice { name: "java_gui_scale_7", label: "7" },
+    SettingChoice { name: "java_gui_scale_8", label: "8" },
+];
+
 impl SettingsOptions {
     /// The selected menu style; an unknown saved value keeps the default.
     #[must_use]
@@ -68,6 +84,15 @@ impl SettingsOptions {
             .ok()
             .and_then(|index| MenuStyle::ALL.get(index).copied())
             .unwrap_or_default()
+    }
+
+    /// The Java menus' fixed GUI scale, or none for Auto.
+    #[must_use]
+    pub fn java_gui_scale(&self) -> Option<u8> {
+        match u8::try_from(self.value(SettingId::JavaGuiScale)) {
+            Ok(0) | Err(_) => None,
+            Ok(scale) => Some(scale),
+        }
     }
 
     /// The menu action's setting index and value that switch to the other style.
@@ -106,6 +131,18 @@ mod tests {
         let restored = SettingsOptions::decode(&serde_json::to_vec(&options).unwrap()).unwrap();
         assert_eq!(restored.menu_style(), MenuStyle::Java);
         assert_eq!(restored.menu_style_switch().1, MenuStyle::Bedrock.value());
+    }
+
+    #[test]
+    fn the_java_gui_scale_is_auto_until_a_number_is_chosen_and_the_choice_survives_a_save() {
+        let mut options = SettingsOptions::default();
+        assert_eq!(options.java_gui_scale(), None);
+        assert!(options.set(SettingId::JavaGuiScale.index(), 3));
+        assert_eq!(options.java_gui_scale(), Some(3));
+        let restored = SettingsOptions::decode(&serde_json::to_vec(&options).unwrap()).unwrap();
+        assert_eq!(restored.java_gui_scale(), Some(3));
+        assert!(options.set(SettingId::JavaGuiScale.index(), 99));
+        assert_eq!(options.java_gui_scale(), Some(JAVA_GUI_SCALE_CHOICES.len() as u8 - 1));
     }
 
     #[test]

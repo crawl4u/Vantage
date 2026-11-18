@@ -572,5 +572,7 @@ settings! {
         [(SettingPanel::VideoCustomization, 15)], [SettingsGroup::Video], None, None;
     MenuStyle => "menu_style", dropdown("Menu style", super::menu_style::CHOICES, super::menu_style::DEFAULT),
         [(SettingPanel::General, 1)], [], None, None;
+    JavaGuiScale => "java_gui_scale", dropdown("Java GUI scale", super::menu_style::JAVA_GUI_SCALE_CHOICES, 0),
+        [(SettingPanel::General, 2)], [], None, None;
 
 }

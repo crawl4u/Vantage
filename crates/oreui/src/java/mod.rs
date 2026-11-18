@@ -25,25 +25,26 @@ pub(super) fn selected(view: &MenuView, canvas: &Canvas<'_>) -> bool {
 const FIT: [f32; 2] = [320.0, 240.0];
 
 /// Logical pixels in one Java GUI pixel for a `size` window of logical pixels, at `dpi` physical
-/// pixels per logical pixel, when the player's GUI scale is `gui_scale` physical pixels per GUI
-/// pixel.
+/// pixels per logical pixel, when the player chose `scale` physical pixels per Java pixel (none
+/// for Auto).
 ///
-/// Java's own scale is the starting point: Auto is the largest whole number at which [`FIT`] still
-/// fits, so at the same window the screen is as large as in the game. The player's GUI scale then
-/// lowers it, one step for every step it is below the client's own automatic scale, so the setting
-/// that sizes the Bedrock menus sizes these too. The result is a whole number of physical pixels,
-/// so texels stay crisp, and never less than one.
-pub(super) fn unit_for(size: [f32; 2], gui_scale: f32, dpi: f32) -> f32 {
+/// This is Java's own rule. Auto is the largest whole number at which [`FIT`] still fits. A fixed
+/// number is kept as it is, whatever the window, and only dropped to the largest that fits when
+/// the window is too small for it, so it does not change between windowed and fullscreen. The
+/// result is a whole number of physical pixels, so texels stay crisp, and never less than one.
+pub(super) fn unit_for(size: [f32; 2], scale: Option<u8>, dpi: f32) -> f32 {
     let physical = size.map(|side| (side * dpi).round() as u32);
-    let java_auto = (physical[0] / FIT[0] as u32).min(physical[1] / FIT[1] as u32).max(1) as f32;
-    let client_auto = ui::gui_scale(physical, None) as f32;
-    let steps_down = (client_auto - gui_scale.floor()).max(0.0);
-    (java_auto - steps_down).max(1.0) / dpi
+    let fit = (physical[0] / FIT[0] as u32).min(physical[1] / FIT[1] as u32).max(1);
+    scale.map_or(fit, |chosen| u32::from(chosen).clamp(1, fit)) as f32 / dpi
 }
 
-/// [`unit_for`] with the GUI scale and display scale the canvas is drawing at.
-pub(super) fn unit(canvas: &Canvas<'_>, size: [f32; 2]) -> f32 {
-    unit_for(size, canvas.metrics.gui_scale, canvas.metrics.dpi_scale.get())
+/// [`unit_for`] with the view's Java GUI scale and the display scale the canvas is drawing at.
+pub(super) fn unit(view: &MenuView, canvas: &Canvas<'_>, size: [f32; 2]) -> f32 {
+    unit_for(
+        size,
+        view.settings_options.java_gui_scale(),
+        canvas.metrics.dpi_scale.get(),
+    )
 }
 
 #[cfg(test)]

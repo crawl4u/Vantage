@@ -152,37 +152,55 @@ fn a_hovered_button_draws_the_highlighted_sprite_and_the_rest_draw_at_rest() {
 }
 
 #[test]
-fn the_size_starts_at_javas_automatic_scale_and_the_gui_scale_lowers_it() {
-    let physical = |size: [f32; 2]| size.map(|side| side as u32);
-    for size in [[1280.0, 720.0], [1920.0, 1080.0], [640.0, 360.0], [2560.0, 1440.0], [3840.0, 2160.0]] {
-        let auto = ui::gui_scale(physical(size), None) as f32;
-        let java = (size[0] as u32 / 320).min(size[1] as u32 / 240).max(1) as f32;
-        // The client's own automatic scale gives Java's automatic scale: the size of the game.
-        assert_eq!(unit_for(size, auto, 1.0), java, "{size:?}");
-        // Each step the GUI scale is lowered lowers the menu one step, down to one.
-        for steps in 1..=4 {
-            let lowered = (auto - steps as f32).max(1.0);
-            assert_eq!(unit_for(size, lowered, 1.0), (java - (auto - lowered)).max(1.0), "{size:?}");
-        }
-        assert_eq!(unit_for(size, 1.0, 1.0).fract(), 0.0);
+fn auto_is_the_largest_whole_number_that_fits_and_steps_at_javas_thresholds() {
+    for (size, expected) in [
+        ([1280.0, 720.0], 3.0),
+        ([1920.0, 1080.0], 4.0),
+        ([2560.0, 1440.0], 6.0),
+        ([3840.0, 2160.0], 9.0),
+        ([640.0, 360.0], 1.0),
+        ([300.0, 200.0], 1.0),
+    ] {
+        assert_eq!(unit_for(size, None, 1.0), expected, "{size:?}");
     }
-    // A window smaller than 320 by 240 still draws at one.
-    assert_eq!(unit_for([300.0, 200.0], 1.0, 1.0), 1.0);
+    // A title bar's few pixels cross a threshold, as in the game: that is Auto's own behaviour.
+    assert_eq!(unit_for([2560.0, 1409.0], None, 1.0), 5.0);
+    assert_eq!(unit_for([2560.0, 1440.0], None, 1.0), 6.0);
+}
+
+#[test]
+fn a_fixed_scale_does_not_change_between_windowed_and_fullscreen() {
+    // Windowed with a title bar and fullscreen, as in the owner's recording.
+    for chosen in 1..=5 {
+        assert_eq!(
+            unit_for([2560.0, 1409.0], Some(chosen), 1.0),
+            unit_for([2560.0, 1440.0], Some(chosen), 1.0),
+            "scale {chosen}"
+        );
+        assert_eq!(unit_for([2560.0, 1440.0], Some(chosen), 1.0), f32::from(chosen));
+    }
+}
+
+#[test]
+fn a_fixed_scale_drops_only_when_the_window_cannot_hold_it() {
+    assert_eq!(unit_for([1280.0, 720.0], Some(3), 1.0), 3.0);
+    assert_eq!(unit_for([1280.0, 720.0], Some(5), 1.0), 3.0);
+    assert_eq!(unit_for([640.0, 360.0], Some(4), 1.0), 1.0);
+    assert_eq!(unit_for([320.0, 240.0], Some(8), 1.0), 1.0);
 }
 
 #[test]
 fn the_scale_counts_physical_pixels_at_other_display_scales() {
-    // 2560 by 1440 physical at a display scale of 2 is a 1280 by 720 logical window; Java's
-    // automatic scale is 6 physical pixels per Java pixel, which is 3 logical pixels.
-    let auto = ui::gui_scale([2560, 1440], None) as f32;
-    assert_eq!(unit_for([1280.0, 720.0], auto, 2.0), 3.0);
-    assert_eq!((unit_for([1280.0, 720.0], auto - 1.0, 2.0) * 2.0).fract(), 0.0);
+    // 2560 by 1440 physical at a display scale of 2 is a 1280 by 720 logical window: Auto is 6
+    // physical pixels per Java pixel, which is 3 logical pixels, and a fixed 4 is 2 logical.
+    assert_eq!(unit_for([1280.0, 720.0], None, 2.0), 3.0);
+    assert_eq!(unit_for([1280.0, 720.0], Some(4), 2.0), 2.0);
+    assert_eq!((unit_for([1280.0, 720.0], Some(5), 1.5) * 1.5).fract(), 0.0);
 }
 
 #[test]
-fn the_java_title_follows_the_gui_scale_of_the_canvas() {
-    // The test canvas draws at the client's GUI scale 2, its automatic scale at this window, which
-    // is Java's automatic scale 3: a Java pixel is three logical pixels.
+fn the_java_title_is_drawn_at_the_chosen_java_gui_scale() {
+    // Auto at this window is 3: a Java pixel is three logical pixels.
     let view = java_view();
     let size = [1280.0, 720.0];
     let (hits, _) = paint(true, size, |canvas| home::draw(canvas, &view, size).unwrap());
@@ -193,4 +211,15 @@ fn the_java_title_follows_the_gui_scale_of_the_canvas() {
         .1;
     assert_eq!(play.max().x() - play.min().x(), 200.0 * 3.0);
     assert_eq!(play.max().y() - play.min().y(), 20.0 * 3.0);
+    // Choosing 2 draws it at 2, and the Bedrock GUI scale the canvas draws at does not matter.
+    let mut view = java_view();
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::JavaGuiScale.index(), 2));
+    let (hits, _) = paint(true, size, |canvas| home::draw(canvas, &view, size).unwrap());
+    let play = hits
+        .iter()
+        .find(|(action, _)| *action == MenuAction::Navigate(MenuScreen::Play))
+        .unwrap()
+        .1;
+    assert_eq!(play.max().x() - play.min().x(), 200.0 * 2.0);
 }
