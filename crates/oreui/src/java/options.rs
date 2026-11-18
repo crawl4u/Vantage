@@ -73,6 +73,7 @@ fn page_options(view: &MenuView, section: SettingSection) -> Vec<SettingId> {
         for option in panel.options() {
             if matches!(option.kind, SettingKind::Host)
                 || option.id == SettingId::GuiScale
+                || option.id == SettingId::FieldOfView
                 || found.contains(&option.id)
                 || !settings::available(view, option.id)
             {
@@ -442,6 +443,19 @@ mod tests {
 
     fn view() -> MenuView {
         MenuView::new(true, "Player".into())
+    }
+
+    #[test]
+    fn the_field_of_view_is_on_the_list_of_pages_only() {
+        let view = view();
+        let on_a_page = SECTION_DEFINITIONS
+            .iter()
+            .any(|definition| page_options(&view, definition.id).contains(&SettingId::FieldOfView));
+        assert!(!on_a_page);
+        assert!(matches!(
+            hub_entries(&view, &|_| None).first(),
+            Some(Entry::Option(SettingId::FieldOfView))
+        ));
     }
 
     #[test]
