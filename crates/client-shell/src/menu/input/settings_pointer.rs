@@ -1,6 +1,6 @@
 use super::{MenuRuntime, UiPoint, UiPresentationRuntime};
 use launcher::{
-    menu::MenuAction,
+    menu::{MenuAction, settings_options::menu_style::MenuStyle},
     shader_options::{Action, Input},
 };
 
@@ -32,6 +32,13 @@ pub(super) fn update_slider(
         pointer_just_pressed,
     );
     if !pointer_pressed || menu.screen() != launcher::menu::MenuScreen::Settings {
+        // Java's sliders click when the handle is let go.
+        if menu.settings_input.slider_drag.is_some()
+            && !pointer_pressed
+            && menu.settings_options.menu_style() == MenuStyle::Java
+        {
+            presentation.play_menu_click();
+        }
         menu.settings_input.slider_drag = None;
         menu.settings.slider_pointer = None;
     }

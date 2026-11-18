@@ -218,3 +218,28 @@ fn a_touch_swipe_is_silent() {
     touch(&mut app, window, away, TouchPhase::Ended);
     assert_eq!(clicks(&sounds), 0);
 }
+
+#[test]
+fn a_java_slider_clicks_once_when_its_handle_is_released() {
+    use launcher::menu::settings_options::menu_style::MenuStyle;
+
+    let release = |style: MenuStyle| {
+        let mut menu = MenuRuntime::new(true, 2, "Player".into());
+        std::sync::Arc::make_mut(&mut menu.settings_options)
+            .set(SettingId::MenuStyle.index(), style.value());
+        menu.activate(MenuAction::Navigate(MenuScreen::Settings));
+        let mut presentation =
+            UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
+        let sounds = presentation.capture_menu_press_sounds();
+        menu.settings_input.slider_drag = Some(0);
+        // Still held: no sound yet.
+        settings_pointer::update_slider(&mut menu, &presentation, None, true, false, false);
+        assert_eq!(clicks(&sounds), 0);
+        settings_pointer::update_slider(&mut menu, &presentation, None, false, false, false);
+        let first = clicks(&sounds);
+        settings_pointer::update_slider(&mut menu, &presentation, None, false, false, false);
+        (first, clicks(&sounds))
+    };
+    assert_eq!(release(MenuStyle::Java), (1, 0));
+    assert_eq!(release(MenuStyle::Bedrock), (0, 0));
+}

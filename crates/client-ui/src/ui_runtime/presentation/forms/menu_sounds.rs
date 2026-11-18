@@ -74,6 +74,16 @@ impl UiPresentationRuntime {
         let Some(sound) = self.menu_sound(action) else {
             return;
         };
+        self.play_control_sound(sound);
+    }
+
+    /// Plays the OreUI theme's click, for a control the style makes click when released that the
+    /// theme leaves silent, such as the Java style's sliders.
+    pub fn play_menu_click(&self) {
+        self.play_control_sound(&OREUI_CLICK);
+    }
+
+    fn play_control_sound(&self, sound: &json_ui::ControlSound) {
         #[cfg(any(test, feature = "test-support"))]
         if let Some(capture) = &self.screens.menu_sound_capture {
             capture.lock().unwrap().push(sound.name.clone());
