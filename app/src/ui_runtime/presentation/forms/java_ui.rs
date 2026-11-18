@@ -48,5 +48,22 @@ pub(crate) fn drive_java_ui(
     if let Err(reason) = presentation.0.reload_java_ui(&[&from_packs], cache.as_deref()) {
         bevy::log::warn!("Java menu files unusable ({reason})");
     }
+    bevy::log::info!(
+        "Java menus follow {} resource pack(s); {} supply menu files",
+        stack.packs().len(),
+        stack
+            .packs()
+            .iter()
+            .filter(|pack| {
+                pack.read_file_with_limit(
+                    &format!("{PACK_PREFIX}textures/gui/sprites/widget/button.png"),
+                    u64::MAX,
+                )
+                .ok()
+                .flatten()
+                .is_some()
+            })
+            .count(),
+    );
     *applied = Some(stack.clone());
 }
