@@ -240,7 +240,7 @@ fn footer(
 }
 
 /// The corner button that switches back to the Bedrock style, drawn as a Java button.
-fn button_toggle(
+pub(super) fn button_toggle(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
     bounds: Rect,

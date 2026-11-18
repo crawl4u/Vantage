@@ -253,3 +253,59 @@ fn the_java_title_is_drawn_at_the_chosen_java_gui_scale() {
         .1;
     assert_eq!(play.max().x() - play.min().x(), 200.0 * 2.0);
 }
+
+#[test]
+fn the_java_pause_menu_offers_every_pause_action_inside_the_window() {
+    let view = java_view();
+    let toggle = view.settings_options.menu_style_switch();
+    for size in [[1280.0, 720.0], [640.0, 360.0], [360.0, 240.0]] {
+        let (hits, _) = paint(true, size, |canvas| {
+            pause::draw(canvas, &view, size).unwrap()
+        });
+        for action in [
+            MenuAction::PauseResume,
+            MenuAction::PauseSettings,
+            MenuAction::PauseDisconnect,
+            MenuAction::Navigate(MenuScreen::DressingRoom),
+            MenuAction::SettingsOption(toggle.0, toggle.1),
+        ] {
+            let bounds = hits
+                .iter()
+                .find(|(candidate, _)| *candidate == action)
+                .unwrap_or_else(|| panic!("{action:?} is missing at {size:?}"))
+                .1;
+            assert!(
+                bounds.min().x() >= 0.0
+                    && bounds.min().y() >= 0.0
+                    && bounds.max().x() <= size[0]
+                    && bounds.max().y() <= size[1],
+                "{action:?} leaves the window at {size:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_java_pause_rows_sit_where_java_puts_them() {
+    let view = java_view();
+    let size = [1280.0, 720.0];
+    let (hits, _) = paint(true, size, |canvas| {
+        pause::draw(canvas, &view, size).unwrap()
+    });
+    let unit = unit_for(size, None, 1.0);
+    let bounds = |action| hits.iter().find(|(found, _)| *found == action).unwrap().1;
+    let resume = bounds(MenuAction::PauseResume);
+    let quit = bounds(MenuAction::PauseDisconnect);
+    let options = bounds(MenuAction::PauseSettings);
+    let wardrobe = bounds(MenuAction::Navigate(MenuScreen::DressingRoom));
+    let java_height = (size[1] / unit).ceil();
+    // The first row is at a quarter of the height plus 8, each row 24 below the last.
+    assert_eq!(resume.min().y(), ((java_height / 4.0).floor() + 8.0) * unit);
+    assert_eq!(wardrobe.min().y() - resume.min().y(), 24.0 * unit);
+    assert_eq!(quit.min().y() - wardrobe.min().y(), 24.0 * unit);
+    assert_eq!(resume.width(), 204.0 * unit);
+    assert_eq!(quit.width(), 204.0 * unit);
+    assert_eq!(wardrobe.width(), 98.0 * unit);
+    assert_eq!(options.width(), 98.0 * unit);
+    assert_eq!(options.min().x() - wardrobe.max().x(), 8.0 * unit);
+}

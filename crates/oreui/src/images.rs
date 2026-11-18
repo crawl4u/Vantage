@@ -268,6 +268,12 @@ pub fn load_optional_oreui_images(compiled_dir: &Path) -> Option<OreUiImages> {
         .clone()
 }
 
+/// Where the Java files are cached for the compiled assets folder `compiled`.
+#[must_use]
+pub fn java_cache_dir(compiled: &Path) -> std::path::PathBuf {
+    compiled.join(java_resource_pack::menu_files::CACHE_FOLDER)
+}
+
 /// `base` with the Java-style menus' files added as extra texture pages, resolved as Java does:
 /// from `packs` (highest priority first, each reading a path relative to `assets/minecraft/`),
 /// then from `cache`, the folder the player's Java files were copied to. The font, the sprites'
@@ -282,13 +288,16 @@ pub fn with_java(
     let layers = java::Layers { packs, cache };
     let Some(resolved) = java::resolve(&layers) else {
         java::clear();
-        return base.with_extra_art(Vec::new()).unwrap_or_else(|_| base.clone());
+        return base
+            .with_extra_art(Vec::new())
+            .unwrap_or_else(|_| base.clone());
     };
     let art = resolved.install();
     base.with_extra_art(art).unwrap_or_else(|reason| {
         tracing::warn!("Java menu artwork unusable ({reason})");
         java::clear();
-        base.with_extra_art(Vec::new()).unwrap_or_else(|_| base.clone())
+        base.with_extra_art(Vec::new())
+            .unwrap_or_else(|_| base.clone())
     })
 }
 
@@ -320,7 +329,10 @@ impl OreUiImages {
         let mut pages = self.pages.clone();
         let mut extra = pack.finish();
         if extra.len() > JAVA_PAGES {
-            return Err(format!("{} pages exceed the {JAVA_PAGES} reserved", extra.len()));
+            return Err(format!(
+                "{} pages exceed the {JAVA_PAGES} reserved",
+                extra.len()
+            ));
         }
         // Always exactly `JAVA_PAGES` pages, so a change of resource pack replaces pixels without
         // moving or resizing any page.

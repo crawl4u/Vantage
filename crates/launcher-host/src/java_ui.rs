@@ -95,7 +95,7 @@ pub fn cache_dir(layout: &InstallLayout) -> PathBuf {
 /// Where the files are cached inside the compiled assets folder `compiled`.
 #[must_use]
 pub fn cache_dir_in(compiled: &Path) -> PathBuf {
-    compiled.join("java-ui")
+    compiled.join(menu_files::CACHE_FOLDER)
 }
 
 fn manifest_path(cache: &Path) -> PathBuf {

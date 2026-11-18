@@ -415,6 +415,8 @@ fn png_fixture(
                     carriers::fixed_texture_bytes(&carriers.font, &carriers.pages),
                 ),
             );
+            let images =
+                oreui::images::with_java(&images, &[], Some(&oreui::images::java_cache_dir(dir)));
             let first = carriers.pages.len() as u16;
             let mut artwork: HashMap<_, _> = images
                 .sprites

@@ -327,6 +327,11 @@ impl Screen for OreUiScreen {
                     }
                     focus = Some(focus_actions(&canvas));
                 }
+                MenuScreen::Pause if java::selected(view, &canvas) => {
+                    canvas.capture_focus = true;
+                    java::pause::draw(&mut canvas, view, size)?;
+                    focus = Some(focus_actions(&canvas));
+                }
                 MenuScreen::Pause => {
                     canvas.capture_focus = true;
                     character_preview = pause::draw(&mut canvas, view, size, translate)?;

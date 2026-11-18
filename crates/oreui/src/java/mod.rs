@@ -6,6 +6,7 @@
 mod button;
 mod font;
 pub(super) mod home;
+pub(super) mod pause;
 mod splash;
 
 use launcher::menu::{MenuView, settings_options::menu_style::MenuStyle};

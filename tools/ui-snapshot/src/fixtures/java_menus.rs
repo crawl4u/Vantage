@@ -27,7 +27,23 @@ pub(super) const STATES: &[State] = &[
         gui_scale: 1,
         fixture: java_home,
     },
+    State {
+        name: "java-pause",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_pause,
+    },
 ];
+
+/// The pause menu with the Java style chosen.
+fn java_pause() -> Fixture {
+    let mut view = MenuView::new(true, "Player".into());
+    view.screen = MenuScreen::Pause;
+    view.auth_state = AuthState::Authenticated;
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    Fixture::Menu(Box::new(view))
+}
 
 /// A signed-in home with the Java style chosen and Java's Auto GUI scale.
 fn java_home() -> Fixture {

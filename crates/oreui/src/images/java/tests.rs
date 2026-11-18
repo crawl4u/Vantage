@@ -145,7 +145,10 @@ fn borders_come_from_the_layer_that_supplied_the_texture() {
     let bare = pack_of(vec![(path.as_str(), solid(8, 8))]);
     let resolved = resolve_with(&[&bare], cache.path()).unwrap();
     assert_eq!(
-        resolved.active.borders.get(&key("sprites/widget/button.png")),
+        resolved
+            .active
+            .borders
+            .get(&key("sprites/widget/button.png")),
         Some(&[4; 4])
     );
     // A pack's own borders are written for the nominal size and scale up with the texture.

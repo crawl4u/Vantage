@@ -4,6 +4,9 @@
 //! to `assets/minecraft/`, so a pack's file and the game's file for one name are interchangeable
 //! and a pack's wins, as in Java.
 
+/// The folder inside the compiled assets folder where the player's Java files are cached.
+pub const CACHE_FOLDER: &str = "java-ui";
+
 /// Where the GUI files below sit, relative to `assets/minecraft/`.
 pub const GUI_ROOT: &str = "textures/gui/";
 
