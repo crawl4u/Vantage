@@ -269,6 +269,7 @@ fn the_java_pause_menu_offers_every_pause_action_inside_the_window() {
             MenuAction::PauseSettings,
             MenuAction::PauseDisconnect,
             MenuAction::Navigate(MenuScreen::DressingRoom),
+            MenuAction::Navigate(MenuScreen::Profile),
             MenuAction::Navigate(MenuScreen::Friends),
             MenuAction::Navigate(MenuScreen::Inbox),
             MenuAction::StartSignIn,
@@ -304,6 +305,7 @@ fn the_java_pause_rows_sit_where_java_puts_them() {
     let unit = unit_for(size, None, 1.0);
     let bounds = |action| hits.iter().find(|(found, _)| *found == action).unwrap().1;
     let resume = bounds(MenuAction::PauseResume);
+    let achievements = bounds(MenuAction::Navigate(MenuScreen::Profile));
     let friends = bounds(MenuAction::Navigate(MenuScreen::Friends));
     let inbox = bounds(MenuAction::Navigate(MenuScreen::Inbox));
     let mods = bounds(MenuAction::OpenSettingsSection(
@@ -314,7 +316,9 @@ fn the_java_pause_rows_sit_where_java_puts_them() {
     let java_height = (size[1] / unit).ceil();
     // The first row is at a quarter of the height plus 8, each row 24 below the last.
     assert_eq!(resume.min().y(), ((java_height / 4.0).floor() + 8.0) * unit);
-    assert_eq!(friends.min().y() - resume.min().y(), 24.0 * unit);
+    assert_eq!(achievements.min().y() - resume.min().y(), 24.0 * unit);
+    assert_eq!(friends.min().y() - achievements.min().y(), 24.0 * unit);
+    assert_eq!(achievements.width(), 204.0 * unit);
     assert_eq!(mods.min().y() - friends.min().y(), 24.0 * unit);
     assert_eq!(options.min().y() - mods.min().y(), 24.0 * unit);
     assert_eq!(quit.min().y() - options.min().y(), 24.0 * unit);

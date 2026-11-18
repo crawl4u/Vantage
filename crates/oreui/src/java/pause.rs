@@ -1,8 +1,8 @@
 //! The Java-style pause menu, laid out as Java Edition lays its game menu out: the title 40 Java
 //! pixels down and the buttons in 24-pixel rows from a quarter of the height plus 8, the first and
 //! last 204 pixels wide and the rows between in pairs 98 pixels wide or four 48 wide. Java's rows
-//! for advancements, statistics and the icon links hold what this client has instead: friends and
-//! inbox, then account, mods, Discord and updates, with options beside world options. The
+//! for advancements, statistics and the icon links hold what this client has instead: achievements,
+//! friends and inbox, then account, mods, Discord and updates, with options beside world options. The
 //! wardrobe, which Java has no place for, sits in the left margin as on the title. The world shows
 //! dimmed behind it.
 
@@ -38,6 +38,7 @@ type Rect = [f32; 4];
 struct Layout {
     title: Rect,
     resume: Rect,
+    achievements: Rect,
     friends: Rect,
     inbox: Rect,
     links: [Rect; 4],
@@ -63,19 +64,20 @@ impl Layout {
                 rect(centre + PAIR_GAP / 2.0, row, HALF),
             )
         };
-        let (friends, inbox) = pair(1.0);
-        let (options, world) = pair(3.0);
+        let (friends, inbox) = pair(2.0);
+        let (options, world) = pair(4.0);
         let side = SIDE_WIDTH.min(left - 2.0 * EDGE);
         Self {
             title: [0.0, TITLE_TOP, width, TITLE_TOP + TEXT_HEIGHT],
             resume: rect(left, 0.0, FULL),
+            achievements: rect(left, 1.0, FULL),
             friends,
             inbox,
             links: [0.0, 1.0, 2.0, 3.0]
-                .map(|k| rect(left + k * (QUARTER + FOUR_GAP), 2.0, QUARTER)),
+                .map(|k| rect(left + k * (QUARTER + FOUR_GAP), 3.0, QUARTER)),
             options,
             world,
-            quit: rect(left, 4.0, FULL),
+            quit: rect(left, 5.0, FULL),
             wardrobe: rect(EDGE, 1.0, side),
             toggle: [width - 2.0 - 120.0, 2.0, width - 2.0, 2.0 + HEIGHT],
         }
@@ -105,6 +107,7 @@ pub(crate) fn draw(
     };
     for (rect, label, action) in [
         (layout.resume, "Back to Game", MenuAction::PauseResume),
+        (layout.achievements, "Achievements", go(MenuScreen::Profile)),
         (layout.friends, "Friends", go(MenuScreen::Friends)),
         (layout.inbox, "Inbox", go(MenuScreen::Inbox)),
         (layout.links[0], account, account_action),
