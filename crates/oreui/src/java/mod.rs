@@ -8,6 +8,7 @@ mod font;
 pub(super) mod home;
 pub(super) mod options;
 pub(super) mod pause;
+pub(super) mod servers;
 mod splash;
 
 use launcher::menu::{MenuView, settings_options::menu_style::MenuStyle};

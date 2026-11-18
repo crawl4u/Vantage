@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 
 /// What the cache holds. A cache written under an older number is read from the game again, so a
 /// new kind of file reaches players whose game has not changed.
-const CACHE_FORMAT: u32 = 5;
+const CACHE_FORMAT: u32 = 6;
 
 /// A panorama face smaller than this on a side is a placeholder, not the picture.
 const MIN_PANORAMA_SIDE: u32 = 64;

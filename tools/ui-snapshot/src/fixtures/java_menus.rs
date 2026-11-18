@@ -52,7 +52,60 @@ pub(super) const STATES: &[State] = &[
         gui_scale: 1,
         fixture: || java_settings(JavaSettingsView::Page, SettingSection::Sound),
     },
+    State {
+        name: "java-servers",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_servers,
+    },
 ];
+
+/// The Multiplayer screen in the Java style, with saved servers, one answering and one not.
+fn java_servers() -> Fixture {
+    let mut view = MenuView::new(true, "Player".into());
+    view.screen = MenuScreen::Servers;
+    view.auth_state = AuthState::Authenticated;
+    let saved = |name: &str, address: &str| launcher::menu::SavedServer {
+        name: name.to_owned(),
+        address: address.to_owned(),
+        favorite: false,
+        last_joined_unix: 0,
+    };
+    view.servers = vec![
+        saved("Survival Realm", "play.example.test:19132"),
+        saved("Creative Plots", "creative.example.test:19132"),
+        saved("Old Server", "gone.example.test:19132"),
+    ]
+    .into();
+    view.feeds.pings.insert(
+        "play.example.test:19132".to_owned(),
+        launcher::menu::PingInfo {
+            motd: "A friendly survival server with events every weekend and a long message".into(),
+            online: true,
+            players: 12,
+            max_players: 100,
+            ping_ms: 48,
+        },
+    );
+    view.feeds.pings.insert(
+        "creative.example.test:19132".to_owned(),
+        launcher::menu::PingInfo {
+            motd: "Build with friends".into(),
+            online: true,
+            players: 3,
+            max_players: 20,
+            ping_ms: 420,
+        },
+    );
+    view.feeds.pings.insert(
+        "gone.example.test:19132".to_owned(),
+        launcher::menu::PingInfo::default(),
+    );
+    view.feeds.select_saved(0);
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    Fixture::Menu(Box::new(view))
+}
 
 /// Settings in the Java style, on the list of pages or on the page of `section`.
 fn java_settings(view_kind: JavaSettingsView, section: SettingSection) -> Fixture {

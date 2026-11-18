@@ -221,7 +221,7 @@ fn server_text(
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Selection {
+pub(crate) enum Selection {
     Featured(usize),
     Saved(usize),
 }
@@ -243,7 +243,7 @@ pub fn animated_server_details(view: &MenuView) -> bool {
 }
 
 /// The picked server, else the first experience, else the first saved server.
-fn selection(view: &MenuView, featured: usize) -> Option<Selection> {
+pub(crate) fn selection(view: &MenuView, featured: usize) -> Option<Selection> {
     let saved = view.servers.len();
     match (view.feeds.selected_saved, view.feeds.selected_featured) {
         (Some(index), _) if index < saved => Some(Selection::Saved(index)),

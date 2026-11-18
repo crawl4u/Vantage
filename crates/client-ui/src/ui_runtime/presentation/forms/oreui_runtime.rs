@@ -501,11 +501,7 @@ impl UiPresentationRuntime {
     }
 
     /// Installs `images`; the last `replaceable` of its pages may hold other pixels later.
-    fn install_originals(
-        &mut self,
-        images: OreUiImages,
-        replaceable: usize,
-    ) -> Result<(), String> {
+    fn install_originals(&mut self, images: OreUiImages, replaceable: usize) -> Result<(), String> {
         if self
             .screens
             .oreui
@@ -543,13 +539,9 @@ impl UiPresentationRuntime {
         } else {
             self.textures.static_identity()
         };
-        let textures = UiRenderTextureArray::with_replaceable_pages(
-            pages,
-            start + count,
-            replaceable,
-            source,
-        )
-        .map_err(|error| format!("{error:?}"))?;
+        let textures =
+            UiRenderTextureArray::with_replaceable_pages(pages, start + count, replaceable, source)
+                .map_err(|error| format!("{error:?}"))?;
         self.textures = Arc::new(textures);
         if let Some(engine) = self.engine.as_mut() {
             engine.textures.server_page =
