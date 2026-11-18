@@ -136,7 +136,7 @@ fn add_server(canvas: &mut Canvas<'_>, view: &MenuView, b: Bounds) -> Result<(),
     )
 }
 
-fn group_entries(view: &MenuView, group: &str) -> Vec<usize> {
+pub(crate) fn group_entries(view: &MenuView, group: &str) -> Vec<usize> {
     view.featured
         .iter()
         .enumerate()

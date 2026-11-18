@@ -58,7 +58,41 @@ pub(super) const STATES: &[State] = &[
         gui_scale: GUI_SCALE,
         fixture: java_servers,
     },
+    State {
+        name: "java-servers-featured",
+        size: SMALL_SIZE,
+        gui_scale: 1,
+        fixture: java_featured_servers,
+    },
 ];
+
+/// The Multiplayer screen's featured tab, with one featured and one creator server.
+fn java_featured_servers() -> Fixture {
+    let Fixture::Menu(mut view) = java_servers() else {
+        unreachable!("the servers fixture is a menu");
+    };
+    let card = |name: &str, address: &str, caption: &str| launcher::menu::MenuServerCard {
+        name: name.into(),
+        address: address.into(),
+        caption: caption.into(),
+        image_path: String::new(),
+        icon: None,
+    };
+    view.featured = vec![
+        card("Featured Realm", "featured.example.test", "Weekly events"),
+        card("Maker Hub", "maker.example.test", "By a creator"),
+    ]
+    .into();
+    view.feeds.details.insert(
+        "maker.example.test".to_owned(),
+        launcher::menu::ServerDetails {
+            group: "creator".to_owned(),
+            ..Default::default()
+        },
+    );
+    view.feeds.java_server_group = launcher::menu::server_list::ServerGroup::Featured;
+    Fixture::Menu(view)
+}
 
 /// The Multiplayer screen in the Java style, with saved servers, one answering and one not.
 fn java_servers() -> Fixture {

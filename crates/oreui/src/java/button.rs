@@ -87,8 +87,21 @@ pub(super) fn draw(
     action: Option<MenuAction>,
     unit: f32,
 ) -> Result<(), PaintError> {
+    draw_lit(canvas, view, bounds, label, action, false, unit)
+}
+
+/// [`draw`] with the button drawn highlighted while `lit`, as a chosen tab is.
+pub(super) fn draw_lit(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    bounds: Bounds,
+    label: &str,
+    action: Option<MenuAction>,
+    lit: bool,
+    unit: f32,
+) -> Result<(), PaintError> {
     let state = canvas.interaction(view, action);
-    let sprite = match (action, state.hovered || state.focused) {
+    let sprite = match (action, lit || state.hovered || state.focused) {
         (None, _) => DISABLED,
         (Some(_), true) => HOVER,
         (Some(_), false) => REST,

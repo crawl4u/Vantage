@@ -241,6 +241,8 @@ pub enum MenuAction {
     SelectFeatured(usize),
     /// Show a saved server's details on the Servers tab.
     SelectSaved(usize),
+    /// Show one of the Java-style Multiplayer screen's three lists.
+    JavaServerGroup(server_list::ServerGroup),
     ServerDetail(view::ServerDetailPart),
     /// Show a Realm's details on the Realms tab.
     SelectRealm(usize),

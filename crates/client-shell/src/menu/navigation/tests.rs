@@ -280,3 +280,15 @@ fn arrows_move_a_focused_slider_on_a_java_option_page_without_selecting_it_first
     menu.move_horizontal_focus(-1);
     assert_eq!(menu.settings_options.get(usize::from(index)), before);
 }
+
+#[test]
+fn the_java_server_tabs_switch_the_list_shown() {
+    use launcher::menu::server_list::ServerGroup;
+
+    let mut menu = MenuRuntime::new(true, 2, "Player".into());
+    assert_eq!(menu.view().feeds.java_server_group, ServerGroup::Saved);
+    menu.activate(MenuAction::JavaServerGroup(ServerGroup::Creator));
+    assert_eq!(menu.view().feeds.java_server_group, ServerGroup::Creator);
+    menu.activate(MenuAction::JavaServerGroup(ServerGroup::Saved));
+    assert_eq!(menu.view().feeds.java_server_group, ServerGroup::Saved);
+}

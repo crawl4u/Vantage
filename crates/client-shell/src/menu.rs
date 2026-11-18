@@ -816,6 +816,7 @@ impl MenuRuntime {
             MenuAction::SignOut => self.sign_out_requested = true,
             MenuAction::SelectFeatured(index) => self.feeds.select(index),
             MenuAction::SelectSaved(index) => self.feeds.select_saved(index),
+            MenuAction::JavaServerGroup(group) => self.feeds.java_server_group = group,
             MenuAction::ServerDetail(_) => {}
             MenuAction::ServerList(action) => {
                 self.settings_dirty |=

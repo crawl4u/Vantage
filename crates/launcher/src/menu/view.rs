@@ -226,6 +226,8 @@ pub struct MenuFeeds {
     pub selected_saved: Option<usize>,
     /// The Realm the Realms tab's details show.
     pub selected_realm: Option<usize>,
+    /// The list the Java-style Multiplayer screen shows.
+    pub java_server_group: super::server_list::ServerGroup,
     /// RakNet pongs keyed by the address the row joins.
     pub pings: HashMap<String, PingInfo>,
     /// The info panel's description and news are expanded past "read more".

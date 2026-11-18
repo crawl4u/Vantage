@@ -1,16 +1,17 @@
 //! The Java-style Multiplayer screen, laid out as Java Edition lays its server list out: a title
-//! 20 Java pixels down, a scrolling list of 305-pixel entries 36 pixels apart (icon, name, the
-//! server's message, its player count and ping bars), and two rows of buttons under it. Saved
-//! servers come first, then the featured ones. The selected entry is boxed in grey.
+//! 10 Java pixels down, three tabs under it, a scrolling list of 305-pixel entries 36 pixels apart
+//! (icon, name, the server's message, its player count and ping bars), and two rows of buttons
+//! under that. The tabs choose the list: the player's own servers, featured servers or creator
+//! servers. The selected entry is boxed in grey.
 
-use launcher::menu::{MenuAction, MenuView, PingInfo, pingable};
+use launcher::menu::{MenuAction, MenuView, PingInfo, pingable, server_list::ServerGroup};
 use ui_engine::engine::screen::PaintError;
 
 use super::{button, font, unit};
 use crate::{
     focus,
     paint::{Bounds, Canvas, SpriteScrollbar},
-    play_servers::{Selection, selection},
+    play_servers::{Selection, group_entries, selection},
     theme::TEXT,
 };
 
@@ -18,9 +19,13 @@ use crate::{
 const ENTRY_WIDTH: f32 = 305.0;
 const ENTRY_STEP: f32 = 36.0;
 const ICON: f32 = 32.0;
-const HEADER: f32 = 33.0;
+const HEADER: f32 = 50.0;
 const FOOTER: f32 = 64.0;
-const TITLE_TOP: f32 = 20.0;
+const TITLE_TOP: f32 = 10.0;
+/// The tabs' top edge, their width and the gap between them.
+const TABS_TOP: f32 = 24.0;
+const TAB_WIDTH: f32 = 98.0;
+const TAB_GAP: f32 = 5.0;
 const TEXT_HEIGHT: f32 = 8.0;
 const LIST_PADDING: f32 = 4.0;
 const SEPARATOR: f32 = 2.0;
@@ -59,11 +64,24 @@ struct Row {
     ping: Option<PingInfo>,
     pinged: bool,
     select: MenuAction,
+    join: MenuAction,
+    /// The saved server's index, which only saved servers have, so they alone can be edited.
+    saved: Option<usize>,
     selected: bool,
 }
 
-/// The rows of the list: saved servers, then featured ones.
-fn rows(view: &MenuView) -> Vec<Row> {
+/// What a tab is called, and what its list says while it is empty.
+fn tab_text(group: ServerGroup) -> (&'static str, &'static str) {
+    match group {
+        ServerGroup::Saved => ("My Servers", "No servers yet. Add one to start."),
+        ServerGroup::Featured => ("Featured", "No featured servers right now."),
+        ServerGroup::Creator => ("Creator", "No creator servers right now."),
+    }
+}
+
+/// The rows of the `group` list, with the row the buttons act on marked: the picked server when
+/// it is in this list, else the first.
+fn rows(view: &MenuView, group: ServerGroup) -> Vec<Row> {
     let picked = selection(view, view.featured.len());
     let ping = |address: &str| {
         view.feeds
@@ -72,32 +90,55 @@ fn rows(view: &MenuView) -> Vec<Row> {
             .cloned()
             .filter(|_| pingable(address))
     };
-    let saved = view.servers.iter().enumerate().map(|(index, server)| Row {
-        name: server.name.clone(),
-        message: ping(&server.address)
-            .map(|ping| ping.motd)
-            .unwrap_or_default(),
-        ping: ping(&server.address),
-        pinged: pingable(&server.address),
-        select: MenuAction::SelectSaved(index),
-        selected: picked == Some(Selection::Saved(index)),
-    });
-    let featured = view.featured.iter().enumerate().map(|(index, server)| {
-        let ping = ping(&server.address);
-        Row {
-            name: server.name.clone(),
-            message: ping
-                .as_ref()
-                .map(|ping| ping.motd.clone())
-                .filter(|motd| !motd.is_empty())
-                .unwrap_or_else(|| server.caption.clone()),
-            ping,
-            pinged: pingable(&server.address),
-            select: MenuAction::SelectFeatured(index),
-            selected: picked == Some(Selection::Featured(index)),
-        }
-    });
-    saved.chain(featured).collect()
+    let mut rows: Vec<Row> = Vec::new();
+    if group == ServerGroup::Saved {
+        rows.extend(view.servers.iter().enumerate().map(|(index, server)| {
+            let ping = ping(&server.address);
+            Row {
+                name: server.name.clone(),
+                message: ping
+                    .as_ref()
+                    .map(|ping| ping.motd.clone())
+                    .unwrap_or_default(),
+                ping,
+                pinged: pingable(&server.address),
+                select: MenuAction::SelectSaved(index),
+                join: MenuAction::PlaySaved(index),
+                saved: Some(index),
+                selected: picked == Some(Selection::Saved(index)),
+            }
+        }));
+    } else {
+        let tab = if group == ServerGroup::Creator {
+            "creator"
+        } else {
+            "featured"
+        };
+        rows.extend(group_entries(view, tab).into_iter().map(|index| {
+            let server = &view.featured[index];
+            let ping = ping(&server.address);
+            Row {
+                name: server.name.clone(),
+                message: ping
+                    .as_ref()
+                    .map(|ping| ping.motd.clone())
+                    .filter(|motd| !motd.is_empty())
+                    .unwrap_or_else(|| server.caption.clone()),
+                ping,
+                pinged: pingable(&server.address),
+                select: MenuAction::SelectFeatured(index),
+                join: MenuAction::PlayFeatured(index),
+                saved: None,
+                selected: picked == Some(Selection::Featured(index)),
+            }
+        }));
+    }
+    if !rows.iter().any(|row| row.selected)
+        && let Some(first) = rows.first_mut()
+    {
+        first.selected = true;
+    }
+    rows
 }
 
 /// `text` without colour codes and line breaks, as one line.
@@ -207,8 +248,9 @@ pub(crate) fn draw(
     canvas.focus_delegate(Some(MenuAction::AddBack), None);
     let viewport = [0.0, HEADER * unit, size[0], size[1] - FOOTER * unit];
     canvas.fill(viewport, LIST_SHADE)?;
-    let rows = rows(view);
-    list(canvas, view, viewport, centre, &rows, unit)?;
+    let group = view.feeds.java_server_group;
+    let rows = rows(view, group);
+    list(canvas, view, viewport, centre, &rows, group, unit)?;
     separators(canvas, size, unit)?;
     button::label_centred(
         canvas,
@@ -222,15 +264,10 @@ pub(crate) fn draw(
         unit,
         TEXT,
     )?;
-    let picked = selection(view, view.featured.len());
-    let join = picked.map(|picked| match picked {
-        Selection::Saved(index) => MenuAction::PlaySaved(index),
-        Selection::Featured(index) => MenuAction::PlayFeatured(index),
-    });
-    let saved = match picked {
-        Some(Selection::Saved(index)) => Some(index),
-        _ => None,
-    };
+    let chosen = rows.iter().find(|row| row.selected);
+    let join = chosen.map(|row| row.join);
+    let saved = chosen.and_then(|row| row.saved);
+    tabs(canvas, view, centre, group, unit)?;
     let top = java_height - FOOTER;
     let place = |x: f32, row: f32, width: f32| {
         [x, top + row, x + width, top + row + BUTTON_HEIGHT].map(|value| value * unit)
@@ -261,6 +298,32 @@ pub(crate) fn draw(
         button::draw(canvas, view, bounds, label, action, unit)?;
     }
     canvas.end_focus_region(screen);
+    Ok(())
+}
+
+/// The three tabs under the title, the open one highlighted.
+fn tabs(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    centre: f32,
+    open: ServerGroup,
+    unit: f32,
+) -> Result<(), PaintError> {
+    let left = centre - (3.0 * TAB_WIDTH + 2.0 * TAB_GAP) / 2.0;
+    for (index, group) in ServerGroup::ALL.into_iter().enumerate() {
+        let x = left + index as f32 * (TAB_WIDTH + TAB_GAP);
+        let bounds =
+            [x, TABS_TOP, x + TAB_WIDTH, TABS_TOP + BUTTON_HEIGHT].map(|value| value * unit);
+        button::draw_lit(
+            canvas,
+            view,
+            bounds,
+            tab_text(group).0,
+            Some(MenuAction::JavaServerGroup(group)),
+            group == open,
+            unit,
+        )?;
+    }
     Ok(())
 }
 
@@ -295,9 +358,14 @@ fn list(
     viewport: Bounds,
     centre: f32,
     rows: &[Row],
+    group: ServerGroup,
     unit: f32,
 ) -> Result<(), PaintError> {
-    let key = "java_servers";
+    let key = match group {
+        ServerGroup::Saved => "java_servers/saved",
+        ServerGroup::Featured => "java_servers/featured",
+        ServerGroup::Creator => "java_servers/creator",
+    };
     let content = (LIST_PADDING * 2.0 + rows.len() as f32 * ENTRY_STEP) * unit;
     let max = (content - (viewport[3] - viewport[1])).max(0.0);
     if let Some(offset) = canvas.offsets.get_mut(key) {
@@ -326,7 +394,7 @@ fn list(
     if rows.is_empty() {
         put(
             canvas,
-            "No servers yet. Add one to start.",
+            tab_text(group).1,
             [
                 (centre - 80.0) * unit,
                 viewport[1] + (LIST_PADDING + 8.0) * unit,
@@ -405,7 +473,7 @@ fn entry(
         put(
             canvas,
             &players,
-            [bounds[2] - (PING[0] + 5.0) * unit - width, bounds[1] + unit],
+            [bounds[2] - (PING[0] + 8.0) * unit - width, bounds[1] + unit],
             unit,
             GREY,
             width + unit,
@@ -458,7 +526,7 @@ mod tests {
     }
 
     #[test]
-    fn saved_servers_come_before_featured_ones() {
+    fn each_tab_lists_its_own_servers_only() {
         let mut view = MenuView::new(true, "Player".into());
         view.servers = vec![launcher::menu::SavedServer {
             name: "Mine".to_owned(),
@@ -475,11 +543,42 @@ mod tests {
             icon: None,
         }]
         .into();
-        let rows = rows(&view);
-        assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].select, MenuAction::SelectSaved(0));
-        assert_eq!(rows[1].select, MenuAction::SelectFeatured(0));
-        assert_eq!(rows[1].message, "A caption");
-        assert_eq!(rows.iter().filter(|row| row.selected).count(), 1);
+        let card = |name: &str, address: &str| launcher::menu::MenuServerCard {
+            name: name.into(),
+            address: address.into(),
+            caption: String::new(),
+            image_path: String::new(),
+            icon: None,
+        };
+        let mut featured = view.featured.to_vec();
+        featured.push(card("Maker", "maker.test"));
+        view.featured = featured.into();
+        view.feeds.details.insert(
+            "maker.test".to_owned(),
+            launcher::menu::ServerDetails {
+                group: "creator".to_owned(),
+                ..Default::default()
+            },
+        );
+        let saved = rows(&view, ServerGroup::Saved);
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].select, MenuAction::SelectSaved(0));
+        assert_eq!(saved[0].saved, Some(0));
+        let featured = rows(&view, ServerGroup::Featured);
+        assert_eq!(featured.len(), 1);
+        assert_eq!(featured[0].select, MenuAction::SelectFeatured(0));
+        assert_eq!(featured[0].message, "A caption");
+        assert_eq!(featured[0].saved, None);
+        let creator = rows(&view, ServerGroup::Creator);
+        assert_eq!(creator.len(), 1);
+        assert_eq!(creator[0].join, MenuAction::PlayFeatured(1));
+        // Every list marks exactly one row for the buttons to act on.
+        for group in ServerGroup::ALL {
+            assert_eq!(
+                rows(&view, group).iter().filter(|row| row.selected).count(),
+                1
+            );
+        }
+        assert!(rows(&MenuView::new(true, "P".into()), ServerGroup::Creator).is_empty());
     }
 }
