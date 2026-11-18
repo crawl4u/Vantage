@@ -2,7 +2,7 @@
 //! 20 degrees, pulsing once a second, its size following its length. The line is picked once per
 //! run from the lines Java's font can draw.
 
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex};
 
 use ui_engine::engine::screen::PaintError;
 
@@ -14,24 +14,33 @@ const YELLOW: [u8; 4] = [255, 255, 0, 255];
 /// The splash is turned 20 degrees, rising to the right.
 const ANGLE: f32 = -20.0 * std::f32::consts::PI / 180.0;
 
-/// The line shown this run: a random one among those Java's font can draw, none without the list.
-fn pick() -> Option<&'static str> {
-    static PICK: OnceLock<Option<String>> = OnceLock::new();
-    PICK.get_or_init(|| {
-        let font = java::font()?;
-        let lines: Vec<&String> = java::splashes()
-            .iter()
-            .filter(|line| font::width_with(font, line).is_some())
-            .collect();
-        if lines.is_empty() {
-            return None;
-        }
+/// The line shown: a random one among those Java's font can draw, none without the list. It stays
+/// the same until the list changes, as when another resource pack is selected.
+fn pick() -> Option<String> {
+    static PICK: Mutex<Option<(usize, Option<String>)>> = Mutex::new(None);
+    let font = java::font()?;
+    let lines = java::splashes();
+    let identity = Arc::as_ptr(&lines) as usize;
+    let mut picked = PICK.lock().ok()?;
+    if let Some((seen, line)) = picked.as_ref()
+        && *seen == identity
+    {
+        return line.clone();
+    }
+    let candidates: Vec<&String> = lines
+        .iter()
+        .filter(|line| font::width_with(&font, line).is_some())
+        .collect();
+    let line = (!candidates.is_empty()).then(|| {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |elapsed| elapsed.subsec_nanos() as usize ^ elapsed.as_secs() as usize);
-        Some(lines[nanos % lines.len()].clone())
-    })
-    .as_deref()
+            .map_or(0, |elapsed| {
+                elapsed.subsec_nanos() as usize ^ elapsed.as_secs() as usize
+            });
+        candidates[nanos % candidates.len()].clone()
+    });
+    *picked = Some((identity, line.clone()));
+    line
 }
 
 /// The scale of the splash `seconds` into the menu: the pulse, then shrunk so a long line is no
@@ -46,11 +55,11 @@ pub(super) fn draw(canvas: &mut Canvas<'_>, pivot: [f32; 2], unit: f32) -> Resul
     let (Some(line), Some(java_font)) = (pick(), java::font()) else {
         return Ok(());
     };
-    let Some(width) = font::width_with(java_font, line) else {
+    let Some(width) = font::width_with(&java_font, &line) else {
         return Ok(());
     };
     let scale = scale(canvas.seconds, width) * unit;
-    font::draw_turned(canvas, line, pivot, scale, ANGLE, YELLOW)?;
+    font::draw_turned(canvas, &line, pivot, scale, ANGLE, YELLOW)?;
     Ok(())
 }
 

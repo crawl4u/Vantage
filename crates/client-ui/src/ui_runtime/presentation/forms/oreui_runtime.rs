@@ -467,6 +467,34 @@ impl UiPresentationRuntime {
         render_model::MAX_UI_FIXED_TEXTURE_BYTES.saturating_sub(self.textures.fixed_budget_bytes())
     }
 
+    /// Installs `base` as the OreUI artwork with the Java-style menus' files added, resolved from
+    /// `packs` (highest priority first) and then `cache` as `oreui::images::with_java` does, and
+    /// remembers `base` so a later change of resource pack can add them again.
+    pub fn enable_oreui_originals_with_java(
+        &mut self,
+        base: OreUiImages,
+        packs: &[oreui::images::java::ReadFile<'_>],
+        cache: Option<&std::path::Path>,
+    ) -> Result<(), String> {
+        let images = oreui::images::with_java(&base, packs, cache);
+        self.screens.oreui.base_images = Some(base);
+        self.enable_oreui_originals(images)
+    }
+
+    /// Adds the Java-style menus' files again over the remembered artwork, from `packs` and
+    /// `cache`; nothing happens before the artwork was installed, or when nothing changed.
+    pub fn reload_java_ui(
+        &mut self,
+        packs: &[oreui::images::java::ReadFile<'_>],
+        cache: Option<&std::path::Path>,
+    ) -> Result<(), String> {
+        let Some(base) = self.screens.oreui.base_images.clone() else {
+            return Ok(());
+        };
+        let images = oreui::images::with_java(&base, packs, cache);
+        self.enable_oreui_originals(images)
+    }
+
     /// Registers the installed artwork as immutable static texture pages.
     pub fn enable_oreui_originals(&mut self, images: OreUiImages) -> Result<(), String> {
         if self

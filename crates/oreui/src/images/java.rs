@@ -1,189 +1,295 @@
-//! The Java-style menus' sprites, cached from the player's own Java Edition install by
-//! `launcher_host::java_ui`. They join the OreUI texture pages under `java/` keys when the cache
-//! exists; without it the Java style stays unavailable.
+//! The Java-style menus' files, resolved as Java resolves them: the selected resource packs first,
+//! highest priority first, then the player's own game, cached by `launcher_host::java_ui`. A pack's
+//! copy of a button, an icon, a background or the font replaces the game's. The sprites join the
+//! OreUI texture pages under `java/` keys; without the files the Java style stays unavailable.
 
-use std::{collections::HashMap, path::Path, sync::OnceLock};
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::{Arc, RwLock},
+};
 
-use serde::Deserialize;
+use java_resource_pack::menu_files::{
+    FONT_DEFINITIONS, FONT_TEXTURES, GUI_FILES, REQUIRED_GUI_FILES, SPLASHES, gui_path, mcmeta,
+};
+use serde_json::Value;
 
 use super::{
     Art,
     java_font::{JavaFont, Sheet},
 };
 
-/// Folder of the cache inside the compiled assets directory.
-const CACHE_DIR: &str = "java-ui";
-
-/// Key prefix of the cached sprites in the OreUI sprite map.
+/// Key prefix of the Java sprites in the OreUI sprite map.
 pub const KEY_PREFIX: &str = "java/";
 
-/// The sprite key of a cached GUI file such as `sprites/widget/button.png`.
+/// The sprite key of a GUI file (relative to `textures/gui/`) or a font sheet (`font/<name>`).
 #[must_use]
 pub fn key(name: &str) -> String {
     format!("{KEY_PREFIX}{name}")
 }
 
-/// Nine-slice borders (top, right, bottom, left, in texels) of the cached sprites that have them.
-static BORDERS: OnceLock<HashMap<String, [u16; 4]>> = OnceLock::new();
+/// Reads a file by its path relative to `assets/minecraft/`, none when it is not there.
+pub type ReadFile<'a> = &'a dyn Fn(&str) -> Option<Vec<u8>>;
 
-/// The nine-slice borders of the cached sprite `key`, as top, right, bottom and left texels.
+/// Where files are read from, highest priority first: each pack in turn, then the cache folder.
+pub struct Layers<'a> {
+    pub packs: &'a [ReadFile<'a>],
+    pub cache: Option<&'a Path>,
+}
+
+impl Layers<'_> {
+    fn count(&self) -> usize {
+        self.packs.len() + 1
+    }
+
+    /// The file `path` from one layer: a pack, or the cache for the last.
+    fn read_at(&self, layer: usize, path: &str) -> Option<Vec<u8>> {
+        match self.packs.get(layer) {
+            Some(read) => read(path),
+            None => std::fs::read(self.cache?.join(path)).ok(),
+        }
+    }
+
+    /// The winning copy of `path` and the layer it came from.
+    fn read(&self, path: &str) -> Option<(usize, Vec<u8>)> {
+        (0..self.count()).find_map(|layer| Some((layer, self.read_at(layer, path)?)))
+    }
+}
+
+/// What the menus read once resolved: the font, the sprites' nine-slice borders and the splashes.
+struct Active {
+    font: Arc<JavaFont>,
+    borders: Arc<HashMap<String, [u16; 4]>>,
+    splashes: Arc<Vec<String>>,
+}
+
+static ACTIVE: RwLock<Option<Active>> = RwLock::new(None);
+
+/// Java's font, when its files resolved.
+#[must_use]
+pub fn font() -> Option<Arc<JavaFont>> {
+    let active = ACTIVE.read().ok()?;
+    active
+        .as_ref()
+        .map(|active| active.font.clone())
+        .filter(|font| !font.is_empty())
+}
+
+/// The nine-slice borders of a sprite, as top, right, bottom and left texels; none for a sprite
+/// that is stretched whole.
 #[must_use]
 pub fn border(key: &str) -> Option<[u16; 4]> {
-    BORDERS.get()?.get(key).copied()
+    ACTIVE.read().ok()?.as_ref()?.borders.get(key).copied()
 }
 
-/// Java's bitmap font, built from the cached definitions and sheets; none without them.
-static FONT: OnceLock<Option<JavaFont>> = OnceLock::new();
-
-/// Java's font, when the cache holds it.
+/// The title's splash lines: the packs' and the game's together, as Java combines them.
 #[must_use]
-pub fn font() -> Option<&'static JavaFont> {
-    FONT.get()?.as_ref()
-}
-
-/// The title screen's splash lines from Java's `splashes.txt`; none without the cache.
-static SPLASHES: OnceLock<Vec<String>> = OnceLock::new();
-
-/// Java's splash lines, one per entry, when the cache holds them.
-#[must_use]
-pub fn splashes() -> &'static [String] {
-    SPLASHES.get().map_or(&[], Vec::as_slice)
-}
-
-#[derive(Deserialize)]
-struct Manifest {
-    files: Vec<String>,
-    #[serde(default)]
-    font_files: Vec<String>,
-    #[serde(default)]
-    data_files: Vec<String>,
-}
-
-/// Decodes every cached sprite; an absent or unreadable cache gives none. Remembers the borders
-/// the sprites' `.mcmeta` files declare.
-pub(super) fn read(compiled_dir: &Path) -> Vec<(String, Art)> {
-    let cache = compiled_dir.join(CACHE_DIR);
-    let Some(manifest) = std::fs::read(cache.join("manifest.json"))
+pub fn splashes() -> Arc<Vec<String>> {
+    ACTIVE
+        .read()
         .ok()
-        .and_then(|bytes| serde_json::from_slice::<Manifest>(&bytes).ok())
-    else {
-        return Vec::new();
-    };
+        .and_then(|active| active.as_ref().map(|active| active.splashes.clone()))
+        .unwrap_or_default()
+}
+
+/// The resolved files: the sprites and sheets to pack into texture pages, with the rest kept for
+/// [`install`].
+pub(super) struct Resolved {
+    pub(super) art: Vec<(String, Art)>,
+    active: Active,
+}
+
+impl Resolved {
+    /// Makes the font, the borders and the splashes the menus read.
+    pub(super) fn install(self) -> Vec<(String, Art)> {
+        if let Ok(mut active) = ACTIVE.write() {
+            *active = Some(self.active);
+        }
+        self.art
+    }
+}
+
+/// Forgets what was installed, so the Java style is unavailable.
+pub(super) fn clear() {
+    if let Ok(mut active) = ACTIVE.write() {
+        *active = None;
+    }
+}
+
+fn decode(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let rgba = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    Some((width, height, rgba.into_raw()))
+}
+
+/// Resolves every Java menu file; none when the required sprites are in no layer.
+pub(super) fn resolve(layers: &Layers<'_>) -> Option<Resolved> {
+    if REQUIRED_GUI_FILES
+        .iter()
+        .any(|file| layers.read(&gui_path(file)).is_none())
+    {
+        return None;
+    }
     let mut art = Vec::new();
     let mut borders = HashMap::new();
-    for name in manifest.files {
-        let Some(image) = std::fs::read(cache.join(&name))
-            .ok()
-            .and_then(|bytes| image::load_from_memory(&bytes).ok())
-        else {
-            tracing::warn!("Java menu sprite {name} is unreadable");
+    for file in GUI_FILES {
+        let path = gui_path(file);
+        let Some((layer, bytes)) = layers.read(&path) else {
             continue;
         };
-        let rgba = image.to_rgba8();
-        let (width, height) = rgba.dimensions();
-        if let Some(border) = std::fs::read(cache.join(format!("{name}.mcmeta")))
-            .ok()
-            .and_then(|bytes| parse_border(&bytes))
+        let Some((width, height, pixels)) = decode(&bytes) else {
+            tracing::warn!("Java menu sprite {file} is unreadable");
+            continue;
+        };
+        // The borders come from the layer that supplied the texture, as in the game.
+        if let Some(border) = layers
+            .read_at(layer, &mcmeta(&path))
+            .and_then(|meta| parse_border(&meta, [width, height]))
         {
-            borders.insert(key(&name), border);
+            borders.insert(key(file), border);
         }
-        art.push((key(&name), Art::Still(width, height, rgba.into_raw())));
+        art.push((key(file), Art::Still(width, height, pixels)));
     }
-    let _ = BORDERS.set(borders);
-    if manifest.data_files.iter().any(|file| file == "texts/splashes.txt") {
-        let lines = std::fs::read_to_string(cache.join("texts/splashes.txt")).unwrap_or_default();
-        let _ = SPLASHES.set(
-            lines
+    let (font, sheets) = resolve_font(layers);
+    art.extend(sheets);
+    let splashes = (0..layers.count())
+        .filter_map(|layer| layers.read_at(layer, SPLASHES))
+        .flat_map(|bytes| {
+            String::from_utf8_lossy(&bytes)
                 .lines()
                 .map(str::trim)
                 .filter(|line| !line.is_empty())
                 .map(str::to_owned)
-                .collect(),
-        );
-    }
-    let (font, sheets) = read_font(&cache, &manifest.font_files);
-    let _ = FONT.set((!font.is_empty()).then_some(font));
-    art.extend(sheets);
-    art
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    Some(Resolved {
+        art,
+        active: Active {
+            font: Arc::new(font),
+            borders: Arc::new(borders),
+            splashes: Arc::new(splashes),
+        },
+    })
 }
 
-/// The font from the cached definitions, and the sheets it draws from as sprites. The definitions
-/// are read in the order the manifest lists them, which is their priority.
-fn read_font(cache: &Path, files: &[String]) -> (JavaFont, Vec<(String, Art)>) {
-    let mut sheets = HashMap::new();
-    let mut art = Vec::new();
-    for file in files.iter().filter(|file| file.ends_with(".png")) {
-        let Some(image) = std::fs::read(cache.join(file))
-            .ok()
-            .and_then(|bytes| image::load_from_memory(&bytes).ok())
+/// The font providers of `path` from every layer, highest priority first, with references to
+/// other font files replaced by their providers.
+fn providers(layers: &Layers<'_>, path: &str, depth: u8) -> Vec<Value> {
+    if depth > 4 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for layer in 0..layers.count() {
+        let Some(json) = layers
+            .read_at(layer, path)
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
         else {
-            tracing::warn!("Java font sheet {file} is unreadable");
             continue;
         };
-        let rgba = image.to_rgba8();
-        let (width, height) = rgba.dimensions();
-        let name = file.strip_prefix("font/").unwrap_or(file).to_owned();
-        art.push((key(file), Art::Still(width, height, rgba.as_raw().clone())));
+        for provider in json["providers"].as_array().into_iter().flatten() {
+            if provider["type"] == "reference" {
+                let id = provider["id"].as_str().unwrap_or_default();
+                let id = id.strip_prefix("minecraft:").unwrap_or(id);
+                if !id.is_empty() && !id.contains(['\\', ':']) && !id.contains("..") {
+                    out.extend(providers(layers, &format!("font/{id}.json"), depth + 1));
+                }
+            } else {
+                out.push(provider.clone());
+            }
+        }
+    }
+    out
+}
+
+/// The font and the bitmap sheets it draws from, as sprites. The default font's providers come
+/// from every pack's `font/default.json`, then the game's, so a pack's glyphs win and the game's
+/// fill the characters a pack leaves out.
+fn resolve_font(layers: &Layers<'_>) -> (JavaFont, Vec<(String, Art)>) {
+    let mut providers = providers(layers, FONT_DEFINITIONS[0], 0);
+    if providers.is_empty() {
+        // A game whose default font has no reference file: read its definitions directly.
+        for definition in &FONT_DEFINITIONS[1..] {
+            providers.extend(self::providers(layers, definition, 0));
+        }
+    }
+    let mut sheets = HashMap::new();
+    let mut art = Vec::new();
+    for provider in &providers {
+        let Some(name) = provider["file"]
+            .as_str()
+            .filter(|_| provider["type"] == "bitmap")
+            .and_then(|file| file.strip_prefix("minecraft:font/"))
+        else {
+            continue;
+        };
+        if sheets.contains_key(name)
+            || !name.ends_with(".png")
+            || name.contains(['/', '\\'])
+            || name.contains("..")
+        {
+            continue;
+        }
+        let Some((width, height, pixels)) = layers
+            .read(&format!("{FONT_TEXTURES}{name}"))
+            .and_then(|(_, bytes)| decode(&bytes))
+        else {
+            tracing::warn!("Java font sheet {name} is unreadable");
+            continue;
+        };
+        art.push((
+            key(&format!("font/{name}")),
+            Art::Still(width, height, pixels.clone()),
+        ));
         sheets.insert(
-            name,
+            name.to_owned(),
             Sheet {
                 width,
                 height,
-                rgba: rgba.into_raw(),
+                rgba: pixels,
             },
         );
     }
-    // The game lists the space definition first, so spaces win over any sheet's glyph.
-    let mut names: Vec<&String> = files.iter().filter(|file| file.ends_with(".json")).collect();
-    names.sort_by_key(|file| !file.ends_with("space.json"));
-    let definitions: Vec<Vec<u8>> = names
-        .into_iter()
-        .filter_map(|file| std::fs::read(cache.join(file)).ok())
-        .collect();
-    let definitions: Vec<&[u8]> = definitions.iter().map(Vec::as_slice).collect();
-    (JavaFont::build(&definitions, &sheets), art)
+    let definition = serde_json::json!({ "providers": providers }).to_string();
+    (JavaFont::build(&[definition.as_bytes()], &sheets), art)
 }
 
-/// The nine-slice border a Java `.mcmeta` declares, as top, right, bottom and left texels.
-fn parse_border(bytes: &[u8]) -> Option<[u16; 4]> {
-    let meta: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+/// The nine-slice border a Java `.mcmeta` declares, as top, right, bottom and left texels of a
+/// texture `dimensions` wide and high. A border is written for the sprite's nominal size, so a
+/// texture drawn at a higher resolution has it scaled up.
+fn parse_border(bytes: &[u8], dimensions: [u32; 2]) -> Option<[u16; 4]> {
+    let meta: Value = serde_json::from_slice(bytes).ok()?;
     let scaling = &meta["gui"]["scaling"];
     if scaling["type"] != "nine_slice" {
         return None;
     }
-    let texels = |value: &serde_json::Value| u16::try_from(value.as_u64()?).ok();
+    let number = |value: &Value| value.as_f64().filter(|value| *value >= 0.0);
+    let (nominal_w, nominal_h) = (
+        number(&scaling["width"]).filter(|w| *w > 0.0),
+        number(&scaling["height"]).filter(|h| *h > 0.0),
+    );
+    let scale = [
+        nominal_w.map_or(1.0, |nominal| f64::from(dimensions[0]) / nominal),
+        nominal_h.map_or(1.0, |nominal| f64::from(dimensions[1]) / nominal),
+    ];
     let border = &scaling["border"];
-    if let Some(all) = texels(border) {
-        return Some([all; 4]);
-    }
+    let (top, right, bottom, left) = match number(border) {
+        Some(all) => (all, all, all, all),
+        None => (
+            number(&border["top"])?,
+            number(&border["right"])?,
+            number(&border["bottom"])?,
+            number(&border["left"])?,
+        ),
+    };
+    let texels = |value: f64, scale: f64| (value * scale).round().min(f64::from(u16::MAX)) as u16;
     Some([
-        texels(&border["top"])?,
-        texels(&border["right"])?,
-        texels(&border["bottom"])?,
-        texels(&border["left"])?,
+        texels(top, scale[1]),
+        texels(right, scale[0]),
+        texels(bottom, scale[1]),
+        texels(left, scale[0]),
     ])
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_single_border_applies_to_every_side() {
-        let meta = br#"{"gui":{"scaling":{"type":"nine_slice","width":200,"height":20,"border":3}}}"#;
-        assert_eq!(parse_border(meta), Some([3; 4]));
-    }
-
-    #[test]
-    fn per_side_borders_come_out_as_top_right_bottom_left() {
-        let meta = br#"{"gui":{"scaling":{"type":"nine_slice","width":8,"height":20,
-            "border":{"left":2,"top":1,"right":4,"bottom":3}}}}"#;
-        assert_eq!(parse_border(meta), Some([1, 4, 3, 2]));
-    }
-
-    #[test]
-    fn other_scaling_or_bad_files_have_no_border() {
-        assert_eq!(parse_border(br#"{"gui":{"scaling":{"type":"stretch"}}}"#), None);
-        assert_eq!(parse_border(b"not json"), None);
-    }
-}
+mod tests;

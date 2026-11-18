@@ -98,7 +98,7 @@ use {
             drive_sign_editor, drive_world_inventory_keys, flush_server_form_network,
             gameplay_touch::drive_gameplay_touch_targets,
             presentation::{
-                dials::advance_dials, drive_menu_panorama, observe_mount_jump_input,
+                dials::advance_dials, drive_java_ui, drive_menu_panorama, observe_mount_jump_input,
                 prepare_ui_runtime, publish_ui_runtime,
             },
         },
@@ -213,7 +213,7 @@ pub(crate) fn configure_client_production_frame_systems(app: &mut App) {
         )
         .add_systems(
             Update,
-            (publish_ui_runtime, drive_menu_panorama)
+            (publish_ui_runtime, drive_java_ui, drive_menu_panorama)
                 .chain()
                 .in_set(ClientFrameSet::UiPublication),
         );

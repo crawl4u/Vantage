@@ -86,7 +86,11 @@ fn paint(with_sheet: bool, draw: impl FnOnce(&mut Canvas<'_>)) -> Vec<Drawn> {
         .filter_map(|node| match node.visual() {
             UiVisual::Sprite { uv, color, .. } => {
                 let b = node.bounds();
-                Some((*uv, [b.min().x(), b.min().y(), b.max().x(), b.max().y()], *color))
+                Some((
+                    *uv,
+                    [b.min().x(), b.min().y(), b.max().x(), b.max().y()],
+                    *color,
+                ))
             }
             _ => None,
         })
@@ -116,11 +120,26 @@ fn glyphs_advance_by_their_width_plus_one_and_sit_on_the_line() {
 fn the_shadow_is_drawn_first_one_java_pixel_down_and_right_at_a_quarter_of_the_colour() {
     let font = font();
     let drawn = paint(true, |canvas| {
-        draw_with(&font, canvas, "a", [10.0, 20.0], 3.0, [255, 128, 40, 255], true).unwrap();
+        draw_with(
+            &font,
+            canvas,
+            "a",
+            [10.0, 20.0],
+            3.0,
+            [255, 128, 40, 255],
+            true,
+        )
+        .unwrap();
     });
     assert_eq!(drawn.len(), 2);
-    assert_eq!(drawn[0], ([0, 0, 4, 8], [13.0, 23.0, 25.0, 47.0], [63, 32, 10, 255]));
-    assert_eq!(drawn[1], ([0, 0, 4, 8], [10.0, 20.0, 22.0, 44.0], [255, 128, 40, 255]));
+    assert_eq!(
+        drawn[0],
+        ([0, 0, 4, 8], [13.0, 23.0, 25.0, 47.0], [63, 32, 10, 255])
+    );
+    assert_eq!(
+        drawn[1],
+        ([0, 0, 4, 8], [10.0, 20.0, 22.0, 44.0], [255, 128, 40, 255])
+    );
 }
 
 #[test]
@@ -142,7 +161,18 @@ fn text_the_font_cannot_draw_draws_nothing_so_the_caller_can_fall_back() {
             draw_with(&font, canvas, "aZb", [0.0, 0.0], 2.0, [255; 4], true).unwrap(),
             None
         );
-        assert!(!centred_with(&font, canvas, "aZb", [0.0, 0.0, 100.0, 40.0], 2.0, [255; 4], true).unwrap());
+        assert!(
+            !centred_with(
+                &font,
+                canvas,
+                "aZb",
+                [0.0, 0.0, 100.0, 40.0],
+                2.0,
+                [255; 4],
+                true
+            )
+            .unwrap()
+        );
     });
     assert!(drawn.is_empty());
     assert_eq!(width_with(&font, "aZb"), None);
@@ -165,7 +195,18 @@ fn centred_text_is_centred_across_the_button_and_on_java_s_line() {
     let font = font();
     // "ab" is 12 Java pixels wide, 24 logical at 2x; the button is 200 by 40 logical pixels.
     let drawn = paint(true, |canvas| {
-        assert!(centred_with(&font, canvas, "ab", [100.0, 50.0, 300.0, 90.0], 2.0, [255; 4], false).unwrap());
+        assert!(
+            centred_with(
+                &font,
+                canvas,
+                "ab",
+                [100.0, 50.0, 300.0, 90.0],
+                2.0,
+                [255; 4],
+                false
+            )
+            .unwrap()
+        );
     });
     // Across: (100 + 300 - 24) / 2 = 188. Down: 50 + (40 - 8 * 2) / 2 = 62.
     assert_eq!(drawn[0].1, [188.0, 62.0, 196.0, 78.0]);

@@ -19,6 +19,7 @@ pub(crate) fn drive_menu_panorama(
     presentation: Res<UiPresentationResource>,
     runtime: Option<Res<UiRuntimeResource>>,
     menu: Option<Res<MenuRuntime>>,
+    packs: Option<Res<crate::runtime::network::PackReload>>,
     scene: Option<ResMut<PanoramaScene>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut state: Local<Option<PanoramaState>>,
@@ -48,8 +49,9 @@ pub(crate) fn drive_menu_panorama(
     let java_style = menu.as_deref().is_some_and(|menu| {
         menu.settings_snapshot().0.menu_style() == MenuStyle::Java
     });
+    let stack = packs.as_deref().map(|packs| packs.global_stack().clone());
     let faces = |java: bool| {
-        java.then(java_faces)
+        java.then(|| java_faces(stack.as_ref()))
             .flatten()
             .or_else(|| launcher_faces(assets))
             .map(Arc::new)
@@ -62,13 +64,19 @@ pub(crate) fn drive_menu_panorama(
             seconds,
             tint: overlay_tint(assets),
             java_style,
+            packs: stack.clone(),
         });
         if let Some(previous) = previous {
             client_runtime::session::release_off_frame(previous);
         }
         scene.set_faces(faces(java_style));
-    } else if let Some(state) = state.as_mut().filter(|state| state.java_style != java_style) {
+    } else if let Some(state) = state.as_mut().filter(|state| {
+        // Java's panorama follows the selected packs, so a change of pack reloads it too.
+        state.java_style != java_style
+            || (java_style && !same_stack(state.packs.as_ref(), stack.as_ref()))
+    }) {
         state.java_style = java_style;
+        state.packs = stack.clone();
         scene.set_faces(faces(java_style));
     }
     let shown = presentation
@@ -101,12 +109,34 @@ pub(crate) struct PanoramaState {
     tint: [f32; 4],
     /// Whether the faces were last chosen for the Java menu style.
     java_style: bool,
+    /// The resource packs the Java panorama was last read with.
+    packs: Option<Arc<resource_pack::ValidatedPackStack>>,
 }
 
-/// Java's title panorama from the cache of the player's Java install, none without it.
-fn java_faces() -> Option<render_model::PanoramaFaces> {
-    let layout = launcher::install_layout::InstallLayout::discover().ok()?;
-    render_model::panorama::faces_in(&launcher_host::java_ui::cache_dir(&layout).join("title"))
+fn same_stack(
+    left: Option<&Arc<resource_pack::ValidatedPackStack>>,
+    right: Option<&Arc<resource_pack::ValidatedPackStack>>,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// Java's title panorama: the selected packs' faces, else those cached from the player's Java
+/// install, none without either.
+fn java_faces(
+    stack: Option<&Arc<resource_pack::ValidatedPackStack>>,
+) -> Option<render_model::PanoramaFaces> {
+    let view = stack.map(|stack| resource_pack::LayeredPackView::new(stack.clone()));
+    let cache = super::java_ui::cache_dir();
+    render_model::panorama::decode_faces(|face| {
+        let path = java_resource_pack::menu_files::PANORAMA_FACES[face];
+        view.as_ref()
+            .and_then(|view| super::java_ui::read_from_packs(view, path))
+            .or_else(|| std::fs::read(cache.as_ref()?.join(path)).ok())
+    })
 }
 
 impl PanoramaState {

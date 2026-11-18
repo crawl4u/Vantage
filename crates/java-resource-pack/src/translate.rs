@@ -1,5 +1,6 @@
 //! Reads a Java pack's relevant files and assembles the translated Bedrock pack.
 
+use crate::menu_files;
 use crate::{
     Layout, TranslateError, Translation, hud, items, manifest,
     meta::{TEXTURES, detect_layout, read_meta},
@@ -8,6 +9,9 @@ use crate::{
     tga::{self, TgaKind},
 };
 use image::RgbaImage;
+
+/// Where a Java pack keeps everything the menus read.
+const ASSETS_ROOT: &str = "assets/minecraft/";
 use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
@@ -399,6 +403,20 @@ pub(crate) fn translate_within(
     }
     retarget_tga(&mut out, budget);
     out.extend(masks);
+    // The Java-style menus read the pack's own files, kept as they are beside the translation.
+    let menu: Vec<(String, Vec<u8>)> = paths
+        .iter()
+        .filter_map(|path| {
+            let relative = path.strip_prefix(ASSETS_ROOT)?;
+            menu_files::is_menu_file(relative).then_some((path, relative))
+        })
+        .filter_map(|(path, relative)| {
+            Some((
+                format!("{}{relative}", menu_files::PACK_PREFIX),
+                source.load(path)?,
+            ))
+        })
+        .collect();
 
     if budget.exhausted() {
         return Err(TranslateError::TooLarge);
@@ -430,8 +448,11 @@ pub(crate) fn translate_within(
         companions.push((hud::XP_NUB.to_owned(), encode(&RgbaImage::new(1, 1))));
     }
     files.extend(companions);
-    // Checked after size filtering, so a pack whose every texture was dropped is not installed.
-    if !files.iter().any(|(path, _)| path.starts_with("textures/")) {
+    // Checked after size filtering, so a pack whose every texture was dropped is not installed. A
+    // pack that only restyles the Java menus is still a pack.
+    let has_menu_files = !menu.is_empty();
+    files.extend(menu);
+    if !has_menu_files && !files.iter().any(|(path, _)| path.starts_with("textures/")) {
         return Err(TranslateError::NothingToTranslate);
     }
     files.push((

@@ -111,6 +111,12 @@ impl PackReload {
         }
     }
 
+    /// The resource packs the player selected, as last requested. The client's own menus read
+    /// their files from these, not from a server's packs.
+    pub(crate) fn global_stack(&self) -> &Arc<ValidatedPackStack> {
+        &self.globals
+    }
+
     /// Prepared texture overrides remain owned by the currently accepted pack application.
     pub(crate) fn aim_assist_textures(&self) -> &[Option<Arc<render_scene::AimAssistTexture>>; 2] {
         &self.aim_assist_textures

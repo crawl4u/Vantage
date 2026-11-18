@@ -49,7 +49,8 @@ pub(super) fn nine_slice(
     unit: f32,
 ) -> Result<bool, PaintError> {
     let key = key(sprite_name);
-    let slices = border(&key).unwrap_or([3; 4]);
+    // A sprite without borders is stretched whole.
+    let slices = border(&key).unwrap_or([0; 4]);
     let widths = slices.map(|texels| f32::from(texels) * unit / canvas.rem.max(f32::EPSILON));
     canvas.nine_slice(&key, bounds, slices, widths, true, [255; 4])
 }
@@ -70,7 +71,11 @@ pub(super) fn draw(
         (Some(_), false) => REST,
     };
     nine_slice(canvas, sprite, bounds, unit)?;
-    let color = if action.is_some() { TEXT } else { DISABLED_TEXT };
+    let color = if action.is_some() {
+        TEXT
+    } else {
+        DISABLED_TEXT
+    };
     label_centred(canvas, label, bounds, unit, color)?;
     if let Some(action) = action {
         canvas.hit(action, bounds)?;

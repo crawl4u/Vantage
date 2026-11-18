@@ -71,7 +71,9 @@ mod tests {
             action,
             MenuAction::SettingsOption(index, MenuStyle::Java.value())
         );
-        assert!(bounds[0] >= 0.0 && bounds[2] <= size[0] && bounds[1] >= 0.0 && bounds[3] <= size[1]);
+        assert!(
+            bounds[0] >= 0.0 && bounds[2] <= size[0] && bounds[1] >= 0.0 && bounds[3] <= size[1]
+        );
 
         let options = Arc::make_mut(&mut view.settings_options);
         assert!(options.set(index.into(), MenuStyle::Java.value()));

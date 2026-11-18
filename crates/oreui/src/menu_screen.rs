@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use ui::{IconRef, UiNode, UiRect};
 
 use super::{
-    CharacterPreview, Look, OreUiScreen, add_server, death, dressing_room, friends, home, inbox, java,
-    modal, motion, paint,
+    CharacterPreview, Look, OreUiScreen, add_server, death, dressing_room, friends, home, inbox,
+    java, modal, motion, paint,
     paint::{Canvas, EntranceScope},
     pause, play, profile, progress, scroll_focus, settings, theme, world_settings,
 };

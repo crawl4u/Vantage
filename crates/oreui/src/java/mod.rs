@@ -34,7 +34,9 @@ const FIT: [f32; 2] = [320.0, 240.0];
 /// result is a whole number of physical pixels, so texels stay crisp, and never less than one.
 pub(super) fn unit_for(size: [f32; 2], scale: Option<u8>, dpi: f32) -> f32 {
     let physical = size.map(|side| (side * dpi).round() as u32);
-    let fit = (physical[0] / FIT[0] as u32).min(physical[1] / FIT[1] as u32).max(1);
+    let fit = (physical[0] / FIT[0] as u32)
+        .min(physical[1] / FIT[1] as u32)
+        .max(1);
     scale.map_or(fit, |chosen| u32::from(chosen).clamp(1, fit)) as f32 / dpi
 }
 

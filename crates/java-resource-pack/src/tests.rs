@@ -830,3 +830,59 @@ fn roots_are_found_at_the_shallowest_marker() {
         None
     );
 }
+
+#[test]
+fn the_menus_files_are_kept_as_the_pack_has_them() {
+    let button = solid(8, 4, RED);
+    let meta =
+        br#"{"gui":{"scaling":{"type":"nine_slice","width":8,"height":4,"border":1}}}"#.to_vec();
+    let files = pack(vec![
+        (
+            "assets/minecraft/textures/block/stone.png",
+            solid(16, 16, GREEN),
+        ),
+        (
+            "assets/minecraft/textures/gui/sprites/widget/button.png",
+            button.clone(),
+        ),
+        (
+            "assets/minecraft/textures/gui/sprites/widget/button.png.mcmeta",
+            meta.clone(),
+        ),
+        ("assets/minecraft/font/default.json", b"{}".to_vec()),
+        ("assets/minecraft/texts/splashes.txt", b"Hi!".to_vec()),
+        // Files the menus never read stay out.
+        (
+            "assets/minecraft/textures/gui/title/minecraft.png",
+            solid(4, 4, BLUE),
+        ),
+        ("assets/minecraft/font/../sneaky.json", b"{}".to_vec()),
+    ]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    let kept = |path: &str| {
+        out.get(format!("{}{path}", menu_files::PACK_PREFIX).as_str())
+            .copied()
+    };
+    assert_eq!(
+        kept("textures/gui/sprites/widget/button.png"),
+        Some(button.as_slice())
+    );
+    assert_eq!(
+        kept("textures/gui/sprites/widget/button.png.mcmeta"),
+        Some(meta.as_slice())
+    );
+    assert_eq!(kept("font/default.json"), Some(b"{}".as_slice()));
+    assert_eq!(kept("texts/splashes.txt"), Some(b"Hi!".as_slice()));
+    assert!(kept("textures/gui/title/minecraft.png").is_none());
+    assert!(kept("font/../sneaky.json").is_none());
+}
+
+#[test]
+fn a_pack_that_only_restyles_the_menus_is_still_a_pack() {
+    let files = pack(vec![(
+        "assets/minecraft/textures/gui/sprites/widget/button.png",
+        solid(8, 4, RED),
+    )]);
+    assert!(run(&files, "Menus").is_ok());
+}

@@ -25,7 +25,7 @@ pub(crate) mod dials;
 pub mod forms;
 pub mod publish;
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) use forms::drive_menu_panorama;
+pub(crate) use forms::{drive_java_ui, drive_menu_panorama};
 pub(crate) use publish::{observe_mount_jump_input, prepare_ui_runtime, publish_ui_runtime};
 
 #[cfg(test)]

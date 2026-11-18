@@ -68,7 +68,9 @@ fn machine_guid() -> Option<String> {
     use windows_sys::Win32::System::Registry::{
         HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6464KEY, RegGetValueW,
     };
-    let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Cryptography\0".encode_utf16().collect();
+    let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Cryptography\0"
+        .encode_utf16()
+        .collect();
     let value: Vec<u16> = "MachineGuid\0".encode_utf16().collect();
     let mut buffer = [0u16; 128];
     let mut bytes = u32::try_from(std::mem::size_of_val(&buffer)).ok()?;

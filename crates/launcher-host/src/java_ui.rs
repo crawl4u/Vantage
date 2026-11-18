@@ -1,83 +1,38 @@
-//! The Java-style menus' sprites, read from the player's own Java Edition install.
+//! The Java-style menus' files, read from the player's own Java Edition install.
 //!
-//! Nothing from the game is shipped: this finds the newest Java Edition client jar on this
-//! machine and copies the few GUI sprites the menus draw into the local asset folder, the way
-//! the Bedrock sample pack is fetched at first run. When no install is found, the Java style
-//! reports itself unavailable and the Bedrock look stays.
+//! Nothing from the game is shipped: this finds the newest Java Edition client on this machine and
+//! copies the few files the menus draw from it (GUI sprites, the font, the title panorama and the
+//! splash lines) into the local asset folder, the way the Bedrock sample pack is fetched at first
+//! run. The cache mirrors Java's own paths under `assets/minecraft/`, so a Java resource pack's
+//! copy of a file and the game's copy are interchangeable. When no install is found, the Java
+//! style reports itself unavailable and the Bedrock look stays.
 
 use std::{
+    collections::HashMap,
     io::Read,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
 
+use java_resource_pack::menu_files::{
+    FONT_DEFINITIONS, FONT_TEXTURES, GUI_FILES, PANORAMA_FACES, REQUIRED_GUI_FILES, SPLASHES,
+    gui_path, mcmeta,
+};
 use launcher::install_layout::InstallLayout;
 use serde::{Deserialize, Serialize};
 
-/// Where the GUI sprites sit among the game's assets.
-const GUI_ROOT: &str = "minecraft/textures/gui/";
-
-/// The GUI files the menus draw, relative to the jar's `textures/gui/`. Each may carry a
-/// `.mcmeta` beside it that sets its nine-slice borders; that is copied too when present.
-pub const SPRITES: &[&str] = &[
-    "sprites/widget/button.png",
-    "sprites/widget/button_highlighted.png",
-    "sprites/widget/button_disabled.png",
-    "sprites/widget/slider.png",
-    "sprites/widget/slider_highlighted.png",
-    "sprites/widget/slider_handle.png",
-    "sprites/widget/slider_handle_highlighted.png",
-    "sprites/widget/checkbox.png",
-    "sprites/widget/checkbox_highlighted.png",
-    "sprites/widget/checkbox_selected.png",
-    "sprites/widget/checkbox_selected_highlighted.png",
-    "sprites/widget/text_field.png",
-    "sprites/widget/text_field_highlighted.png",
-    "sprites/icon/language.png",
-    "sprites/icon/accessibility.png",
-    "menu_list_background.png",
-    "inworld_menu_list_background.png",
-    "header_separator.png",
-    "footer_separator.png",
-    "inworld_header_separator.png",
-    "inworld_footer_separator.png",
-];
-
-/// Sprites without which the Java style cannot draw its controls.
-pub const REQUIRED: &[&str] = &[
-    "sprites/widget/button.png",
-    "sprites/widget/button_highlighted.png",
-    "sprites/widget/button_disabled.png",
-];
-
-/// The font definitions copied, as (game asset path, cached name). The bitmap sheets they name
-/// are copied too, as `font/<file>`.
-const FONT_DEFINITIONS: &[(&str, &str)] = &[
-    ("minecraft/font/include/default.json", "font/default.json"),
-    ("minecraft/font/include/space.json", "font/space.json"),
-];
-
-/// Where the bitmap sheets a font definition names sit among the game's assets.
-const FONT_TEXTURES: &str = "minecraft/textures/font/";
-
-/// The title panorama's six faces, as game asset paths; cached as `title/panorama_<n>.png`.
-const PANORAMA_FACES: &str = "minecraft/textures/gui/title/background/panorama_";
-
-/// The splash lines of the title screen, and where they are cached.
-const SPLASHES: (&str, &str) = ("minecraft/texts/splashes.txt", "texts/splashes.txt");
+/// What the cache holds. A cache written under an older number is read from the game again, so a
+/// new kind of file reaches players whose game has not changed.
+const CACHE_FORMAT: u32 = 4;
 
 /// A panorama face smaller than this on a side is a placeholder, not the picture.
 const MIN_PANORAMA_SIDE: u32 = 64;
 
+/// No single sprite or font file is larger than this.
+const MAX_SPRITE_BYTES: u64 = 2 * 1024 * 1024;
+
 /// The largest panorama face or splash file read.
 const MAX_DATA_BYTES: u64 = 8 * 1024 * 1024;
-
-/// What the cache holds. A cache written under an older number is read from the jar again, so a
-/// new kind of file reaches players whose jar has not changed.
-const CACHE_FORMAT: u32 = 3;
-
-/// No single sprite is larger than this; anything bigger is not a GUI sprite.
-const MAX_SPRITE_BYTES: u64 = 2 * 1024 * 1024;
 
 /// A Java Edition client found on this machine.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -91,39 +46,34 @@ pub struct ClientJar {
     pub asset_index: Option<String>,
 }
 
-/// What the cache holds, written beside the sprites.
+/// What the cache holds, written beside the files.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Manifest {
     /// The cache layout this was written under; older caches have none.
     #[serde(default)]
     pub format: u32,
     pub version: String,
-    /// Size and modified time of the jar the sprites came from, to notice a changed install.
+    /// Size and modified time of the jar the files came from, to notice a changed install.
     pub jar_len: u64,
     pub jar_modified: u64,
-    /// The sprites copied, as listed in [`SPRITES`].
+    /// The files copied, as paths relative to `assets/minecraft/`.
     pub files: Vec<String>,
-    /// The listed sprites the jar did not hold.
+    /// The sprites the menus need that the game did not hold, as the same paths.
     pub missing: Vec<String>,
-    /// The font definitions and bitmap sheets copied, as `font/...` cached names. The Java text
-    /// is drawn from them; without them the menus keep the client's own font.
-    #[serde(default)]
-    pub font_files: Vec<String>,
-    /// The other files copied, as cached names: the six panorama faces as `title/panorama_<n>.png`
-    /// and the splash lines as `texts/splashes.txt`.
-    #[serde(default)]
-    pub data_files: Vec<String>,
 }
 
 /// Whether the Java style can be drawn.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Status {
-    /// The sprites are cached for this Java version.
+    /// The files are cached for this Java version.
     Ready { version: String },
     /// No Java Edition client was found on this machine.
     NoJavaInstall,
     /// A client was found but lacks sprites the menus need.
-    Incomplete { version: String, missing: Vec<String> },
+    Incomplete {
+        version: String,
+        missing: Vec<String>,
+    },
     /// Reading or writing failed.
     Failed(String),
 }
@@ -136,10 +86,16 @@ impl Status {
     }
 }
 
-/// Where the sprites are cached for `layout`.
+/// Where the files are cached for `layout`: Java's own paths under here.
 #[must_use]
 pub fn cache_dir(layout: &InstallLayout) -> PathBuf {
-    layout.compiled_assets.join("java-ui")
+    cache_dir_in(&layout.compiled_assets)
+}
+
+/// Where the files are cached inside the compiled assets folder `compiled`.
+#[must_use]
+pub fn cache_dir_in(compiled: &Path) -> PathBuf {
+    compiled.join("java-ui")
 }
 
 fn manifest_path(cache: &Path) -> PathBuf {
@@ -184,7 +140,10 @@ pub fn find_client_jar(roots: &[PathBuf]) -> Option<ClientJar> {
         for entry in entries.flatten() {
             let id = entry.file_name().to_string_lossy().into_owned();
             let dir = entry.path();
-            let (jar, json) = (dir.join(format!("{id}.jar")), dir.join(format!("{id}.json")));
+            let (jar, json) = (
+                dir.join(format!("{id}.jar")),
+                dir.join(format!("{id}.json")),
+            );
             if !jar.is_file() {
                 continue;
             }
@@ -224,7 +183,7 @@ pub fn find_client_jar(roots: &[PathBuf]) -> Option<ClientJar> {
 struct Source {
     archive: zip::ZipArchive<std::fs::File>,
     /// Game asset path to the hash naming its file in the store.
-    index: std::collections::HashMap<String, String>,
+    index: HashMap<String, String>,
     objects: PathBuf,
 }
 
@@ -243,8 +202,12 @@ impl Source {
                     .as_object()
                     .into_iter()
                     .flatten()
-                    .filter_map(|(name, object)| Some((name.clone(), object["hash"].as_str()?.to_owned())))
-                    .filter(|(_, hash)| hash.len() >= 2 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                    .filter_map(|(name, object)| {
+                        Some((name.clone(), object["hash"].as_str()?.to_owned()))
+                    })
+                    .filter(|(_, hash)| {
+                        hash.len() >= 2 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -255,16 +218,19 @@ impl Source {
         })
     }
 
-    /// The bytes of the game asset `name`, such as `minecraft/textures/gui/title/minecraft.png`,
-    /// none when neither the store nor the jar has it. A file over `limit` bytes is an error.
-    fn read(&mut self, name: &str, limit: u64) -> Result<Option<Vec<u8>>, String> {
-        if let Some(hash) = self.index.get(name) {
-            let path = self.objects.join(&hash[..2]).join(hash);
-            if let Ok(meta) = std::fs::metadata(&path) {
+    /// The bytes of `path`, relative to `assets/minecraft/`, none when neither the store nor the
+    /// jar has it. A file over `limit` bytes is an error.
+    fn read(&mut self, path: &str, limit: u64) -> Result<Option<Vec<u8>>, String> {
+        let name = format!("minecraft/{path}");
+        if let Some(hash) = self.index.get(&name) {
+            let object = self.objects.join(&hash[..2]).join(hash);
+            if let Ok(meta) = std::fs::metadata(&object) {
                 if meta.len() > limit {
-                    return Err(format!("{name} is larger than expected"));
+                    return Err(format!("{path} is larger than expected"));
                 }
-                return std::fs::read(&path).map(Some).map_err(|error| error.to_string());
+                return std::fs::read(&object)
+                    .map(Some)
+                    .map_err(|error| error.to_string());
             }
         }
         let entry = match self.archive.by_name(&format!("assets/{name}")) {
@@ -273,7 +239,7 @@ impl Source {
             Err(error) => return Err(error.to_string()),
         };
         if entry.size() > limit {
-            return Err(format!("{name} is larger than expected"));
+            return Err(format!("{path} is larger than expected"));
         }
         let mut bytes = Vec::with_capacity(entry.size() as usize);
         entry
@@ -284,8 +250,49 @@ impl Source {
     }
 }
 
+/// A PNG's width and height from its header, none when `bytes` is not a PNG.
+fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.len() < 24 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" {
+        return None;
+    }
+    let side =
+        |at: usize| u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
+    Some((side(16), side(20)))
+}
+
+/// The file names of the bitmap sheets a font definition names, such as `ascii.png`. Only plain
+/// names in the `minecraft` namespace: nothing may reach outside the font folder.
+#[must_use]
+pub fn bitmap_sheets(definition: &[u8]) -> Vec<String> {
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(definition) else {
+        return Vec::new();
+    };
+    json["providers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|provider| provider["type"] == "bitmap")
+        .filter_map(|provider| provider["file"].as_str())
+        .filter_map(|file| file.strip_prefix("minecraft:font/"))
+        .filter(|name| {
+            name.ends_with(".png") && !name.contains(['/', '\\']) && !name.contains("..")
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Writes one cached file under `cache`; `path` is always one of the fixed names of
+/// [`java_resource_pack::menu_files`] or a sheet name checked by [`bitmap_sheets`].
+fn write_cached(cache: &Path, path: &str, bytes: &[u8]) -> Result<(), String> {
+    let target = cache.join(path);
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    std::fs::write(target, bytes).map_err(|error| error.to_string())
+}
+
 /// Copies the files the menus draw from the game into `cache` and writes the manifest. Missing
-/// sprites are recorded, not errors; the caller judges them against [`REQUIRED`].
+/// sprites are recorded, not errors; the caller judges them against the required ones.
 pub fn extract(jar: &ClientJar, cache: &Path) -> Result<Manifest, String> {
     let meta = std::fs::metadata(&jar.path).map_err(|error| error.to_string())?;
     let mut source = Source::open(jar)?;
@@ -301,117 +308,73 @@ pub fn extract(jar: &ClientJar, cache: &Path) -> Result<Manifest, String> {
             .map_or(0, |elapsed| elapsed.as_secs()),
         ..Manifest::default()
     };
-    for sprite in SPRITES {
-        let Some(bytes) = source.read(&format!("{GUI_ROOT}{sprite}"), MAX_SPRITE_BYTES)? else {
-            manifest.missing.push((*sprite).to_owned());
+    let mut keep = |manifest: &mut Manifest, path: String, bytes: Vec<u8>| -> Result<(), String> {
+        write_cached(cache, &path, &bytes)?;
+        manifest.files.push(path);
+        Ok(())
+    };
+    for gui_file in GUI_FILES {
+        let path = gui_path(gui_file);
+        let Some(bytes) = source.read(&path, MAX_SPRITE_BYTES)? else {
+            if REQUIRED_GUI_FILES.contains(gui_file) {
+                manifest.missing.push(path);
+            }
             continue;
         };
-        write_cached(cache, sprite, &bytes)?;
-        manifest.files.push((*sprite).to_owned());
-        let meta_name = format!("{sprite}.mcmeta");
-        if let Some(bytes) = source.read(&format!("{GUI_ROOT}{meta_name}"), MAX_SPRITE_BYTES)? {
-            write_cached(cache, &meta_name, &bytes)?;
+        keep(&mut manifest, path.clone(), bytes)?;
+        if let Some(bytes) = source.read(&mcmeta(&path), MAX_SPRITE_BYTES)? {
+            keep(&mut manifest, mcmeta(&path), bytes)?;
         }
     }
-    extract_font(&mut source, cache, &mut manifest)?;
-    extract_title(&mut source, cache, &mut manifest)?;
+    // The font definitions, then the sheets they name; a game without them has no Java font.
+    let mut sheets = Vec::new();
+    for definition in FONT_DEFINITIONS {
+        if let Some(bytes) = source.read(definition, MAX_SPRITE_BYTES)? {
+            sheets.extend(bitmap_sheets(&bytes));
+            keep(&mut manifest, (*definition).to_owned(), bytes)?;
+        }
+    }
+    for sheet in sheets {
+        let path = format!("{FONT_TEXTURES}{sheet}");
+        if manifest.files.contains(&path) {
+            continue;
+        }
+        if let Some(bytes) = source.read(&path, MAX_SPRITE_BYTES)? {
+            keep(&mut manifest, path, bytes)?;
+        }
+    }
+    // The panorama only when all six faces are real pictures, and the splash lines.
+    let mut faces = Vec::new();
+    for face in PANORAMA_FACES {
+        match source.read(face, MAX_DATA_BYTES)? {
+            Some(bytes)
+                if png_size(&bytes)
+                    .is_some_and(|(w, h)| w >= MIN_PANORAMA_SIDE && h >= MIN_PANORAMA_SIDE) =>
+            {
+                faces.push(((*face).to_owned(), bytes));
+            }
+            _ => break,
+        }
+    }
+    if faces.len() == PANORAMA_FACES.len() {
+        for (path, bytes) in faces {
+            keep(&mut manifest, path, bytes)?;
+        }
+    }
+    if let Some(bytes) = source.read(SPLASHES, MAX_DATA_BYTES)? {
+        keep(&mut manifest, SPLASHES.to_owned(), bytes)?;
+    }
     let json = serde_json::to_vec_pretty(&manifest).map_err(|error| error.to_string())?;
     std::fs::write(manifest_path(cache), json).map_err(|error| error.to_string())?;
     Ok(manifest)
 }
 
-/// Copies the font definitions and the bitmap sheets the default font names. A game without them
-/// (an older version) just has no Java font.
-fn extract_font(source: &mut Source, cache: &Path, manifest: &mut Manifest) -> Result<(), String> {
-    let mut sheets = Vec::new();
-    for (name, cached) in FONT_DEFINITIONS {
-        let Some(bytes) = source.read(name, MAX_SPRITE_BYTES)? else {
-            continue;
-        };
-        write_cached(cache, cached, &bytes)?;
-        manifest.font_files.push((*cached).to_owned());
-        sheets.extend(bitmap_sheets(&bytes));
-    }
-    for sheet in sheets {
-        let cached = format!("font/{sheet}");
-        if manifest.font_files.contains(&cached) {
-            continue;
-        }
-        if let Some(bytes) = source.read(&format!("{FONT_TEXTURES}{sheet}"), MAX_SPRITE_BYTES)? {
-            write_cached(cache, &cached, &bytes)?;
-            manifest.font_files.push(cached);
-        }
-    }
-    Ok(())
-}
-
-/// Copies the title panorama's six faces, only when all six are real pictures, and the splash
-/// lines. Each is optional: without them the menus keep the client's own background and splash.
-fn extract_title(source: &mut Source, cache: &Path, manifest: &mut Manifest) -> Result<(), String> {
-    let mut faces = Vec::new();
-    for face in 0..6 {
-        match source.read(&format!("{PANORAMA_FACES}{face}.png"), MAX_DATA_BYTES)? {
-            Some(bytes) if png_size(&bytes).is_some_and(|(w, h)| w >= MIN_PANORAMA_SIDE && h >= MIN_PANORAMA_SIDE) => {
-                faces.push((format!("title/panorama_{face}.png"), bytes));
-            }
-            _ => break,
-        }
-    }
-    if faces.len() == 6 {
-        for (cached, bytes) in faces {
-            write_cached(cache, &cached, &bytes)?;
-            manifest.data_files.push(cached);
-        }
-    }
-    if let Some(bytes) = source.read(SPLASHES.0, MAX_DATA_BYTES)? {
-        write_cached(cache, SPLASHES.1, &bytes)?;
-        manifest.data_files.push(SPLASHES.1.to_owned());
-    }
-    Ok(())
-}
-
-/// A PNG's width and height from its header, none when `bytes` is not a PNG.
-fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
-    if bytes.len() < 24 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" {
-        return None;
-    }
-    let side = |at: usize| u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
-    Some((side(16), side(20)))
-}
-
-/// The file names of the bitmap sheets a font definition names, such as `ascii.png`.
-fn bitmap_sheets(definition: &[u8]) -> Vec<String> {
-    let Ok(json) = serde_json::from_slice::<serde_json::Value>(definition) else {
-        return Vec::new();
-    };
-    json["providers"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|provider| provider["type"] == "bitmap")
-        .filter_map(|provider| provider["file"].as_str())
-        .filter_map(|file| file.strip_prefix("minecraft:font/"))
-        // Only plain sheet names: nothing may reach outside the font folder.
-        .filter(|name| name.ends_with(".png") && !name.contains(['/', '\\']) && !name.contains(".."))
-        .map(str::to_owned)
-        .collect()
-}
-
-/// Writes one cached file under `cache`; `name` is always one of this module's fixed names.
-fn write_cached(cache: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
-    let path = cache.join(name);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    std::fs::write(path, bytes).map_err(|error| error.to_string())
-}
-
 /// What a manifest says about whether the Java style can be drawn.
 fn judge(manifest: &Manifest) -> Status {
-    let missing: Vec<String> = REQUIRED
+    let missing: Vec<String> = REQUIRED_GUI_FILES
         .iter()
-        .filter(|name| !manifest.files.iter().any(|file| file == *name))
-        .map(|name| (*name).to_owned())
+        .map(|file| gui_path(file))
+        .filter(|path| !manifest.files.contains(path))
         .collect();
     if missing.is_empty() {
         Status::Ready {
@@ -436,7 +399,7 @@ pub fn cached_status(layout: &InstallLayout) -> Status {
     read_manifest(&cache_dir(layout)).map_or(Status::NoJavaInstall, |manifest| judge(&manifest))
 }
 
-/// Finds the Java install under `roots`, caches its sprites unless the cache already matches that
+/// Finds the Java install under `roots`, caches its files unless the cache already matches that
 /// jar, and returns the resulting status.
 #[must_use]
 pub fn prepare_from(layout: &InstallLayout, roots: &[PathBuf]) -> Status {

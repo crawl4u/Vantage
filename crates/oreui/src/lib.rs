@@ -25,9 +25,9 @@ mod friends;
 mod grid;
 mod home;
 mod icons;
-mod java;
 pub mod images;
 mod inbox;
+mod java;
 mod launcher_popup;
 mod loading;
 pub mod loading_screen;
@@ -105,6 +105,9 @@ pub enum Look {
 #[derive(Default)]
 pub struct OreUiScreen {
     pub originals: Option<Arc<Originals>>,
+    /// The artwork before the Java-style menus' files were added, so a change of resource pack can
+    /// add them again.
+    pub base_images: Option<images::OreUiImages>,
     pub look: Look,
     pub dark_mode: bool,
     extra_large_ui: bool,

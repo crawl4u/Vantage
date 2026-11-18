@@ -5,7 +5,9 @@ use client_ui::ui_runtime::presentation::forms::ServerUiPack;
 use client_ui::ui_runtime::presentation::forms::snapshot;
 #[cfg(test)]
 use ui::LoadingStage;
+pub mod java_ui;
 pub mod panorama;
+pub(crate) use java_ui::drive_java_ui;
 pub(crate) use panorama::drive_menu_panorama;
 
 #[cfg(test)]

@@ -97,6 +97,7 @@ client-presentation = { path = "../crates/client-presentation" }
 gameplay = { path = "../crates/gameplay" }
 client-ui = { path = "../crates/client-ui" }
 launcher = { path = "../crates/launcher" }
+java-resource-pack = { path = "../crates/java-resource-pack" }
 player-state = { path = "../crates/player-state" }
 inventory = { path = "../crates/inventory" }
 pack-compile-input = { path = "../crates/pack-compiler/input" }

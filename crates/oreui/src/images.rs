@@ -249,12 +249,10 @@ static IMAGES: OnceLock<Option<OreUiImages>> = OnceLock::new();
 pub fn load_optional_oreui_images(compiled_dir: &Path) -> Option<OreUiImages> {
     IMAGES
         .get_or_init(|| {
-            let mut art = shipped::read(compiled_dir).unwrap_or_else(|reason| {
+            let art = shipped::read(compiled_dir).unwrap_or_else(|reason| {
                 tracing::warn!("{reason}");
                 Vec::new()
             });
-            // The Java-style menus' sprites, when the player's Java install has been read.
-            art.extend(java::read(compiled_dir));
             let mut images = pack(art).unwrap_or_else(|reason| {
                 tracing::warn!("OreUI artwork unusable ({reason})");
                 OreUiImages {
@@ -269,6 +267,63 @@ pub fn load_optional_oreui_images(compiled_dir: &Path) -> Option<OreUiImages> {
         })
         .clone()
 }
+
+/// `base` with the Java-style menus' files added as extra texture pages, resolved as Java does:
+/// from `packs` (highest priority first, each reading a path relative to `assets/minecraft/`),
+/// then from `cache`, the folder the player's Java files were copied to. The font, the sprites'
+/// borders and the splashes the menus read are replaced with the resolved ones. When the required
+/// sprites are in no layer the Java style is unavailable and `base` is returned unchanged.
+#[must_use]
+pub fn with_java(
+    base: &OreUiImages,
+    packs: &[java::ReadFile<'_>],
+    cache: Option<&Path>,
+) -> OreUiImages {
+    let layers = java::Layers { packs, cache };
+    let Some(resolved) = java::resolve(&layers) else {
+        java::clear();
+        return base.clone();
+    };
+    let art = resolved.install();
+    base.with_extra_art(art).unwrap_or_else(|reason| {
+        tracing::warn!("Java menu artwork unusable ({reason})");
+        java::clear();
+        base.clone()
+    })
+}
+
+impl OreUiImages {
+    /// These images with `art` packed into pages after the existing ones. The existing pages and
+    /// sprites are untouched, so only the new pages change when the extra art does.
+    fn with_extra_art(&self, art: Vec<(String, Art)>) -> Result<Self, String> {
+        let mut pack =
+            packing::Pages::new(EXTRA_PAGE_SIDE, render_model::MAX_UI_FIXED_TEXTURE_BYTES);
+        let offset = u16::try_from(self.pages.len()).map_err(|_| "too many texture pages")?;
+        let mut sprites = (*self.sprites).clone();
+        for (key, art) in art {
+            let Art::Still(width, height, pixels) = art else {
+                continue;
+            };
+            let sprite = pack.insert(&pixels, width, height)?;
+            let page = sprite
+                .page
+                .checked_add(offset)
+                .ok_or("texture page overflow")?;
+            sprites.insert(key, OreUiSprite { page, ..sprite });
+        }
+        let mut pages = self.pages.clone();
+        pages.extend(pack.finish());
+        Ok(Self {
+            pages,
+            sprites: Arc::new(sprites),
+            loading_frames: self.loading_frames.clone(),
+            animations: self.animations.clone(),
+        })
+    }
+}
+
+/// Side of the pages added for the Java-style menus' sprites and font sheets.
+const EXTRA_PAGE_SIDE: u32 = 1024;
 
 /// The checkout's compiled carriers, for tests that draw shipped artwork.
 #[cfg(any(test, feature = "test-support"))]

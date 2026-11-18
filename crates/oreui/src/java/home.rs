@@ -5,7 +5,9 @@
 //! realms, settings, quit, wardrobe, account, friends and inbox. The Bedrock-only buttons sit in
 //! the margins beside the column, so the column itself keeps Java's exact places.
 
-use launcher::menu::{MenuAction, MenuScreen, MenuView, auth::AuthState, settings_sections::SettingSection};
+use launcher::menu::{
+    MenuAction, MenuScreen, MenuView, auth::AuthState, settings_sections::SettingSection,
+};
 use ui::IconRef;
 use ui_engine::engine::screen::PaintError;
 
@@ -76,7 +78,7 @@ impl Layout {
 }
 
 /// Draws the Java title with the update notice every home shows.
-pub(in crate) fn draw(
+pub(crate) fn draw(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
     size: [f32; 2],
@@ -94,7 +96,11 @@ fn draw_screen(canvas: &mut Canvas<'_>, view: &MenuView, size: [f32; 2]) -> Resu
         canvas.begin_focus_region(focus::SCREEN, [0.0, 0.0, size[0], size[1]], None, true)?;
     canvas.focus_delegate(Some(MenuAction::Navigate(MenuScreen::Play)), None);
     logo(canvas, px(layout.logo), unit)?;
-    splash::draw(canvas, [layout.splash[0] * unit, layout.splash[1] * unit], unit)?;
+    splash::draw(
+        canvas,
+        [layout.splash[0] * unit, layout.splash[1] * unit],
+        unit,
+    )?;
     let go = |screen: MenuScreen| Some(MenuAction::Navigate(screen));
     for (rect, label, action) in [
         (layout.wide[0], "Play", go(MenuScreen::Play)),
@@ -105,9 +111,8 @@ fn draw_screen(canvas: &mut Canvas<'_>, view: &MenuView, size: [f32; 2]) -> Resu
     ] {
         button::draw(canvas, view, px(rect), label, action, unit)?;
     }
-    let section = |section: SettingSection| {
-        Some(MenuAction::OpenSettingsSection(section.definition().index))
-    };
+    let section =
+        |section: SettingSection| Some(MenuAction::OpenSettingsSection(section.definition().index));
     button::icon(
         canvas,
         view,
@@ -125,7 +130,12 @@ fn draw_screen(canvas: &mut Canvas<'_>, view: &MenuView, size: [f32; 2]) -> Resu
         unit,
     )?;
     sides(canvas, view, &layout, unit)?;
-    footer(canvas, [layout.version[0] * unit, layout.version[1] * unit], size, unit)?;
+    footer(
+        canvas,
+        [layout.version[0] * unit, layout.version[1] * unit],
+        size,
+        unit,
+    )?;
     button_toggle(canvas, view, px(layout.toggle), unit)?;
     canvas.end_focus_region(screen);
     Ok(())
@@ -141,14 +151,21 @@ fn sides(
 ) -> Result<(), PaintError> {
     let width = layout.left[0][2] - layout.left[0][0] - 6.0;
     let friends = fit(
-        &[format!("Friends ({})", view.friends.len()), "Friends".to_owned()],
+        &[
+            format!("Friends ({})", view.friends.len()),
+            "Friends".to_owned(),
+        ],
         view.friends.is_empty(),
         width,
     );
     let unread = view.feeds.home.inbox_unread;
     let inbox = fit(
         &[
-            format!("Inbox ({}{})", unread.min(99), if unread > 99 { "+" } else { "" }),
+            format!(
+                "Inbox ({}{})",
+                unread.min(99),
+                if unread > 99 { "+" } else { "" }
+            ),
             "Inbox".to_owned(),
         ],
         unread == 0,
@@ -160,7 +177,11 @@ fn sides(
     };
     let screen = |screen| Some(MenuAction::Navigate(screen));
     for (rect, label, action) in [
-        (layout.left[0], "Wardrobe".to_owned(), screen(MenuScreen::DressingRoom)),
+        (
+            layout.left[0],
+            "Wardrobe".to_owned(),
+            screen(MenuScreen::DressingRoom),
+        ),
         (layout.left[1], friends, screen(MenuScreen::Friends)),
         (layout.right[0], account.to_owned(), Some(account_action)),
         (layout.right[1], inbox, screen(MenuScreen::Inbox)),
@@ -182,7 +203,7 @@ fn fit(candidates: &[String], bare: bool, max: f32) -> String {
     };
     candidates
         .iter()
-        .find(|label| font::width_with(java, label).is_some_and(|width| width <= max))
+        .find(|label| font::width_with(&java, label).is_some_and(|width| width <= max))
         .cloned()
         .unwrap_or(last)
 }
@@ -265,11 +286,19 @@ mod tests {
 
     #[test]
     fn the_logo_starts_at_thirty_and_never_reaches_the_first_button() {
-        for (width, height) in [(320.0, 240.0), (427.0, 240.0), (640.0, 360.0), (320.0, 400.0)] {
+        for (width, height) in [
+            (320.0, 240.0),
+            (427.0, 240.0),
+            (640.0, 360.0),
+            (320.0, 400.0),
+        ] {
             for ratio in [2.0, 3.6, 6.0] {
                 let layout = Layout::new(width, height, ratio);
                 assert_eq!(layout.logo[1], 30.0);
-                assert!(layout.logo[3] < layout.wide[0][1], "{width}x{height} at {ratio}");
+                assert!(
+                    layout.logo[3] < layout.wide[0][1],
+                    "{width}x{height} at {ratio}"
+                );
                 assert!(layout.logo[2] - layout.logo[0] <= LOGO_WIDTH);
             }
         }

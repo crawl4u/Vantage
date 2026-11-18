@@ -15,6 +15,7 @@
 mod hud;
 mod items;
 mod manifest;
+pub mod menu_files;
 mod meta;
 mod names;
 mod sky;

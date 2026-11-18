@@ -15,6 +15,7 @@ assets = { path = "../assets" }
 bridge = { path = "../bridge" }
 image.workspace = true
 launcher = { path = "../launcher" }
+java-resource-pack = { path = "../java-resource-pack" }
 protocol = { path = "../protocol" }
 render-api = { path = "../render-api" }
 render-model = { path = "../render-model" }

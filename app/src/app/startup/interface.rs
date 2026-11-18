@@ -117,8 +117,15 @@ fn prepare(
                 presentation.ui_assets(),
                 presentation.remaining_fixed_texture_bytes(),
             );
+            // The Java-style menus' files come from the cache here; the selected resource packs
+            // are added by `drive_java_ui` once they are known.
+            let java_cache = launcher_host::java_ui::cache_dir_in(directory);
             if !images.pages.is_empty()
-                && let Err(reason) = presentation.enable_oreui_originals(images)
+                && let Err(reason) = presentation.enable_oreui_originals_with_java(
+                    images,
+                    &[],
+                    Some(&java_cache),
+                )
             {
                 bevy::log::warn!("OreUI originals disabled ({reason})");
             }

@@ -27,10 +27,28 @@ fn originals() -> Originals {
     };
     let sprites = Arc::new(HashMap::from([
         (key("sprites/widget/button.png"), sprite(REST_PAGE)),
-        (key("sprites/widget/button_highlighted.png"), sprite(HOVER_PAGE)),
-        (key("sprites/widget/button_disabled.png"), sprite(DISABLED_PAGE)),
-        (key("sprites/icon/language.png"), OreUiSprite { page: 9, bounds: [0, 0, 15, 15] }),
-        (key("sprites/icon/accessibility.png"), OreUiSprite { page: 9, bounds: [16, 0, 31, 15] }),
+        (
+            key("sprites/widget/button_highlighted.png"),
+            sprite(HOVER_PAGE),
+        ),
+        (
+            key("sprites/widget/button_disabled.png"),
+            sprite(DISABLED_PAGE),
+        ),
+        (
+            key("sprites/icon/language.png"),
+            OreUiSprite {
+                page: 9,
+                bounds: [0, 0, 15, 15],
+            },
+        ),
+        (
+            key("sprites/icon/accessibility.png"),
+            OreUiSprite {
+                page: 9,
+                bounds: [16, 0, 31, 15],
+            },
+        ),
     ]));
     Originals {
         page: 0,
@@ -101,7 +119,9 @@ fn the_java_title_offers_every_home_action_inside_the_window() {
     let view = java_view();
     let toggle = view.settings_options.menu_style_switch();
     for size in [[1280.0, 720.0], [640.0, 360.0], [360.0, 240.0]] {
-        let (hits, _) = paint(true, size, |canvas| home::draw(canvas, &view, size).unwrap());
+        let (hits, _) = paint(true, size, |canvas| {
+            home::draw(canvas, &view, size).unwrap()
+        });
         for action in [
             MenuAction::Navigate(MenuScreen::Play),
             MenuAction::Navigate(MenuScreen::Servers),
@@ -137,7 +157,9 @@ fn a_hovered_button_draws_the_highlighted_sprite_and_the_rest_draw_at_rest() {
     let mut view = java_view();
     view.hovered = Some(MenuAction::Navigate(MenuScreen::Play));
     let size = [1280.0, 720.0];
-    let (_, nodes) = paint(true, size, |canvas| home::draw(canvas, &view, size).unwrap());
+    let (_, nodes) = paint(true, size, |canvas| {
+        home::draw(canvas, &view, size).unwrap()
+    });
     let pages: Vec<u16> = nodes
         .iter()
         .filter_map(|node| match node.visual() {
@@ -145,9 +167,10 @@ fn a_hovered_button_draws_the_highlighted_sprite_and_the_rest_draw_at_rest() {
             _ => None,
         })
         .collect();
-    // Nine pieces of each button's nine-slice: one hovered, the rest at rest, none disabled.
-    assert_eq!(pages.iter().filter(|page| **page == HOVER_PAGE).count(), 9);
-    assert!(pages.iter().filter(|page| **page == REST_PAGE).count() >= 9 * 9);
+    // With no borders declared a sprite is stretched whole, one piece per button: one hovered,
+    // the nine others and the two icon buttons at rest, none disabled.
+    assert_eq!(pages.iter().filter(|page| **page == HOVER_PAGE).count(), 1);
+    assert!(pages.iter().filter(|page| **page == REST_PAGE).count() >= 10);
     assert!(!pages.contains(&DISABLED_PAGE));
 }
 
@@ -177,7 +200,10 @@ fn a_fixed_scale_does_not_change_between_windowed_and_fullscreen() {
             unit_for([2560.0, 1440.0], Some(chosen), 1.0),
             "scale {chosen}"
         );
-        assert_eq!(unit_for([2560.0, 1440.0], Some(chosen), 1.0), f32::from(chosen));
+        assert_eq!(
+            unit_for([2560.0, 1440.0], Some(chosen), 1.0),
+            f32::from(chosen)
+        );
     }
 }
 
@@ -203,7 +229,9 @@ fn the_java_title_is_drawn_at_the_chosen_java_gui_scale() {
     // Auto at this window is 3: a Java pixel is three logical pixels.
     let view = java_view();
     let size = [1280.0, 720.0];
-    let (hits, _) = paint(true, size, |canvas| home::draw(canvas, &view, size).unwrap());
+    let (hits, _) = paint(true, size, |canvas| {
+        home::draw(canvas, &view, size).unwrap()
+    });
     let play = hits
         .iter()
         .find(|(action, _)| *action == MenuAction::Navigate(MenuScreen::Play))
@@ -215,7 +243,9 @@ fn the_java_title_is_drawn_at_the_chosen_java_gui_scale() {
     let mut view = java_view();
     let options = Arc::make_mut(&mut view.settings_options);
     assert!(options.set(SettingId::JavaGuiScale.index(), 2));
-    let (hits, _) = paint(true, size, |canvas| home::draw(canvas, &view, size).unwrap());
+    let (hits, _) = paint(true, size, |canvas| {
+        home::draw(canvas, &view, size).unwrap()
+    });
     let play = hits
         .iter()
         .find(|(action, _)| *action == MenuAction::Navigate(MenuScreen::Play))

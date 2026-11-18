@@ -122,9 +122,9 @@ impl JavaFont {
                 }
                 let (left, top) = (column as u32 * cell_width, row as u32 * cell_height);
                 // The ink ends at the rightmost column that has any pixel.
-                let ink = (0..cell_width).rev().find(|x| {
-                    (0..cell_height).any(|y| sheet.alpha(left + x, top + y) != 0)
-                });
+                let ink = (0..cell_width)
+                    .rev()
+                    .find(|x| (0..cell_height).any(|y| sheet.alpha(left + x, top + y) != 0));
                 let Some(ink) = ink else { continue };
                 let width = ink + 1;
                 self.glyphs.entry(*character).or_insert(Glyph {
@@ -155,11 +155,18 @@ mod tests {
                 rgba[at] = 255;
             }
         }
-        Sheet { width, height, rgba }
+        Sheet {
+            width,
+            height,
+            rgba,
+        }
     }
 
     fn build(definition: &str, name: &str, sheet: Sheet) -> JavaFont {
-        JavaFont::build(&[definition.as_bytes()], &HashMap::from([(name.to_owned(), sheet)]))
+        JavaFont::build(
+            &[definition.as_bytes()],
+            &HashMap::from([(name.to_owned(), sheet)]),
+        )
     }
 
     #[test]
@@ -170,7 +177,10 @@ mod tests {
             sheet(2, 1, [8, 8], &[(0, &[0, 3]), (1, &[0, 1, 2, 5])]),
         );
         let a = font.glyph('a').unwrap();
-        assert_eq!((a.cell, a.advance, a.size, a.top), ([0, 0, 4, 8], 5.0, [4.0, 8.0], 0.0));
+        assert_eq!(
+            (a.cell, a.advance, a.size, a.top),
+            ([0, 0, 4, 8], 5.0, [4.0, 8.0], 0.0)
+        );
         let b = font.glyph('b').unwrap();
         assert_eq!((b.cell, b.advance), ([8, 0, 6, 8], 7.0));
     }
@@ -195,7 +205,10 @@ mod tests {
             sheet(1, 1, [9, 12], &[(0, &[0, 6])]),
         );
         let glyph = font.glyph('é').unwrap();
-        assert_eq!((glyph.size, glyph.top, glyph.advance), ([7.0, 12.0], -3.0, 8.0));
+        assert_eq!(
+            (glyph.size, glyph.top, glyph.advance),
+            ([7.0, 12.0], -3.0, 8.0)
+        );
     }
 
     #[test]

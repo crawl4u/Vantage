@@ -59,7 +59,12 @@ pub(super) fn draw_with(
     let Some((placed, width)) = layout(font, text) else {
         return Ok(None);
     };
-    let sheet_key = |glyph: &Glyph| glyph.sheet.as_ref().map(|name| key(&format!("font/{name}")));
+    let sheet_key = |glyph: &Glyph| {
+        glyph
+            .sheet
+            .as_ref()
+            .map(|name| key(&format!("font/{name}")))
+    };
     if placed
         .iter()
         .filter_map(|placed| sheet_key(placed.glyph))
@@ -130,7 +135,12 @@ pub(super) fn draw_turned_with(
     let Some((placed, width)) = layout(font, text) else {
         return Ok(false);
     };
-    let sheet_key = |glyph: &Glyph| glyph.sheet.as_ref().map(|name| key(&format!("font/{name}")));
+    let sheet_key = |glyph: &Glyph| {
+        glyph
+            .sheet
+            .as_ref()
+            .map(|name| key(&format!("font/{name}")))
+    };
     if placed
         .iter()
         .filter_map(|placed| sheet_key(placed.glyph))
@@ -176,7 +186,7 @@ pub(super) fn draw(
     shadow: bool,
 ) -> Result<Option<f32>, PaintError> {
     match java::font() {
-        Some(font) => draw_with(font, canvas, text, at, unit, colour, shadow),
+        Some(font) => draw_with(&font, canvas, text, at, unit, colour, shadow),
         None => Ok(None),
     }
 }
@@ -191,7 +201,7 @@ pub(super) fn draw_turned(
     colour: [u8; 4],
 ) -> Result<bool, PaintError> {
     match java::font() {
-        Some(font) => draw_turned_with(font, canvas, text, pivot, scale, angle, colour),
+        Some(font) => draw_turned_with(&font, canvas, text, pivot, scale, angle, colour),
         None => Ok(false),
     }
 }
@@ -206,7 +216,7 @@ pub(super) fn centred(
     shadow: bool,
 ) -> Result<bool, PaintError> {
     match java::font() {
-        Some(font) => centred_with(font, canvas, text, bounds, unit, colour, shadow),
+        Some(font) => centred_with(&font, canvas, text, bounds, unit, colour, shadow),
         None => Ok(false),
     }
 }
