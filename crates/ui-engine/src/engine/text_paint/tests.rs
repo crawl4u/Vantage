@@ -453,6 +453,7 @@ fn named_edit_metadata_places_caret_at_the_painted_character_boundary() {
                         font: edit.font.clone(),
                         letter_spacing_64: 0,
                         metrics,
+                        advances: None,
                     };
                     let mut layouts = TextLayoutCache::new(4, 1 << 20);
                     let width = spot.width(&mut layouts, &font, "0000");
@@ -544,6 +545,7 @@ fn named_styled_font_effects_use_display_units_at_every_raster_resolution() {
                     font: edit.font.clone(),
                     letter_spacing_64: 0,
                     metrics,
+                    advances: None,
                 };
                 assert_eq!(
                     spot.width(&mut TextLayoutCache::new(4, 1 << 20), &font, text),

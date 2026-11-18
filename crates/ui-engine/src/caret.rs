@@ -55,6 +55,10 @@ pub struct TextSpot<F> {
     pub font: Option<String>,
     pub letter_spacing_64: i32,
     pub metrics: TextMetrics,
+    /// Where the text puts the caret after each character, from its start: entry `k` is the
+    /// distance after the first `k` characters, window-logical px. For text a bitmap font drew
+    /// itself, whose widths the layout cache does not know.
+    pub advances: Option<std::sync::Arc<[f32]>>,
 }
 
 impl<F> TextSpot<F> {
@@ -65,6 +69,14 @@ impl<F> TextSpot<F> {
         font: &assets::RuntimeFontCatalog,
         text: &str,
     ) -> f32 {
+        if let Some(advances) = &self.advances {
+            let characters = text.chars().count();
+            return advances
+                .get(characters)
+                .or_else(|| advances.last())
+                .copied()
+                .unwrap_or(0.0);
+        }
         if let Some(layout) = &self.layout {
             return layout.first_line_caret_x_64(text.len()) as f32 / 64.0;
         }
@@ -86,5 +98,47 @@ impl<F> TextSpot<F> {
         layouts
             .layout(request)
             .map_or(0.0, |layout| layout.size_64()[0] as f32 / 64.0)
+    }
+}
+
+#[cfg(test)]
+mod advances_tests {
+    use super::*;
+
+    /// A spot whose text was drawn by a bitmap font, with the distances it measured.
+    fn spot(advances: &[f32]) -> TextSpot<()> {
+        TextSpot {
+            layout: None,
+            field: (),
+            bounds: ui::UiRect::new(
+                ui::UiPoint::new(0.0, 0.0).unwrap(),
+                ui::UiPoint::new(100.0, 20.0).unwrap(),
+            )
+            .unwrap(),
+            left: 0.0,
+            factor: 1.0,
+            effect_scale_1024: 0,
+            font: None,
+            letter_spacing_64: 0,
+            metrics: crate::text_metrics::TextMetrics::for_viewport(
+                [1280, 720],
+                ui::DpiScale::new(1.0).unwrap(),
+                Some(2),
+            ),
+            advances: Some(advances.into()),
+        }
+    }
+
+    #[test]
+    fn a_press_lands_by_the_distances_the_bitmap_font_measured() {
+        let spot = spot(&[0.0, 6.0, 10.0, 18.0]);
+        let font = crate::test_support::fixture_font();
+        let mut layouts = TextLayoutCache::new(4, 1 << 20);
+        let mut width = |text: &str| spot.width(&mut layouts, &font, text);
+        // "iWi" is narrow, wide, narrow: the caret goes to the boundary nearest the press.
+        assert_eq!(nearest_boundary("iWi", 1.0, &mut width), 0);
+        assert_eq!(nearest_boundary("iWi", 7.0, &mut width), 1);
+        assert_eq!(nearest_boundary("iWi", 13.0, &mut width), 2);
+        assert_eq!(nearest_boundary("iWi", 40.0, &mut width), 3);
     }
 }

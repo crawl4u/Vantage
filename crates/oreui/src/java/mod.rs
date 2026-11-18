@@ -20,6 +20,24 @@ use launcher::menu::{MenuView, settings_options::menu_style::MenuStyle};
 
 use super::paint::Canvas;
 
+/// The width of `text` in Java's font, in Java pixels; none when no Java font is installed or it
+/// lacks a character of `text`.
+pub(crate) fn text_width(text: &str) -> Option<f32> {
+    super::images::java::font().and_then(|font| font::width_with(&font, text))
+}
+
+/// Draws `text` in Java's font with its top left at `at` (logical pixels), `unit` logical pixels
+/// to a Java pixel; whether it did, which it does not when `text_width` has none.
+pub(crate) fn draw_text(
+    canvas: &mut Canvas<'_>,
+    text: &str,
+    at: [f32; 2],
+    unit: f32,
+    colour: [u8; 4],
+) -> Result<bool, ui_engine::engine::screen::PaintError> {
+    Ok(font::draw(canvas, text, at, unit, colour, true)?.is_some())
+}
+
 /// Sprite of a button at rest; its presence says the Java sprites are installed.
 const BUTTON: &str = "sprites/widget/button.png";
 

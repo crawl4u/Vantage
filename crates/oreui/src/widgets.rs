@@ -718,6 +718,11 @@ fn field(
         let hovered = canvas.role(NEUTRAL80).hovered;
         canvas.fill(face, mix(fill, hovered, motion.hover))?;
     }
+    if let Some(unit) = java
+        && java_text(canvas, view, b, value, placeholder, focused, action, unit)?
+    {
+        return Ok(());
+    }
     if let Some(icon) = leading {
         super::icons::draw(
             canvas,
@@ -805,9 +810,110 @@ fn field(
             font: Some(style.face.name().into()),
             letter_spacing_64,
             metrics,
+            advances: None,
         });
     }
     Ok(())
+}
+
+/// The longest text a Java-style field draws in Java's own font, in characters; longer text
+/// falls back to the client's.
+const JAVA_FIELD_CHARS: usize = 256;
+
+/// Draws a Java-style field's text, caret and selection in Java's font, as Java's edit box
+/// does: crisp at a whole number of pixels per texel, and in the font the game or the selected
+/// resource packs give. Registers the press area and the caret positions measured in that font.
+/// Returns false, drawing nothing, when Java's font cannot draw the text.
+#[allow(clippy::too_many_arguments)]
+fn java_text(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    b: Bounds,
+    value: &str,
+    placeholder: &str,
+    focused: bool,
+    action: Option<MenuAction>,
+    unit: f32,
+) -> Result<bool, PaintError> {
+    if value.chars().count() > JAVA_FIELD_CHARS {
+        return Ok(false);
+    }
+    let shown = if value.is_empty() { placeholder } else { value };
+    if crate::java::text_width(shown).is_none() {
+        return Ok(false);
+    }
+    // The distance after each whole number of characters, from the text's start.
+    let starts: Vec<usize> = value
+        .char_indices()
+        .map(|(byte, _)| byte)
+        .chain(std::iter::once(value.len()))
+        .collect();
+    let mut advances = Vec::with_capacity(starts.len());
+    for &byte in &starts {
+        let Some(width) = crate::java::text_width(&value[..byte]) else {
+            return Ok(false);
+        };
+        advances.push(width * unit);
+    }
+    let boundary = |byte: usize| starts.partition_point(|start| *start < byte.min(value.len()));
+    let (inner_left, inner_right) = (b[0] + 4.0 * unit, b[2] - 4.0 * unit);
+    let room = (inner_right - inner_left).max(unit);
+    let caret = advances[boundary(view.caret.byte)];
+    // A long text scrolls just far enough to keep the caret in view.
+    let scroll = if focused {
+        (caret + unit - room).max(0.0)
+    } else {
+        0.0
+    };
+    let left = inner_left - scroll;
+    let top = (b[1] + ((b[3] - b[1]) - 8.0 * unit) * 0.5).round();
+    let colour = if value.is_empty() {
+        [112, 112, 112, 255]
+    } else {
+        [224, 224, 224, 255]
+    };
+    let clip = canvas.begin_clip([inner_left, b[1], inner_right, b[3]])?;
+    crate::java::draw_text(canvas, shown, [left, top], unit, colour)?;
+    if focused && let Some(selection) = view.caret.selection {
+        let edges = selection.map(|byte| left + advances[boundary(byte)]);
+        canvas.invert([edges[0], top - unit, edges[1], top + 9.0 * unit])?;
+    }
+    if focused && view.caret.shown && view.caret.selection.is_none() {
+        let x = left + caret;
+        if caret + unit >= *advances.last().unwrap_or(&0.0) && !value.is_empty() {
+            // At the end of the text Java draws an underscore.
+            canvas.fill(
+                [x, top + 8.0 * unit, x + 6.0 * unit, top + 9.0 * unit],
+                colour,
+            )?;
+        } else {
+            canvas.fill([x, top - unit, x + unit, top + 9.0 * unit], colour)?;
+        }
+    }
+    canvas.end_clip(clip);
+    let Some(action) = action else {
+        return Ok(true);
+    };
+    canvas.hit(action, b)?;
+    if let Some(field) = action.text_field()
+        && let Some(&(hit, bounds)) = canvas.hits.last()
+        && hit == action
+    {
+        let metrics = canvas.metrics;
+        canvas.spots.push(TextSpot {
+            layout: None,
+            field,
+            bounds,
+            left,
+            factor: 1.0,
+            effect_scale_1024: 0,
+            font: None,
+            letter_spacing_64: 0,
+            metrics,
+            advances: Some(advances.into()),
+        });
+    }
+    Ok(true)
 }
 
 /// Native choices keep the selected cell green and lowered, with fixed input targets.

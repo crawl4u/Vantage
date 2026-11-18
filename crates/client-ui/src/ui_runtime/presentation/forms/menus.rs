@@ -645,6 +645,7 @@ fn text_spot(
         font: text.font.clone(),
         letter_spacing_64: 0,
         metrics,
+        advances: None,
     })
 }
 
