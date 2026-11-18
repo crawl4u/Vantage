@@ -517,6 +517,7 @@ pub struct UiTextureCatalog {
     identity: [u8; 32],
     static_identity: [u8; 32],
     source_identity: [u8; 32],
+    replaceable: usize,
 }
 
 impl PartialEq for UiTextureCatalog {
@@ -544,6 +545,23 @@ impl UiTextureCatalog {
         dynamic_start: usize,
         source_identity: [u8; 32],
     ) -> Result<Self, UiRenderRejectReason> {
+        Self::with_replaceable_pages(pages, dynamic_start, 0, source_identity)
+    }
+
+    /// Like [`with_source_identity`](Self::with_source_identity), but the last `replaceable`
+    /// fixed pages may later hold other pixels of the same size without changing the fixed
+    /// identity, so the renderer re-uploads them instead of rejecting the catalog. Their count,
+    /// sizes and position are part of the identity as for any fixed page.
+    pub fn with_replaceable_pages(
+        pages: Vec<UiTexturePage>,
+        dynamic_start: usize,
+        replaceable: usize,
+        source_identity: [u8; 32],
+    ) -> Result<Self, UiRenderRejectReason> {
+        if replaceable > dynamic_start {
+            return Err(UiRenderRejectReason::InvalidTextureExtent);
+        }
+        let replaceable_start = dynamic_start - replaceable;
         if dynamic_start > pages.len()
             || pages.is_empty()
             || pages.len() > MAX_UI_TEXTURE_LAYERS as usize
@@ -627,7 +645,7 @@ impl UiTextureCatalog {
                 }
             }
             all.update(page.identity);
-            if index < dynamic_start {
+            if index < replaceable_start {
                 static_pages.update(page.identity);
             }
         }
@@ -640,6 +658,7 @@ impl UiTextureCatalog {
             identity: all.finalize().into(),
             static_identity: static_pages.finalize().into(),
             source_identity,
+            replaceable,
         })
     }
 
@@ -660,7 +679,12 @@ impl UiTextureCatalog {
         }
         let mut pages = self.pages[..self.dynamic_start].to_vec();
         pages.extend(replacement);
-        Self::with_source_identity(pages, self.dynamic_start, self.source_identity)
+        Self::with_replaceable_pages(
+            pages,
+            self.dynamic_start,
+            self.replaceable,
+            self.source_identity,
+        )
     }
     pub fn pages(&self) -> &[UiTexturePage] {
         &self.pages
@@ -680,6 +704,11 @@ impl UiTextureCatalog {
     pub const fn identity(&self) -> [u8; 32] {
         self.identity
     }
+    pub const fn source_identity(&self) -> [u8; 32] {
+        self.source_identity
+    }
+
+    #[must_use]
     pub const fn static_identity(&self) -> [u8; 32] {
         self.static_identity
     }

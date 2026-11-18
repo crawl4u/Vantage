@@ -478,7 +478,7 @@ impl UiPresentationRuntime {
     ) -> Result<(), String> {
         let images = oreui::images::with_java(&base, packs, cache);
         self.screens.oreui.base_images = Some(base);
-        self.enable_oreui_originals(images)
+        self.install_originals(images, oreui::images::JAVA_PAGES)
     }
 
     /// Adds the Java-style menus' files again over the remembered artwork, from `packs` and
@@ -492,11 +492,20 @@ impl UiPresentationRuntime {
             return Ok(());
         };
         let images = oreui::images::with_java(&base, packs, cache);
-        self.enable_oreui_originals(images)
+        self.install_originals(images, oreui::images::JAVA_PAGES)
     }
 
     /// Registers the installed artwork as immutable static texture pages.
     pub fn enable_oreui_originals(&mut self, images: OreUiImages) -> Result<(), String> {
+        self.install_originals(images, 0)
+    }
+
+    /// Installs `images`; the last `replaceable` of its pages may hold other pixels later.
+    fn install_originals(
+        &mut self,
+        images: OreUiImages,
+        replaceable: usize,
+    ) -> Result<(), String> {
         if self
             .screens
             .oreui
@@ -526,10 +535,19 @@ impl UiPresentationRuntime {
         let mut pages = self.textures.pages()[..start].to_vec();
         pages.extend(originals);
         pages.extend_from_slice(&self.textures.pages()[dynamic_start..]);
-        let textures = UiRenderTextureArray::with_source_identity(
+        // The first install derives its namespace from the catalog it extends. Later installs keep
+        // the one that install made, so a change of pixels in replaceable pages leaves the fixed
+        // identity alone.
+        let source = if self.screens.oreui.originals.is_some() && replaceable > 0 {
+            self.textures.source_identity()
+        } else {
+            self.textures.static_identity()
+        };
+        let textures = UiRenderTextureArray::with_replaceable_pages(
             pages,
             start + count,
-            self.textures.static_identity(),
+            replaceable,
+            source,
         )
         .map_err(|error| format!("{error:?}"))?;
         self.textures = Arc::new(textures);

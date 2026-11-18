@@ -282,13 +282,13 @@ pub fn with_java(
     let layers = java::Layers { packs, cache };
     let Some(resolved) = java::resolve(&layers) else {
         java::clear();
-        return base.clone();
+        return base.with_extra_art(Vec::new()).unwrap_or_else(|_| base.clone());
     };
     let art = resolved.install();
     base.with_extra_art(art).unwrap_or_else(|reason| {
         tracing::warn!("Java menu artwork unusable ({reason})");
         java::clear();
-        base.clone()
+        base.with_extra_art(Vec::new()).unwrap_or_else(|_| base.clone())
     })
 }
 
@@ -312,7 +312,20 @@ impl OreUiImages {
             sprites.insert(key, OreUiSprite { page, ..sprite });
         }
         let mut pages = self.pages.clone();
-        pages.extend(pack.finish());
+        let mut extra = pack.finish();
+        if extra.len() > JAVA_PAGES {
+            return Err(format!("{} pages exceed the {JAVA_PAGES} reserved", extra.len()));
+        }
+        // Always exactly `JAVA_PAGES` pages, so a change of resource pack replaces pixels without
+        // moving or resizing any page.
+        let blank: Arc<[u8]> = vec![0; (EXTRA_PAGE_SIDE * EXTRA_PAGE_SIDE * 4) as usize].into();
+        while extra.len() < JAVA_PAGES {
+            extra.push(OreUiPage {
+                dimensions: [EXTRA_PAGE_SIDE; 2],
+                pixels: blank.clone(),
+            });
+        }
+        pages.extend(extra);
         Ok(Self {
             pages,
             sprites: Arc::new(sprites),
@@ -324,6 +337,10 @@ impl OreUiImages {
 
 /// Side of the pages added for the Java-style menus' sprites and font sheets.
 const EXTRA_PAGE_SIDE: u32 = 1024;
+
+/// How many pages [`with_java`] adds: the renderer keeps fixed pages for the whole run, so the
+/// Java menus' pages are reserved at this count and only their pixels change with the packs.
+pub const JAVA_PAGES: usize = 2;
 
 /// The checkout's compiled carriers, for tests that draw shipped artwork.
 #[cfg(any(test, feature = "test-support"))]
