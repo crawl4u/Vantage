@@ -62,16 +62,21 @@ pub fn launcher_faces(assets: &RuntimeUiAssets) -> Option<PanoramaFaces> {
     )
 }
 
+/// The faces `panorama_0..5.{png,jpg}` in `dir`; none when any is missing or they differ in size.
+pub fn faces_in(dir: &std::path::Path) -> Option<PanoramaFaces> {
+    decode_faces(|face| {
+        ["png", "jpg"]
+            .iter()
+            .find_map(|ext| std::fs::read(dir.join(format!("panorama_{face}.{ext}"))).ok())
+    })
+}
+
 fn override_or_pack_faces(
     override_dir: Option<PathBuf>,
     assets: &RuntimeUiAssets,
 ) -> Option<PanoramaFaces> {
     let overridden = override_dir.and_then(|dir| {
-        let faces = decode_faces(|face| {
-            ["png", "jpg"]
-                .iter()
-                .find_map(|ext| std::fs::read(dir.join(format!("panorama_{face}.{ext}"))).ok())
-        });
+        let faces = faces_in(&dir);
         if faces.is_none() {
             tracing::warn!(dir = %dir.display(), "panorama override unreadable; using the pack's faces");
         }
@@ -172,6 +177,20 @@ mod tests {
             let path = dir.join(format!("{set}{face}.png"));
             std::fs::write(path, png(side, [red, face, 0, 255])).unwrap();
         }
+    }
+
+    #[test]
+    fn faces_in_a_folder_load_as_one_set_and_an_incomplete_folder_loads_none() {
+        let dir = tempfile::tempdir().unwrap();
+        write_faces(dir.path(), 4, 120);
+        let faces = faces_in(dir.path()).expect("six faces of one size load");
+        assert_eq!(faces.side(), 4);
+        // One face short, or one of another size, drops the whole set.
+        std::fs::remove_file(dir.path().join("panorama_3.png")).unwrap();
+        assert!(faces_in(dir.path()).is_none());
+        std::fs::write(dir.path().join("panorama_3.png"), png(8, [1, 2, 3, 255])).unwrap();
+        assert!(faces_in(dir.path()).is_none());
+        assert!(faces_in(&dir.path().join("missing")).is_none());
     }
 
     /// A UI carrier compiled from a pack holding only `textures/ui/white.png`, plus faces of

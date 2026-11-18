@@ -6,6 +6,7 @@
 mod button;
 mod font;
 pub(super) mod home;
+mod splash;
 
 use launcher::menu::{MenuView, settings_options::menu_style::MenuStyle};
 
@@ -21,7 +22,7 @@ pub(super) fn selected(view: &MenuView, canvas: &Canvas<'_>) -> bool {
 }
 
 /// Java pixels a screen needs across and down at least, so it fits whole.
-const FIT: [f32; 2] = [320.0, 270.0];
+const FIT: [f32; 2] = [320.0, 240.0];
 
 /// Logical pixels in one Java GUI pixel for a `size` window: the largest whole number at which
 /// [`FIT`] still fits, as the game's automatic GUI scale picks, so texels stay crisp.

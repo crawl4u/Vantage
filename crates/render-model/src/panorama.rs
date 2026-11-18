@@ -79,7 +79,7 @@ impl PanoramaView {
 mod launcher;
 mod projection;
 pub use launcher::{
-    PanoramaSet, decode_faces, launcher_faces, launcher_view, overlay_tint, pack_faces,
+    PanoramaSet, decode_faces, faces_in, launcher_faces, launcher_view, overlay_tint, pack_faces,
 };
 
 /// Panorama shader shared by the setup window and game renderer.

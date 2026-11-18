@@ -4,7 +4,7 @@ use bevy::{
 };
 use client_shell::menu::MenuRuntime;
 use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
-use launcher::menu::settings_options::SettingId;
+use launcher::menu::settings_options::{SettingId, menu_style::MenuStyle};
 use render_model::panorama::{launcher_faces, launcher_view, overlay_tint};
 use render_scene::PanoramaScene;
 use std::{sync::Arc, time::Instant};
@@ -43,6 +43,17 @@ pub(crate) fn drive_menu_panorama(
         scene.show(None);
         return;
     };
+    // The Java style shows Java's own panorama, read from the player's Java install, when it is
+    // cached; the Bedrock style, and a Java style without the cache, show the pack's.
+    let java_style = menu.as_deref().is_some_and(|menu| {
+        menu.settings_snapshot().0.menu_style() == MenuStyle::Java
+    });
+    let faces = |java: bool| {
+        java.then(java_faces)
+            .flatten()
+            .or_else(|| launcher_faces(assets))
+            .map(Arc::new)
+    };
     if state.as_ref().is_none_or(|state| !state.is_source(assets)) {
         let seconds = state.as_ref().map_or(0.0, |state| state.seconds);
         let previous = state.replace(PanoramaState {
@@ -50,11 +61,15 @@ pub(crate) fn drive_menu_panorama(
             last: Instant::now(),
             seconds,
             tint: overlay_tint(assets),
+            java_style,
         });
         if let Some(previous) = previous {
             client_runtime::session::release_off_frame(previous);
         }
-        scene.set_faces(launcher_faces(assets).map(Arc::new));
+        scene.set_faces(faces(java_style));
+    } else if let Some(state) = state.as_mut().filter(|state| state.java_style != java_style) {
+        state.java_style = java_style;
+        scene.set_faces(faces(java_style));
     }
     let shown = presentation
         .loading_stage()
@@ -84,6 +99,14 @@ pub(crate) struct PanoramaState {
     last: Instant,
     seconds: f32,
     tint: [f32; 4],
+    /// Whether the faces were last chosen for the Java menu style.
+    java_style: bool,
+}
+
+/// Java's title panorama from the cache of the player's Java install, none without it.
+fn java_faces() -> Option<render_model::PanoramaFaces> {
+    let layout = launcher::install_layout::InstallLayout::discover().ok()?;
+    render_model::panorama::faces_in(&launcher_host::java_ui::cache_dir(&layout).join("title"))
 }
 
 impl PanoramaState {

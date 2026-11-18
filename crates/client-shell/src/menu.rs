@@ -545,6 +545,10 @@ impl MenuRuntime {
                 }
                 self.enter(screen);
             }
+            MenuAction::OpenSettingsSection(section) => {
+                self.enter(MenuScreen::Settings);
+                self.activate(MenuAction::SettingsSection(section));
+            }
             MenuAction::OpenExitDialog => {
                 self.dialog = Some(MenuDialog::Exit);
                 self.focused = 0;

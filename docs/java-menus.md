@@ -77,7 +77,13 @@ Java sprites and font when the active packs change, as the other pack-driven art
    (`images/java_font.rs`), Java layout (advance, one-pixel quarter-colour shadow, centring on an
    8-pixel line) in `java/font.rs`, used by the Java title; the client's font is the fallback for
    characters the sheets lack, or when no Java font is installed.
-4. Title fidelity: Java's exact positions and sizes, panorama, splash text, small icon buttons.
+4. Title fidelity. Done: Java's exact layout and scale rule (`java/home.rs`), the language and
+   accessibility icon buttons that open Settings on those sections, the Bedrock-only buttons in
+   the side margins, Java's splash list drawn rotated and pulsing (`java/splash.rs`), and Java's
+   own panorama swapped in while the Java style is chosen. Java's files are read from the
+   launcher's asset store first, then the jar, because the jar holds one-pixel stand-ins for
+   some pictures. Still to do: Java's Unifont fallback for scripts the bitmap sheets lack, and
+   the date-based splashes.
 5. Resource pack following (the three steps above) for sprites and font together.
 6. Pause menu.
 7. Options pages generated from the settings definitions, plus "More settings".

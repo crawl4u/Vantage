@@ -39,7 +39,7 @@ fn install_version(root: &Path, id: &str, kind: &str, released: &str, sprites: &
     let mut zip = zip::ZipWriter::new(std::fs::File::create(dir.join(format!("{id}.jar"))).unwrap());
     let options = zip::write::SimpleFileOptions::default();
     for sprite in sprites {
-        zip.start_file(format!("{JAR_GUI_ROOT}{sprite}"), options).unwrap();
+        zip.start_file(format!("assets/{GUI_ROOT}{sprite}"), options).unwrap();
         zip.write_all(format!("{id}:{sprite}").as_bytes()).unwrap();
     }
     zip.finish().unwrap();
@@ -159,6 +159,12 @@ fn a_real_java_install_caches_every_menu_sprite() {
         assert!(manifest.font_files.iter().any(|cached| cached == file), "{file} not cached");
         assert!(cache_dir(&layout).join(file).is_file());
     }
+    // The title's real panorama faces, from the launcher's asset store, and the splash lines.
+    for file in ["title/panorama_0.png", "title/panorama_5.png", "texts/splashes.txt"] {
+        assert!(manifest.data_files.iter().any(|cached| cached == file), "{file} not cached");
+    }
+    assert!(png_size(&std::fs::read(cache_dir(&layout).join("title/panorama_0.png")).unwrap())
+        .is_some_and(|(width, height)| width >= MIN_PANORAMA_SIDE && height >= MIN_PANORAMA_SIDE));
     // The widget sprites carry nine-slice borders.
     assert!(cache_dir(&layout).join("sprites/widget/button.png.mcmeta").is_file());
 }
@@ -177,7 +183,7 @@ fn the_font_definitions_and_the_sheets_they_name_are_cached() {
         zip.write_all(bytes).unwrap();
     };
     for sprite in SPRITES {
-        add(&format!("{JAR_GUI_ROOT}{sprite}"), b"png");
+        add(&format!("assets/{GUI_ROOT}{sprite}"), b"png");
     }
     add(
         "assets/minecraft/font/include/default.json",
@@ -238,4 +244,94 @@ fn a_cache_from_an_older_format_is_read_from_the_jar_again() {
     assert!(prepare_from(&layout, &[game.path().to_owned()]).ready());
     assert_eq!(std::fs::read_to_string(&button).unwrap(), "1.21.8:sprites/widget/button.png");
     assert_eq!(read_manifest(&cache_dir(&layout)).unwrap().format, CACHE_FORMAT);
+}
+
+/// The header of a PNG `side` texels square: enough for the size check, not a picture.
+fn png_header(side: u32) -> Vec<u8> {
+    let mut bytes = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+    bytes.extend(side.to_be_bytes());
+    bytes.extend(side.to_be_bytes());
+    bytes
+}
+
+/// A game folder whose jar holds one-pixel panorama faces and sprites, and whose asset store holds
+/// the real faces and the splash lines when `store` is set.
+fn install_with_store(root: &Path, store: bool) {
+    let dir = root.join("versions/26.3");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("26.3.json"),
+        r#"{"type":"release","releaseTime":"2026-09-15","assetIndex":{"id":"34"}}"#,
+    )
+    .unwrap();
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(dir.join("26.3.jar")).unwrap());
+    let options = zip::write::SimpleFileOptions::default();
+    for sprite in SPRITES {
+        zip.start_file(format!("assets/{GUI_ROOT}{sprite}"), options).unwrap();
+        zip.write_all(b"png").unwrap();
+    }
+    for face in 0..6 {
+        zip.start_file(format!("assets/{PANORAMA_FACES}{face}.png"), options).unwrap();
+        zip.write_all(&png_header(1)).unwrap();
+    }
+    zip.start_file("assets/minecraft/texts/splashes.txt", options).unwrap();
+    zip.write_all(b"from the jar\n").unwrap();
+    zip.finish().unwrap();
+    if !store {
+        return;
+    }
+    let mut objects = serde_json::Map::new();
+    let mut put = |name: &str, hash: &str, bytes: &[u8]| {
+        let path = root.join("assets/objects").join(&hash[..2]);
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(path.join(hash), bytes).unwrap();
+        objects.insert(name.to_owned(), serde_json::json!({ "hash": hash, "size": bytes.len() }));
+    };
+    for face in 0..6 {
+        put(&format!("{PANORAMA_FACES}{face}.png"), &format!("aa00000000000000000000000000000000000{face}00"), &png_header(512));
+    }
+    put("minecraft/texts/splashes.txt", "bb0000000000000000000000000000000000000000", b"from the store\n");
+    std::fs::create_dir_all(root.join("assets/indexes")).unwrap();
+    std::fs::write(
+        root.join("assets/indexes/34.json"),
+        serde_json::json!({ "objects": objects }).to_string(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn the_asset_store_comes_before_the_jar_so_real_faces_win_over_placeholders() {
+    let game = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    install_with_store(game.path(), true);
+    let layout = layout(home.path());
+    assert!(prepare_from(&layout, &[game.path().to_owned()]).ready());
+    let manifest = read_manifest(&cache_dir(&layout)).unwrap();
+    for face in 0..6 {
+        let cached = format!("title/panorama_{face}.png");
+        assert!(manifest.data_files.contains(&cached), "{cached} not cached");
+        let bytes = std::fs::read(cache_dir(&layout).join(&cached)).unwrap();
+        assert_eq!(png_size(&bytes), Some((512, 512)));
+    }
+    let splashes = std::fs::read_to_string(cache_dir(&layout).join("texts/splashes.txt")).unwrap();
+    assert_eq!(splashes, "from the store\n");
+}
+
+#[test]
+fn placeholder_faces_in_the_jar_are_not_taken_but_the_splashes_still_are() {
+    let game = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    install_with_store(game.path(), false);
+    let layout = layout(home.path());
+    assert!(prepare_from(&layout, &[game.path().to_owned()]).ready());
+    let manifest = read_manifest(&cache_dir(&layout)).unwrap();
+    assert_eq!(manifest.data_files, ["texts/splashes.txt"]);
+    assert!(!cache_dir(&layout).join("title").exists());
+}
+
+#[test]
+fn a_png_size_comes_from_its_header_and_other_bytes_have_none() {
+    assert_eq!(png_size(&png_header(1024)), Some((1024, 1024)));
+    assert_eq!(png_size(b"GIF89a not a png at all......"), None);
+    assert_eq!(png_size(b"\x89PNG"), None);
 }

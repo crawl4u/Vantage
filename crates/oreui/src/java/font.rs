@@ -114,6 +114,58 @@ pub(super) fn centred_with(
     Ok(draw_with(font, canvas, text, [left, top], unit, colour, shadow)?.is_some())
 }
 
+/// Draws `text` turned `angle` radians about `pivot` and `scale` logical pixels per Java pixel, the
+/// way the title's splash is drawn: centred across the pivot, its line running from 8 Java pixels
+/// above it to the pivot, the shadow one scaled Java pixel down and right. Returns false, drawing
+/// nothing, when the font cannot draw all of it.
+pub(super) fn draw_turned_with(
+    font: &JavaFont,
+    canvas: &mut Canvas<'_>,
+    text: &str,
+    pivot: [f32; 2],
+    scale: f32,
+    angle: f32,
+    colour: [u8; 4],
+) -> Result<bool, PaintError> {
+    let Some((placed, width)) = layout(font, text) else {
+        return Ok(false);
+    };
+    let sheet_key = |glyph: &Glyph| glyph.sheet.as_ref().map(|name| key(&format!("font/{name}")));
+    if placed
+        .iter()
+        .filter_map(|placed| sheet_key(placed.glyph))
+        .any(|sheet| !canvas.has_sprite(&sheet))
+    {
+        return Ok(false);
+    }
+    let (sin, cos) = angle.sin_cos();
+    for (offset, pass_colour) in [(scale, shadow_colour(colour)), (0.0, colour)] {
+        for placed in &placed {
+            let Some(sheet) = sheet_key(placed.glyph) else {
+                continue;
+            };
+            let glyph = placed.glyph;
+            // The glyph's box before turning, with the pivot as the origin.
+            let left = (placed.pen - width * 0.5) * scale + offset;
+            let top = (glyph.top - LINE) * scale + offset;
+            let (w, h) = (glyph.size[0] * scale, glyph.size[1] * scale);
+            let (cx, cy) = (left + w * 0.5, top + h * 0.5);
+            let centre = [
+                pivot[0] + cx * cos - cy * sin,
+                pivot[1] + cx * sin + cy * cos,
+            ];
+            let bounds = [
+                centre[0] - w * 0.5,
+                centre[1] - h * 0.5,
+                centre[0] + w * 0.5,
+                centre[1] + h * 0.5,
+            ];
+            canvas.sprite_region_rotated(&sheet, glyph.cell, bounds, pass_colour, angle)?;
+        }
+    }
+    Ok(true)
+}
+
 /// [`draw_with`] on the game's font from the player's Java install; none without it.
 pub(super) fn draw(
     canvas: &mut Canvas<'_>,
@@ -126,6 +178,21 @@ pub(super) fn draw(
     match java::font() {
         Some(font) => draw_with(font, canvas, text, at, unit, colour, shadow),
         None => Ok(None),
+    }
+}
+
+/// [`draw_turned_with`] on the game's font from the player's Java install; false without it.
+pub(super) fn draw_turned(
+    canvas: &mut Canvas<'_>,
+    text: &str,
+    pivot: [f32; 2],
+    scale: f32,
+    angle: f32,
+    colour: [u8; 4],
+) -> Result<bool, PaintError> {
+    match java::font() {
+        Some(font) => draw_turned_with(font, canvas, text, pivot, scale, angle, colour),
+        None => Ok(false),
     }
 }
 

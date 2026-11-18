@@ -77,3 +77,33 @@ pub(super) fn draw(
     }
     Ok(())
 }
+
+/// Draws a square button showing the sprite `icon_name` at its own size, centred, as Java's icon
+/// buttons do. With no action it is drawn disabled.
+pub(super) fn icon(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    bounds: Bounds,
+    icon_name: &str,
+    action: Option<MenuAction>,
+    unit: f32,
+) -> Result<(), PaintError> {
+    let state = canvas.interaction(view, action);
+    let sprite = match (action, state.hovered || state.focused) {
+        (None, _) => DISABLED,
+        (Some(_), true) => HOVER,
+        (Some(_), false) => REST,
+    };
+    nine_slice(canvas, sprite, bounds, unit)?;
+    let key = key(icon_name);
+    if let Some([width, height]) = canvas.sprite_size(&key) {
+        let (width, height) = (width * unit, height * unit);
+        let left = ((bounds[0] + bounds[2] - width) * 0.5).round();
+        let top = ((bounds[1] + bounds[3] - height) * 0.5).round();
+        canvas.sprite(&key, [left, top, left + width, top + height], [255; 4])?;
+    }
+    if let Some(action) = action {
+        canvas.hit(action, bounds)?;
+    }
+    Ok(())
+}

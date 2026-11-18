@@ -41,11 +41,22 @@ pub fn font() -> Option<&'static JavaFont> {
     FONT.get()?.as_ref()
 }
 
+/// The title screen's splash lines from Java's `splashes.txt`; none without the cache.
+static SPLASHES: OnceLock<Vec<String>> = OnceLock::new();
+
+/// Java's splash lines, one per entry, when the cache holds them.
+#[must_use]
+pub fn splashes() -> &'static [String] {
+    SPLASHES.get().map_or(&[], Vec::as_slice)
+}
+
 #[derive(Deserialize)]
 struct Manifest {
     files: Vec<String>,
     #[serde(default)]
     font_files: Vec<String>,
+    #[serde(default)]
+    data_files: Vec<String>,
 }
 
 /// Decodes every cached sprite; an absent or unreadable cache gives none. Remembers the borders
@@ -79,6 +90,17 @@ pub(super) fn read(compiled_dir: &Path) -> Vec<(String, Art)> {
         art.push((key(&name), Art::Still(width, height, rgba.into_raw())));
     }
     let _ = BORDERS.set(borders);
+    if manifest.data_files.iter().any(|file| file == "texts/splashes.txt") {
+        let lines = std::fs::read_to_string(cache.join("texts/splashes.txt")).unwrap_or_default();
+        let _ = SPLASHES.set(
+            lines
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect(),
+        );
+    }
     let (font, sheets) = read_font(&cache, &manifest.font_files);
     let _ = FONT.set((!font.is_empty()).then_some(font));
     art.extend(sheets);

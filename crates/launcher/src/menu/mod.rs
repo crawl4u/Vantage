@@ -225,6 +225,9 @@ pub enum MenuAction {
     EditSaved(usize),
     /// Pick a settings section by its selector index.
     SettingsSection(u8),
+    /// Opens Settings on this section from another screen, such as the Java title's language
+    /// and accessibility buttons.
+    OpenSettingsSection(u8),
     Respawn,
     PlayLocalWorld(usize),
     /// A press on a local-world screen (create, edit, templates) or its modals.

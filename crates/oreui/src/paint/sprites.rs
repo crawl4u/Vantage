@@ -32,6 +32,13 @@ impl Canvas<'_> {
         Some((originals.page.checked_add(sprite.page)?, sprite))
     }
 
+    /// The size in texels of the artwork `key`, if it is installed.
+    pub(in super::super) fn sprite_size(&self, key: &str) -> Option<[f32; 2]> {
+        let (_, sprite) = self.native_sprite(key)?;
+        let [left, top, right, bottom] = sprite.bounds;
+        Some([f32::from(right - left), f32::from(bottom - top)])
+    }
+
     /// Whether the artwork `key` is installed.
     pub(in super::super) fn has_sprite(&self, key: &str) -> bool {
         self.native_sprite(key).is_some()
@@ -64,6 +71,39 @@ impl Canvas<'_> {
                 texture_page,
                 uv: [left + x, top + y, x1, y1],
                 color,
+            },
+        )?;
+        Ok(true)
+    }
+
+    /// [`Self::sprite_region`] turned `angle_radians` about the centre of `b`.
+    pub(in super::super) fn sprite_region_rotated(
+        &mut self,
+        key: &str,
+        region: [u16; 4],
+        b: Bounds,
+        color: Rgba,
+        angle_radians: f32,
+    ) -> Result<bool, PaintError> {
+        let Some((texture_page, sprite)) = self.native_sprite(key) else {
+            return Ok(false);
+        };
+        let [left, top, right, bottom] = sprite.bounds;
+        let [x, y, width, height] = region;
+        let (Some(x1), Some(y1)) = (left.checked_add(x + width), top.checked_add(y + height))
+        else {
+            return Ok(false);
+        };
+        if x1 > right || y1 > bottom || width == 0 || height == 0 {
+            return Ok(false);
+        }
+        self.push(
+            b,
+            UiVisual::RotatedSprite {
+                texture_page,
+                uv: [left + x, top + y, x1, y1],
+                color,
+                angle_radians,
             },
         )?;
         Ok(true)

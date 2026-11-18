@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use launcher::menu::{
     MenuAction, MenuScreen, MenuView,
     settings_options::{SettingId, menu_style::MenuStyle},
+    settings_sections::SettingSection,
 };
 use ui::UiVisual;
 use ui_engine::{test_support::fixture_font, text_metrics::TextMetrics};
@@ -28,6 +29,8 @@ fn originals() -> Originals {
         (key("sprites/widget/button.png"), sprite(REST_PAGE)),
         (key("sprites/widget/button_highlighted.png"), sprite(HOVER_PAGE)),
         (key("sprites/widget/button_disabled.png"), sprite(DISABLED_PAGE)),
+        (key("sprites/icon/language.png"), OreUiSprite { page: 9, bounds: [0, 0, 15, 15] }),
+        (key("sprites/icon/accessibility.png"), OreUiSprite { page: 9, bounds: [16, 0, 31, 15] }),
     ]));
     Originals {
         page: 0,
@@ -109,6 +112,8 @@ fn the_java_title_offers_every_home_action_inside_the_window() {
             MenuAction::Navigate(MenuScreen::Friends),
             MenuAction::Navigate(MenuScreen::Inbox),
             MenuAction::StartSignIn,
+            MenuAction::OpenSettingsSection(SettingSection::Language.definition().index),
+            MenuAction::OpenSettingsSection(SettingSection::Accessibility.definition().index),
             MenuAction::SettingsOption(toggle.0, toggle.1),
         ] {
             let found = hits
