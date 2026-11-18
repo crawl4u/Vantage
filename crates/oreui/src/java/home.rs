@@ -86,7 +86,7 @@ pub(in crate) fn draw(
 }
 
 fn draw_screen(canvas: &mut Canvas<'_>, view: &MenuView, size: [f32; 2]) -> Result<(), PaintError> {
-    let unit = unit(size);
+    let unit = unit(canvas, size);
     let ratio = canvas.title_artwork.map_or(4.0, icon_ratio);
     let layout = Layout::new((size[0] / unit).ceil(), (size[1] / unit).ceil(), ratio);
     let px = |rect| Layout::px(rect, unit);

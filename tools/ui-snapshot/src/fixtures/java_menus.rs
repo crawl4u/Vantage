@@ -16,6 +16,12 @@ pub(super) const STATES: &[State] = &[
         fixture: java_home,
     },
     State {
+        name: "java-home-lower-scale",
+        size: SIZE,
+        gui_scale: 1,
+        fixture: java_home,
+    },
+    State {
         name: "java-home-small",
         size: SMALL_SIZE,
         gui_scale: 1,
