@@ -17,6 +17,9 @@ impl MenuAction {
             Self::GlobalResources(crate::global_resources::Action::Search) => {
                 Some(MenuField::PackQuery)
             }
+            Self::GlobalResources(crate::global_resources::Action::FolderName) => {
+                Some(MenuField::PackFolderName)
+            }
             Self::SettingsStorage(super::settings_storage::StorageAction::Search) => {
                 Some(MenuField::StorageQuery)
             }

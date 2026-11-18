@@ -117,6 +117,9 @@ fn drive(
             _ => info!("dropped world files import from the Worlds tab only"),
         }
     }
+    for name in std::mem::take(&mut menu.global_resource_renames) {
+        worker.send(worker::Command::RenameFolder(name));
+    }
     for action in std::mem::take(&mut menu.global_resource_actions) {
         let revision = worker.snapshot.revision;
         worker.send(worker::Command::Action { action, revision });

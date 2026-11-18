@@ -33,6 +33,8 @@ const COLUMN_GAP: f32 = 8.0;
 const ENTRY_STEP: f32 = 36.0;
 const ICON: f32 = 32.0;
 const HEADING: f32 = 16.0;
+/// The row of folder buttons under the heading of the list of unused packs.
+const TOOLBAR: f32 = 18.0;
 const PADDING: f32 = 4.0;
 const HEADER: f32 = 50.0;
 const SEARCH_TOP: f32 = 26.0;
@@ -301,7 +303,8 @@ fn column(
             .list(active, [x0, viewport[1], x1, viewport[3]]);
     }
     let rows = list.len() + usize::from(active) + usize::from(list.is_empty() && !active);
-    let content = (PADDING + HEADING + rows as f32 * ENTRY_STEP + PADDING) * unit;
+    let lead = HEADING + if active { 0.0 } else { TOOLBAR };
+    let content = (PADDING + lead + rows as f32 * ENTRY_STEP + PADDING) * unit;
     let key = if active {
         "java_packs/active"
     } else {
@@ -316,18 +319,16 @@ fn column(
         unit,
         |canvas, offset| {
             let top = viewport[1] - offset + PADDING * unit;
-            // Room for the folder buttons beside the heading of the list of unused packs.
-            let reserved = if active { 0.0 } else { 74.0 };
             put(
                 canvas,
                 heading,
                 [x0 + unit, top + 4.0 * unit],
                 unit,
                 TEXT,
-                (width - reserved) * unit,
+                width * unit,
             )?;
             if !active {
-                folder_buttons(canvas, view, snapshot, [x1, top], unit)?;
+                folder_buttons(canvas, view, snapshot, [x0, x1, top + HEADING * unit], unit)?;
             }
             if list.is_empty() && !active {
                 let text = if view.pack_query.is_empty() {
@@ -338,14 +339,14 @@ fn column(
                 put(
                     canvas,
                     text,
-                    [x0 + unit, top + (HEADING + 4.0) * unit],
+                    [x0 + unit, top + (lead + 4.0) * unit],
                     unit,
                     GREY,
                     width * unit,
                 )?;
             }
             for (row, item) in list.iter().enumerate() {
-                let y = top + (HEADING + row as f32 * ENTRY_STEP) * unit;
+                let y = top + (lead + row as f32 * ENTRY_STEP) * unit;
                 let bounds = [x0, y, x1, y + (ENTRY_STEP - 4.0) * unit];
                 match item {
                     Row::Pack(entry) => {
@@ -394,7 +395,7 @@ fn column(
                 }
             }
             if active {
-                let y = top + (HEADING + list.len() as f32 * ENTRY_STEP) * unit;
+                let y = top + (lead + list.len() as f32 * ENTRY_STEP) * unit;
                 let bounds = [x0, y, x1, y + (ENTRY_STEP - 4.0) * unit];
                 base_entry(canvas, view, snapshot.base_selected, bounds, unit)?;
             }
@@ -403,37 +404,74 @@ fn column(
     )
 }
 
-/// The buttons beside the heading of the list of unused packs: make a folder, and in a folder
-/// delete it.
+/// The row under the heading of the list of unused packs: make a folder, and inside one rename
+/// or delete it. While a folder is being renamed the row is the name field with OK and Cancel.
 fn folder_buttons(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
     snapshot: &Snapshot,
-    [right, top]: [f32; 2],
+    [x0, x1, top]: [f32; 3],
     unit: f32,
 ) -> Result<(), PaintError> {
     let idle = !snapshot.busy;
-    let width = 72.0;
-    if snapshot.folder.is_empty() {
-        let bounds = [right - width * unit, top, right, top + 14.0 * unit];
+    let height = 14.0 * unit;
+    let gap = 3.0 * unit;
+    if view.pack_renaming && !snapshot.folder.is_empty() {
+        let small = 36.0 * unit;
+        let field_right = x1 - 2.0 * (small + gap);
+        crate::widgets::java_field(
+            canvas,
+            view,
+            [x0, top, field_right, top + height],
+            &view.pack_folder_name,
+            "Folder name",
+            view.field == Some(launcher::menu::MenuField::PackFolderName),
+            Some(command(Action::FolderName)),
+            unit,
+        )?;
+        let ok = [
+            field_right + gap,
+            top,
+            field_right + gap + small,
+            top + height,
+        ];
+        super::button::draw(
+            canvas,
+            view,
+            ok,
+            "OK",
+            Some(command(Action::CommitRename)),
+            unit,
+        )?;
+        let cancel = [ok[2] + gap, top, x1, top + height];
         return super::button::draw(
             canvas,
             view,
-            bounds,
-            "New Folder",
-            idle.then_some(command(Action::NewFolder)),
+            cancel,
+            "X",
+            Some(command(Action::CancelRename)),
             unit,
         );
     }
-    let delete = [right - width * unit, top, right, top + 14.0 * unit];
-    super::button::draw(
-        canvas,
-        view,
-        delete,
-        "Delete Folder",
-        idle.then_some(command(Action::DeleteFolder)),
-        unit,
-    )
+    let mut buttons = vec![("New Folder", Action::NewFolder)];
+    if !snapshot.folder.is_empty() {
+        buttons.push(("Rename", Action::RenameFolder));
+        buttons.push(("Delete", Action::DeleteFolder));
+    }
+    let count = buttons.len() as f32;
+    let width = (x1 - x0 - gap * (count - 1.0)) / count;
+    for (place, (label, action)) in buttons.into_iter().enumerate() {
+        let left = x0 + place as f32 * (width + gap);
+        super::button::draw(
+            canvas,
+            view,
+            [left, top, left + width, top + height],
+            label,
+            idle.then_some(command(action)),
+            unit,
+        )?;
+    }
+    Ok(())
 }
 
 /// Draws a folder with squares: a tab on a body, its front lighter, and when `up` a green arrow.

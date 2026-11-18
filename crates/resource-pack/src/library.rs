@@ -108,6 +108,12 @@ pub enum LibraryError {
     UnknownFolder,
     #[error("the library holds as many folders as it can")]
     TooManyFolders,
+    #[error("the folder is not empty, so it stays in the packs folder")]
+    FolderNotEmpty,
+    #[error("a folder with that name is already there")]
+    FolderExists,
+    #[error("a folder needs a name")]
+    InvalidFolderName,
     #[error("pack requires a newer game version")]
     NewerEngine,
     #[error("installed resource-pack catalog exceeds its storage limit")]
@@ -153,6 +159,10 @@ impl PackSort {
 struct Catalog {
     #[serde(default)]
     sort: PackSort,
+    /// 0 for a library that kept every archive in one folder, 1 once archives live in the
+    /// folders they are filed in.
+    #[serde(default)]
+    layout: u32,
     /// The folders that organise the library, as paths of names joined by `/`.
     #[serde(default)]
     folders: Vec<String>,
@@ -193,9 +203,16 @@ impl GlobalPackLibrary {
         let mut catalog: Catalog = if path.exists() {
             serde_json::from_slice(&read_bounded(&path, MAX_CATALOG_BYTES)?)?
         } else {
-            Catalog::default()
+            // A library with nothing in it starts in the current layout.
+            Catalog {
+                layout: 1,
+                ..Catalog::default()
+            }
         };
-        let missing = storage::forget_missing(&root, &mut catalog);
+        storage::migrate(&root, &mut catalog);
+        let mut missing = storage::forget_folders(&root, &mut catalog);
+        storage::relocate(&root, &mut catalog);
+        missing.extend(storage::forget_missing(&root, &mut catalog));
         if catalog.active.len() > MAX_PACKS {
             return Err(AdmissionError::TooManyPacks.into());
         }
@@ -304,7 +321,7 @@ impl GlobalPackLibrary {
         }
         let catalog_bytes = encode_catalog(&candidate)?;
         for (metadata, bytes) in accepted {
-            atomic_write(&self.root.join(metadata.filename()), &bytes)?;
+            atomic_write(&storage::archive_in(&self.root, &candidate, &metadata), &bytes)?;
             report.imported.push(metadata);
         }
         atomic_write(&self.root.join(CATALOG_FILE), &catalog_bytes)?;
@@ -356,7 +373,10 @@ impl GlobalPackLibrary {
 
     /// Reads one installed pack's own icon without activating it or consulting overlays.
     pub fn pack_icon(&self, metadata: &InstalledPack) -> Result<Option<Box<[u8]>>, LibraryError> {
-        let bytes = read_bounded(&self.root.join(metadata.filename()), MAX_ARCHIVE_BYTES)?;
+        let bytes = read_bounded(
+            &storage::archive_in(&self.root, &self.catalog, metadata),
+            MAX_ARCHIVE_BYTES,
+        )?;
         let (pack, _) = validate_archive_parts(
             metadata.id,
             Version(metadata.version),
@@ -485,7 +505,10 @@ impl GlobalPackLibrary {
             let bytes = if let Some((_, bytes)) = prepared {
                 bytes.clone()
             } else {
-                match read_bounded(&self.root.join(metadata.filename()), MAX_ARCHIVE_BYTES) {
+                match read_bounded(
+                    &storage::archive_in(&self.root, &self.catalog, metadata),
+                    MAX_ARCHIVE_BYTES,
+                ) {
                     Ok(bytes) => bytes,
                     // Bedrock ignores a configured pack it cannot find; the others still apply.
                     Err(LibraryError::Io(error))

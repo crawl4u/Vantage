@@ -21,6 +21,8 @@ pub(super) enum Command {
     Action { action: Action, revision: u64 },
     Import(PathBuf),
     Commit(Vec<resource_pack::ActivePack>),
+    /// Rename the open folder to this name.
+    RenameFolder(String),
 }
 pub(super) enum Event {
     MinecraftImportStatus(String),
@@ -181,6 +183,7 @@ fn run(
             &command,
             Command::MinecraftImport(_)
                 | Command::Import(_)
+                | Command::RenameFolder(_)
                 | Command::Action {
                     action: Action::Activate(_)
                         | Action::Deactivate(_)
@@ -255,6 +258,13 @@ fn run(
             }
             Command::Import(path) => {
                 import_files(&mut library, vec![path], &mut snapshot, refresh_icons)
+            }
+            Command::RenameFolder(name) => {
+                let open = snapshot.folder.clone();
+                library.rename_folder(&open, &name).map(|renamed| {
+                    snapshot.folder = renamed;
+                    snapshot.message.clear();
+                })
             }
             Command::Action {
                 action: Action::Import,
@@ -341,7 +351,7 @@ fn scan_tree(
             scan_tree(library, &path, &inner, depth + 1, packs, folders);
         } else if kind.is_file()
             && resource_pack::is_pack_import_path(&path)
-            && !(relative.is_empty() && library.manages(&name))
+            && !library.manages(&name)
         {
             packs.push((path, relative.to_owned()));
         }
@@ -359,12 +369,25 @@ fn scan_folder(
 ) -> (bool, bool) {
     let mut changed = false;
     let before = library.active().len();
+    let layout = |library: &GlobalPackLibrary| -> (Vec<String>, Vec<String>) {
+        (
+            library.folders().to_vec(),
+            library
+                .available()
+                .iter()
+                .map(|pack| library.folder_of(pack.id).to_owned())
+                .collect(),
+        )
+    };
+    let arranged = layout(library);
     let lost = library.reconcile();
     let selection = library.active().len() != before;
     if !lost.is_empty() {
         snapshot.message = format!("Removed {}.", lost.join(", "));
         changed = true;
     }
+    // Folders made, deleted, renamed or filled by hand show up as they are.
+    changed |= layout(library) != arranged;
     let root = library.root().to_path_buf();
     let (mut packs, mut folders) = (Vec::new(), Vec::new());
     scan_tree(library, &root, "", 0, &mut packs, &mut folders);
@@ -538,6 +561,10 @@ fn indexed(action: Action) -> bool {
             | Action::CancelDelete
             | Action::CycleSort
             | Action::SelectBase
+            | Action::RenameFolder
+            | Action::CommitRename
+            | Action::CancelRename
+            | Action::FolderName
             | Action::FolderUp
             | Action::NewFolder
             | Action::DeleteFolder
@@ -792,8 +819,14 @@ fn act(
             snapshot.delete_pending = (index < snapshot.available.len()).then_some(index);
         }
         Action::CancelDelete => snapshot.delete_pending = None,
-        // The query lives in the menu; the worker only sees these when a remote control sends them.
-        Action::Search | Action::ClearSearch => {}
+        // The query and the folder name live in the menu; the worker only sees these when a
+        // remote control sends them.
+        Action::Search
+        | Action::ClearSearch
+        | Action::RenameFolder
+        | Action::CommitRename
+        | Action::CancelRename
+        | Action::FolderName => {}
         Action::CycleSort => {
             library.set_sort(library.sort().next())?;
             clear_indexed(snapshot);

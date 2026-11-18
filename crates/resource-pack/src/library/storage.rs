@@ -3,12 +3,174 @@ use super::{
     ActivePack, CATALOG_FILE, Catalog, GlobalPackLibrary, InstalledPack, LibraryError,
     atomic_write, encode_catalog,
 };
-use std::{fs, path::Path};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
+
+/// How deep inside the library's folder folders and archives are looked for.
+pub const SCAN_DEPTH: usize = 4;
+
+/// Folders of the library's own that are not pack folders.
+const KEPT_FOLDERS: [&str; 2] = ["imported", "icons"];
+
+/// The directory of the folder at `folder` inside `root`; `root` itself for the top level.
+pub(super) fn folder_dir(root: &Path, folder: &str) -> PathBuf {
+    folder
+        .split('/')
+        .filter(|name| !name.is_empty())
+        .fold(root.to_path_buf(), |path, name| path.join(name))
+}
+
+/// Where `pack`'s archive is: in the folder its pack is filed in.
+pub(super) fn archive_in(root: &Path, catalog: &Catalog, pack: &InstalledPack) -> PathBuf {
+    let folder = catalog.placement.get(&pack.id).map_or("", String::as_str);
+    folder_dir(root, folder).join(pack.filename())
+}
+
+/// Moves a library that kept every archive in one folder into the layout where each archive sits
+/// in the folder its pack is filed in, making the folders as it goes.
+pub(super) fn migrate(root: &Path, catalog: &mut Catalog) {
+    if catalog.layout >= 1 {
+        return;
+    }
+    for folder in &catalog.folders {
+        let _ = fs::create_dir_all(folder_dir(root, folder));
+    }
+    for pack in catalog.available.iter().chain(&catalog.retained) {
+        let target = archive_in(root, catalog, pack);
+        let old = root.join(pack.filename());
+        if target != old && !target.exists() && old.exists() {
+            if let Some(parent) = target.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::rename(&old, &target);
+        }
+    }
+    catalog.layout = 1;
+    if let Ok(bytes) = encode_catalog(catalog) {
+        let _ = atomic_write(&root.join(CATALOG_FILE), &bytes);
+    }
+}
+
+/// Every pack archive under `root`, by file name, with the folder holding it.
+fn find_archives(root: &Path) -> HashMap<String, String> {
+    fn walk(dir: &Path, relative: &str, depth: usize, found: &mut HashMap<String, String>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                let skipped = name.starts_with('.')
+                    || (relative.is_empty() && KEPT_FOLDERS.contains(&name.as_str()))
+                    || depth >= SCAN_DEPTH;
+                if !skipped {
+                    let inner = if relative.is_empty() {
+                        name
+                    } else {
+                        format!("{relative}/{name}")
+                    };
+                    walk(&entry.path(), &inner, depth + 1, found);
+                }
+            } else if name.ends_with(".mcpack") {
+                found.entry(name).or_insert_with(|| relative.to_owned());
+            }
+        }
+    }
+    let mut found = HashMap::new();
+    walk(root, "", 0, &mut found);
+    found
+}
+
+/// Follows archives moved by hand to another folder: a pack whose archive is not where its
+/// folder says, but is in another folder, is filed there now. Returns whether anything moved.
+pub(super) fn relocate(root: &Path, catalog: &mut Catalog) -> bool {
+    let missing = |catalog: &Catalog, pack: &InstalledPack| {
+        matches!(archive_in(root, catalog, pack).try_exists(), Ok(false))
+    };
+    if !catalog
+        .available
+        .iter()
+        .chain(&catalog.retained)
+        .any(|pack| missing(catalog, pack))
+    {
+        return false;
+    }
+    let located = find_archives(root);
+    let mut moves = Vec::new();
+    for pack in catalog.available.iter().chain(&catalog.retained) {
+        if missing(catalog, pack)
+            && let Some(folder) = located.get(&pack.filename())
+        {
+            moves.push((pack.id, folder.clone()));
+        }
+    }
+    let changed = !moves.is_empty();
+    for (id, folder) in moves {
+        let mut current = String::new();
+        for name in folder.split('/').filter(|name| !name.is_empty()) {
+            if !current.is_empty() {
+                current.push('/');
+            }
+            current.push_str(name);
+            if !catalog.folders.contains(&current) {
+                catalog.folders.push(current.clone());
+            }
+        }
+        if folder.is_empty() {
+            catalog.placement.remove(&id);
+        } else {
+            catalog.placement.insert(id, folder);
+        }
+    }
+    if changed {
+        catalog.folders.sort();
+        if let Ok(bytes) = encode_catalog(catalog) {
+            let _ = atomic_write(&root.join(CATALOG_FILE), &bytes);
+        }
+    }
+    changed
+}
+
+/// Drops folders whose directory was deleted, and those inside them. Returns no names: the packs
+/// that were in them are noticed missing, or found elsewhere, afterwards.
+pub(super) fn forget_folders(root: &Path, catalog: &mut Catalog) -> Vec<String> {
+    let before = catalog.folders.len();
+    let gone: Vec<String> = catalog
+        .folders
+        .iter()
+        .filter(|folder| !folder_dir(root, folder).is_dir())
+        .cloned()
+        .collect();
+    catalog.folders.retain(|folder| {
+        !gone
+            .iter()
+            .any(|dead| folder == dead || folder.starts_with(&format!("{dead}/")))
+    });
+    if catalog.folders.len() != before
+        && let Ok(bytes) = encode_catalog(catalog)
+    {
+        let _ = atomic_write(&root.join(CATALOG_FILE), &bytes);
+    }
+    Vec::new()
+}
 
 /// Drops entries whose archive is gone, as Bedrock ignores a configured pack it cannot find, and
 /// names the packs the player loses. A failed save only repeats this on the next open.
 pub(super) fn forget_missing(root: &Path, catalog: &mut Catalog) -> Vec<String> {
-    let gone = |pack: &InstalledPack| matches!(root.join(pack.filename()).try_exists(), Ok(false));
+    let placement = catalog.placement.clone();
+    let gone = |pack: &InstalledPack| {
+        let folder = placement.get(&pack.id).map_or("", String::as_str);
+        matches!(
+            folder_dir(root, folder).join(pack.filename()).try_exists(),
+            Ok(false)
+        )
+    };
     let selects = |active: &ActivePack, pack: &InstalledPack| {
         active.id == pack.id && active.revision == pack.revision
     };
@@ -56,7 +218,7 @@ pub(super) fn prune(root: &Path, catalog: &mut Catalog) -> Result<(), LibraryErr
         {
             return true;
         }
-        match fs::remove_file(root.join(pack.filename())) {
+        match fs::remove_file(archive_in(root, catalog, pack)) {
             Ok(()) => false,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
             Err(error) => {
@@ -109,12 +271,12 @@ impl GlobalPackLibrary {
             return Err(LibraryError::UnknownPack);
         }
         let mut candidate = self.catalog.clone();
-        let doomed: Vec<InstalledPack> = candidate
+        let doomed: Vec<PathBuf> = candidate
             .available
             .iter()
             .chain(&candidate.retained)
             .filter(|pack| pack.id == id)
-            .cloned()
+            .map(|pack| archive_in(&self.root, &candidate, pack))
             .collect();
         candidate.available.retain(|pack| pack.id != id);
         candidate.retained.retain(|pack| pack.id != id);
@@ -123,8 +285,8 @@ impl GlobalPackLibrary {
         atomic_write(&self.root.join(CATALOG_FILE), &encode_catalog(&candidate)?)?;
         self.catalog = candidate;
         let mut failure = None;
-        for pack in doomed {
-            match fs::remove_file(self.root.join(pack.filename())) {
+        for path in doomed {
+            match fs::remove_file(path) {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
@@ -159,13 +321,29 @@ pub fn folder_name(path: &str) -> &str {
 
 /// `name` as a folder name: trimmed, without slashes or control characters, and not too long.
 fn clean_folder_name(name: &str) -> String {
-    name.chars()
-        .filter(|character| !matches!(*character, '/' | '\\') && !character.is_control())
+    let cleaned: String = name
+        .chars()
+        .filter(|character| {
+            !matches!(*character, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*')
+                && !character.is_control()
+        })
         .collect::<String>()
         .trim()
         .chars()
         .take(MAX_FOLDER_NAME_CHARS)
-        .collect()
+        .collect();
+    // A name may not end in a dot or space, and a few are reserved, on Windows.
+    let cleaned = cleaned.trim_end_matches(['.', ' ']).to_owned();
+    let reserved = ["CON", "PRN", "AUX", "NUL"];
+    let stem = cleaned.split('.').next().unwrap_or("").to_ascii_uppercase();
+    let numbered = stem.len() == 4
+        && (stem.starts_with("COM") || stem.starts_with("LPT"))
+        && stem.ends_with(|digit: char| digit.is_ascii_digit());
+    if reserved.contains(&stem.as_str()) || numbered {
+        format!("{cleaned} folder")
+    } else {
+        cleaned
+    }
 }
 
 impl GlobalPackLibrary {
@@ -206,6 +384,7 @@ impl GlobalPackLibrary {
             path = join(&format!("{base} {number}"));
             number += 1;
         }
+        fs::create_dir_all(folder_dir(&self.root, &path))?;
         let mut candidate = self.catalog.clone();
         candidate.folders.push(path.clone());
         candidate.folders.sort();
@@ -214,7 +393,8 @@ impl GlobalPackLibrary {
     }
 
     /// Deletes the folder at `path` and the folders inside it. Their packs are not deleted; they
-    /// move up into the folder that held `path`.
+    /// move up into the folder that held `path`, archives and all. A folder with something else
+    /// in it stays on disk, and shows again as a folder.
     pub fn delete_folder(&mut self, path: &str) -> Result<(), LibraryError> {
         if !self.catalog.folders.iter().any(|folder| folder == path) {
             return Err(LibraryError::UnknownFolder);
@@ -229,10 +409,28 @@ impl GlobalPackLibrary {
             }
         }
         candidate.placement.retain(|_, place| !place.is_empty());
-        self.save_catalog(candidate)
+        let mut doomed: Vec<String> = self
+            .catalog
+            .folders
+            .iter()
+            .filter(|folder| inside(folder))
+            .cloned()
+            .collect();
+        self.rehome(candidate)?;
+        // The deepest folders go first, so each is empty by the time it is removed.
+        doomed.sort_by_key(|folder| std::cmp::Reverse(folder.len()));
+        let mut stuck = false;
+        for folder in doomed {
+            stuck |= fs::remove_dir(folder_dir(&self.root, &folder)).is_err();
+        }
+        if stuck {
+            return Err(LibraryError::FolderNotEmpty);
+        }
+        Ok(())
     }
 
-    /// Puts the pack `id` in the folder at `folder`, or at the top level for an empty path.
+    /// Puts the pack `id` in the folder at `folder`, or at the top level for an empty path. Its
+    /// archives move into that folder on disk.
     pub fn place_pack(&mut self, id: uuid::Uuid, folder: &str) -> Result<(), LibraryError> {
         if !folder.is_empty() && !self.catalog.folders.iter().any(|known| known == folder) {
             return Err(LibraryError::UnknownFolder);
@@ -246,7 +444,102 @@ impl GlobalPackLibrary {
         } else {
             candidate.placement.insert(id, folder.to_owned());
         }
-        self.save_catalog(candidate)
+        self.rehome(candidate)
+    }
+
+    /// Renames the folder at `path` to `name`, on disk and in the library, with everything in it
+    /// following. Returns the new path. A name another folder beside it has is refused.
+    pub fn rename_folder(&mut self, path: &str, name: &str) -> Result<String, LibraryError> {
+        if !self.catalog.folders.iter().any(|folder| folder == path) {
+            return Err(LibraryError::UnknownFolder);
+        }
+        let name = clean_folder_name(name);
+        if name.is_empty() {
+            return Err(LibraryError::InvalidFolderName);
+        }
+        let parent = folder_parent(path);
+        let renamed = if parent.is_empty() {
+            name.clone()
+        } else {
+            format!("{parent}/{name}")
+        };
+        if renamed == path {
+            return Ok(renamed);
+        }
+        let taken = self
+            .catalog
+            .folders
+            .iter()
+            .any(|folder| folder != path && folder.eq_ignore_ascii_case(&renamed));
+        if taken {
+            return Err(LibraryError::FolderExists);
+        }
+        let moved = |folder: &str| -> Option<String> {
+            if folder == path {
+                Some(renamed.clone())
+            } else {
+                folder
+                    .strip_prefix(&format!("{path}/"))
+                    .map(|rest| format!("{renamed}/{rest}"))
+            }
+        };
+        let mut candidate = self.catalog.clone();
+        for folder in &mut candidate.folders {
+            if let Some(new) = moved(folder) {
+                *folder = new;
+            }
+        }
+        for place in candidate.placement.values_mut() {
+            if let Some(new) = moved(place) {
+                *place = new;
+            }
+        }
+        candidate.folders.sort();
+        let (from, to) = (
+            folder_dir(&self.root, path),
+            folder_dir(&self.root, &renamed),
+        );
+        fs::rename(&from, &to)?;
+        if let Err(error) = self.save_catalog(candidate) {
+            let _ = fs::rename(&to, &from);
+            return Err(error);
+        }
+        Ok(renamed)
+    }
+
+    /// Moves every archive to where `candidate`'s filing puts it, then keeps `candidate`. A
+    /// failure puts the archives that moved back.
+    fn rehome(&mut self, candidate: Catalog) -> Result<(), LibraryError> {
+        let mut done: Vec<(PathBuf, PathBuf)> = Vec::new();
+        let mut failure = None;
+        for pack in self.catalog.available.iter().chain(&self.catalog.retained) {
+            let from = archive_in(&self.root, &self.catalog, pack);
+            let to = archive_in(&self.root, &candidate, pack);
+            if from == to || !from.exists() {
+                continue;
+            }
+            let moved = to
+                .parent()
+                .map_or(Ok(()), fs::create_dir_all)
+                .and_then(|()| fs::rename(&from, &to));
+            match moved {
+                Ok(()) => done.push((from, to)),
+                Err(error) => {
+                    failure = Some(error);
+                    break;
+                }
+            }
+        }
+        let saved = match failure {
+            Some(error) => Err(LibraryError::from(error)),
+            None => self.save_catalog(candidate),
+        };
+        if saved.is_err() {
+            for (from, to) in done.into_iter().rev() {
+                let _ = fs::rename(to, from);
+            }
+        }
+        saved
     }
 
     /// Writes `candidate` and keeps it, or keeps the catalog as it was when writing fails.
@@ -276,8 +569,17 @@ impl GlobalPackLibrary {
     /// Notices archives deleted from the library's folder: those packs leave the library and any
     /// selection, as they do when it opens. Returns the names of the packs that went.
     pub fn reconcile(&mut self) -> Vec<String> {
+        let folders = self.catalog.folders.len();
+        forget_folders(&self.root, &mut self.catalog);
+        relocate(&self.root, &mut self.catalog);
         let lost = forget_missing(&self.root, &mut self.catalog);
         if lost.is_empty() {
+            // Folders that vanished from disk, or packs found in another, are changes too.
+            if self.catalog.folders.len() != folders {
+                self.catalog.placement.retain(|_, folder| {
+                    self.catalog.folders.contains(folder)
+                });
+            }
             return lost;
         }
         let installed: Vec<uuid::Uuid> = self.catalog.available.iter().map(|pack| pack.id).collect();

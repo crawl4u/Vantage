@@ -65,6 +65,12 @@ pub(super) const STATES: &[State] = &[
         fixture: java_packs,
     },
     State {
+        name: "java-packs-folder",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_pack_folder,
+    },
+    State {
         name: "java-shaders",
         size: SIZE,
         gui_scale: GUI_SCALE,
@@ -77,6 +83,19 @@ pub(super) const STATES: &[State] = &[
         fixture: java_featured_servers,
     },
 ];
+
+/// The Resource Packs page inside a folder that is being renamed.
+fn java_pack_folder() -> Fixture {
+    let Fixture::Menu(mut view) = java_packs() else {
+        unreachable!("the packs fixture is a menu");
+    };
+    let mut snapshot = (*view.global_resources).clone();
+    snapshot.folder = "PVP".to_owned();
+    view.global_resources = Arc::new(snapshot);
+    view.pack_renaming = true;
+    view.pack_folder_name = "PVP".to_owned();
+    Fixture::Menu(view)
+}
 
 /// The Shader Packs page with two packs, one active.
 fn java_shaders() -> Fixture {

@@ -42,6 +42,14 @@ pub enum Action {
     NewFolder,
     /// Delete the open folder; its packs move up into the folder that held it.
     DeleteFolder,
+    /// Start renaming the open folder in the name field.
+    RenameFolder,
+    /// Rename the open folder to the name field's text.
+    CommitRename,
+    /// Stop renaming without a change.
+    CancelRename,
+    /// Focus the folder name field.
+    FolderName,
     /// Put the available pack at `index` in the subfolder at `folder` of
     /// [`Snapshot::subfolders`], or in the folder above the open one for none.
     PutInFolder {

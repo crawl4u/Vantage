@@ -488,6 +488,10 @@ pub struct MenuView {
     pub storage_query: String,
     /// The text the resource pack lists are filtered by.
     pub pack_query: String,
+    /// The name typed for the resource pack folder being renamed.
+    pub pack_folder_name: String,
+    /// A resource pack folder is being renamed.
+    pub pack_renaming: bool,
     /// Command box drafts, including invalid edits that have not been saved.
     pub macro_commands: Option<[String; super::settings_options::COMMAND_MACRO_COUNT]>,
     pub message: Option<String>,
@@ -777,6 +781,8 @@ impl MenuView {
             settings_query: String::new(),
             storage_query: String::new(),
             pack_query: String::new(),
+            pack_folder_name: String::new(),
+            pack_renaming: false,
             field: None,
             caret: MenuCaret {
                 shown: true,

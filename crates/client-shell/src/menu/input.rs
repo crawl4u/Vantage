@@ -94,6 +94,7 @@ impl MenuRuntime {
             MenuField::SettingsQuery => &self.settings_query,
             MenuField::StorageQuery => &self.storage_query,
             MenuField::PackQuery => &self.pack_query,
+            MenuField::PackFolderName => &self.pack_folder_name,
             MenuField::RealmCode => &self.realm_membership.code,
             MenuField::Name => &self.name,
             MenuField::Address => &self.address,
@@ -112,6 +113,7 @@ impl MenuRuntime {
             MenuField::SettingsQuery => &mut self.settings_query,
             MenuField::StorageQuery => &mut self.storage_query,
             MenuField::PackQuery => &mut self.pack_query,
+            MenuField::PackFolderName => &mut self.pack_folder_name,
             MenuField::RealmCode => &mut self.realm_membership.code,
             MenuField::Name => &mut self.name,
             MenuField::Address => &mut self.address,
@@ -933,6 +935,11 @@ pub fn drive_menu_input(
             KeyCode::Enter | KeyCode::NumpadEnter if menu.field == Some(MenuField::SkinName) => {
                 menu.activate(launcher::menu::MenuAction::DressingRoom(
                     launcher::dressing_room::Action::SaveRename,
+                ));
+            }
+            KeyCode::Enter | KeyCode::NumpadEnter if menu.field == Some(MenuField::PackFolderName) => {
+                menu.activate(launcher::menu::MenuAction::GlobalResources(
+                    launcher::global_resources::Action::CommitRename,
                 ));
             }
             KeyCode::Enter | KeyCode::NumpadEnter => select_focused(&mut menu, &presentation),

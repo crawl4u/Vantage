@@ -17,6 +17,7 @@ fn max_bytes(field: MenuField) -> usize {
         MenuField::FriendQuery
         | MenuField::SettingsQuery
         | MenuField::PackQuery
+        | MenuField::PackFolderName
         | MenuField::StorageQuery => {
             ui::MAX_CHAT_INPUT_BYTES
         }

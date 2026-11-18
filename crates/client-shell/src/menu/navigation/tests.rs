@@ -292,3 +292,30 @@ fn the_java_server_tabs_switch_the_list_shown() {
     menu.activate(MenuAction::JavaServerGroup(ServerGroup::Saved));
     assert_eq!(menu.view().feeds.java_server_group, ServerGroup::Saved);
 }
+
+#[test]
+fn renaming_a_pack_folder_opens_the_field_and_commits_or_cancels_it() {
+    use launcher::global_resources::Action;
+
+    let mut menu = MenuRuntime::new(true, 2, "Player".into());
+    let mut snapshot = launcher::global_resources::Snapshot::default();
+    snapshot.folders = vec!["PVP".to_owned()];
+    snapshot.folder = "PVP".to_owned();
+    menu.global_resources = std::sync::Arc::new(snapshot);
+    menu.activate(MenuAction::GlobalResources(Action::RenameFolder));
+    assert!(menu.view().pack_renaming);
+    assert_eq!(menu.view().pack_folder_name, "PVP");
+    assert_eq!(menu.view().field, Some(MenuField::PackFolderName));
+    menu.activate(MenuAction::GlobalResources(Action::CommitRename));
+    assert!(!menu.view().pack_renaming);
+    assert_eq!(menu.global_resource_renames, ["PVP"]);
+    // Cancelling sends nothing.
+    menu.activate(MenuAction::GlobalResources(Action::RenameFolder));
+    menu.activate(MenuAction::GlobalResources(Action::CancelRename));
+    assert!(!menu.view().pack_renaming);
+    assert_eq!(menu.global_resource_renames.len(), 1);
+    // Outside a folder there is nothing to rename.
+    menu.global_resources = std::sync::Arc::new(launcher::global_resources::Snapshot::default());
+    menu.activate(MenuAction::GlobalResources(Action::RenameFolder));
+    assert!(!menu.view().pack_renaming);
+}

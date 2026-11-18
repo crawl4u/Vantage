@@ -56,6 +56,12 @@ impl MenuRuntime {
             ));
             return;
         }
+        if self.pack_renaming {
+            self.activate(launcher::menu::MenuAction::GlobalResources(
+                launcher::global_resources::Action::CancelRename,
+            ));
+            return;
+        }
         if self.screen == launcher::menu::MenuScreen::Settings
             && self.settings.section
                 == launcher::menu::settings_sections::SettingSection::GlobalTexturePack

@@ -1110,7 +1110,12 @@ fn folders_organise_packs_without_changing_how_they_work() {
     assert_eq!(library.folder_of(id), "PVP");
     library.delete_folder("PVP").unwrap();
     assert_eq!(library.folder_of(id), "");
-    assert!(!library.folders().iter().any(|folder| folder.starts_with("PVP/")));
+    assert!(
+        !library
+            .folders()
+            .iter()
+            .any(|folder| folder.starts_with("PVP/"))
+    );
     // Removing a pack forgets its place.
     library.place_pack(id, "New Folder").unwrap();
     library.remove(id).unwrap();
@@ -1118,4 +1123,119 @@ fn folders_organise_packs_without_changing_how_they_work() {
     assert_eq!(folder_parent("A/B/C"), "A/B");
     assert_eq!(folder_name("A/B/C"), "C");
     assert_eq!(folder_parent("A"), "");
+}
+
+/// The folders under `root` that hold a pack archive, as paths, for each archive found.
+fn archive_folders(root: &std::path::Path) -> Vec<String> {
+    fn walk(dir: &std::path::Path, relative: &str, found: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if entry.file_type().unwrap().is_dir() {
+                let inner = if relative.is_empty() {
+                    name
+                } else {
+                    format!("{relative}/{name}")
+                };
+                walk(&entry.path(), &inner, found);
+            } else if name.ends_with(".mcpack") {
+                found.push(relative.to_owned());
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(root, "", &mut found);
+    found
+}
+
+#[test]
+fn folders_are_real_directories_holding_their_packs_archives() {
+    let fixture = Fixture::new();
+    let root = fixture.0.join("installed");
+    let mut library = fixture.library();
+    install_active(&mut library, &fixture, 31);
+    library.deactivate(Uuid::from_u128(31));
+    let id = Uuid::from_u128(31);
+    assert_eq!(archive_folders(&root), [""]);
+    library.create_folder("", "PVP").unwrap();
+    assert!(root.join("PVP").is_dir());
+    library.place_pack(id, "PVP").unwrap();
+    assert_eq!(archive_folders(&root), ["PVP"]);
+    // The pack still reads from its folder and survives a restart there.
+    library.activate(id).unwrap();
+    library.apply().unwrap();
+    assert!(library.pack_icon(&library.available()[0].clone()).is_ok());
+    let restarted = fixture.library();
+    assert_eq!(restarted.folder_of(id), "PVP");
+    assert_eq!(restarted.active().len(), 1);
+    // Renaming moves the directory and the filing with it, and refuses a taken name.
+    library.deactivate(id);
+    library.commit_selection(&[]).unwrap();
+    library.create_folder("", "Other").unwrap();
+    let renamed = library.rename_folder("PVP", "Duels").unwrap();
+    assert_eq!(renamed, "Duels");
+    assert!(root.join("Duels").is_dir() && !root.join("PVP").exists());
+    assert_eq!(library.folder_of(id), "Duels");
+    assert_eq!(archive_folders(&root), ["Duels"]);
+    assert!(matches!(
+        library.rename_folder("Duels", "other"),
+        Err(LibraryError::FolderExists)
+    ));
+    assert!(matches!(
+        library.rename_folder("Duels", "  "),
+        Err(LibraryError::InvalidFolderName)
+    ));
+    // A pack moved into another folder by hand is found there, not lost.
+    let from = root.join("Duels");
+    let file = std::fs::read_dir(&from)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .file_name();
+    std::fs::rename(from.join(&file), root.join("Other").join(&file)).unwrap();
+    assert!(library.reconcile().is_empty());
+    assert_eq!(library.folder_of(id), "Other");
+    // A folder deleted by hand takes its packs with it, as deleting their files does.
+    std::fs::remove_dir_all(root.join("Other")).unwrap();
+    let lost = library.reconcile();
+    assert_eq!(lost.len(), 1);
+    assert!(library.available().is_empty());
+    assert!(!library.folders().contains(&"Other".to_owned()));
+    // Deleting a folder moves its packs up on disk.
+    install_active(&mut library, &fixture, 32);
+    library.deactivate(Uuid::from_u128(32));
+    library.create_folder("", "Temp").unwrap();
+    library.place_pack(Uuid::from_u128(32), "Temp").unwrap();
+    library.delete_folder("Temp").unwrap();
+    assert!(!root.join("Temp").exists());
+    assert_eq!(archive_folders(&root), [""]);
+    assert_eq!(library.folder_of(Uuid::from_u128(32)), "");
+}
+
+#[test]
+fn a_library_that_kept_every_archive_in_one_folder_moves_them_into_their_folders() {
+    let fixture = Fixture::new();
+    let root = fixture.0.join("installed");
+    let mut library = fixture.library();
+    install_active(&mut library, &fixture, 41);
+    library.deactivate(Uuid::from_u128(41));
+    library.create_folder("", "Old").unwrap();
+    library.place_pack(Uuid::from_u128(41), "Old").unwrap();
+    drop(library);
+    // Put the archive back at the top and mark the catalog as the old layout.
+    let file = std::fs::read_dir(root.join("Old"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .file_name();
+    std::fs::rename(root.join("Old").join(&file), root.join(&file)).unwrap();
+    let catalog = root.join("global_packs.json");
+    let mut json: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&catalog).unwrap()).unwrap();
+    json["layout"] = serde_json::json!(0);
+    std::fs::write(&catalog, serde_json::to_vec(&json).unwrap()).unwrap();
+    let reopened = fixture.library();
+    assert_eq!(reopened.folder_of(Uuid::from_u128(41)), "Old");
+    assert_eq!(archive_folders(&root), ["Old"]);
 }

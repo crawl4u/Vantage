@@ -129,6 +129,10 @@ pub struct MenuRuntime {
     settings_query: ui::ChatEditor,
     storage_query: ui::ChatEditor,
     pack_query: ui::ChatEditor,
+    pack_folder_name: ui::ChatEditor,
+    pack_renaming: bool,
+    /// Names typed for the open resource pack folder, for the pack worker to rename it to.
+    pub global_resource_renames: Vec<String>,
     /// Command macro command boxes; edits write through to persisted settings.
     macro_commands: [ui::ChatEditor; launcher::menu::settings_options::COMMAND_MACRO_COUNT],
     message: Option<String>,
@@ -830,6 +834,27 @@ impl MenuRuntime {
             MenuAction::GlobalResources(launcher::global_resources::Action::ClearSearch) => {
                 self.pack_query.set_text("");
                 self.focus_field(MenuField::PackQuery);
+            }
+            MenuAction::GlobalResources(launcher::global_resources::Action::FolderName) => {}
+            MenuAction::GlobalResources(launcher::global_resources::Action::RenameFolder) => {
+                let folder = &self.global_resources.folder;
+                if !folder.is_empty() {
+                    self.pack_folder_name.set_text(resource_pack::folder_name(folder));
+                    self.pack_renaming = true;
+                    self.focus_field(MenuField::PackFolderName);
+                }
+            }
+            MenuAction::GlobalResources(launcher::global_resources::Action::CommitRename) => {
+                if self.pack_renaming {
+                    let name = self.pack_folder_name.as_str().to_owned();
+                    self.global_resource_renames.push(name);
+                }
+                self.pack_renaming = false;
+                self.field = None;
+            }
+            MenuAction::GlobalResources(launcher::global_resources::Action::CancelRename) => {
+                self.pack_renaming = false;
+                self.field = None;
             }
             MenuAction::GlobalResources(action) => self.global_resource_actions.push(action),
             MenuAction::Mods(launcher::mods::Action::ViewUpdates) => {

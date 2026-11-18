@@ -220,6 +220,7 @@ impl MenuRuntime {
             self.settings_query.set_text("");
             self.storage_query.set_text("");
             self.pack_query.set_text("");
+            self.pack_renaming = false;
         }
         if screen == MenuScreen::Settings && self.screen != MenuScreen::Settings {
             self.settings.java_view = JavaSettingsView::Hub;

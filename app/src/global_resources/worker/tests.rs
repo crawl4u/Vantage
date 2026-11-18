@@ -1138,7 +1138,7 @@ fn folders_are_made_opened_filled_and_deleted_from_the_list() {
     let mut snapshot = Snapshot::default();
     let (outgoing, _events) = crossbeam_channel::unbounded();
     refresh(&library, &mut snapshot);
-    let mut run = |library: &mut GlobalPackLibrary, snapshot: &mut Snapshot, action| {
+    let run = |library: &mut GlobalPackLibrary, snapshot: &mut Snapshot, action| {
         act(library, snapshot, action, &outgoing).unwrap();
         refresh(library, snapshot);
     };
@@ -1276,5 +1276,38 @@ fn packs_put_into_the_library_folder_are_imported_at_once_and_deleted_ones_leave
     let (changed, _) = scan_folder(&mut library, &mut snapshot, &mut watch);
     assert!(!changed);
     assert!(library_root.join("broken.zip").exists());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn the_open_folder_is_renamed_on_disk_and_the_list_follows_it() {
+    let root = std::env::temp_dir().join(format!("cinnabar-pack-rename-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let library_root = root.join("library");
+    std::fs::create_dir_all(&library_root).unwrap();
+    let mut library = GlobalPackLibrary::open(&library_root, [9, 0, 0]).unwrap();
+    import_fixture(&mut library, &root, 1);
+    let mut snapshot = Snapshot::default();
+    let (outgoing, _events) = crossbeam_channel::unbounded();
+    refresh(&library, &mut snapshot);
+    act(&mut library, &mut snapshot, Action::NewFolder, &outgoing).unwrap();
+    refresh(&library, &mut snapshot);
+    act(
+        &mut library,
+        &mut snapshot,
+        Action::OpenFolder(0),
+        &outgoing,
+    )
+    .unwrap();
+    assert_eq!(snapshot.folder, "New Folder");
+    assert!(library_root.join("New Folder").is_dir());
+    let open = snapshot.folder.clone();
+    let renamed = library.rename_folder(&open, "Duels").unwrap();
+    snapshot.folder = renamed;
+    refresh(&library, &mut snapshot);
+    assert_eq!(snapshot.folder, "Duels");
+    assert!(library_root.join("Duels").is_dir());
+    assert!(!library_root.join("New Folder").exists());
+    assert_eq!(snapshot.folders, ["Duels"]);
     std::fs::remove_dir_all(root).unwrap();
 }

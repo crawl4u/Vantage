@@ -106,6 +106,8 @@ pub enum MenuField {
     SettingsQuery,
     /// Filters the resource pack lists by name and description.
     PackQuery,
+    /// The new name of the resource pack folder being renamed.
+    PackFolderName,
     StorageQuery,
     Name,
     Address,
