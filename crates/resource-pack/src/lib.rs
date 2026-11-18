@@ -36,7 +36,8 @@ pub use import::{
     parse_global_selection, prepare_import,
 };
 pub use library::{
-    ActivePack, GlobalPackLibrary, ImportReport, InstalledPack, LibraryError, PackSort, Subpack,
+    ActivePack, GlobalPackLibrary, ImportReport, InstalledPack, LibraryError, MAX_FOLDER_NAME_CHARS,
+    PackSort, Subpack, folder_name, folder_parent,
 };
 pub use merge::{MAX_MERGED_ENTRIES, MAX_WINNING_BYTES, MAX_WINNING_FILES};
 pub use pack::{PackRejection, ValidatedPack, ValidatedPackStack};

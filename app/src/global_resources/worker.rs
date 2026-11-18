@@ -134,8 +134,41 @@ fn run(
     }
     refresh(&library, &mut snapshot);
     let _ = outgoing.send(Event::Snapshot(snapshot.clone()));
-    let initial = files.into_iter().map(Command::Import);
-    for command in initial.chain(incoming) {
+    let mut initial: std::collections::VecDeque<Command> =
+        files.into_iter().map(Command::Import).collect();
+    let mut watch = Watch::default();
+    loop {
+        let command = match initial.pop_front() {
+            Some(command) => command,
+            None => match incoming.recv_timeout(SCAN_INTERVAL) {
+                Ok(command) => command,
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    // Between commands the library's folder is checked for packs put in or taken
+                    // out by hand.
+                    let (changed, selection) = scan_folder(&mut library, &mut snapshot, &mut watch);
+                    if changed {
+                        snapshot.revision += 1;
+                        super::icons::refresh(&library, &mut snapshot, &icon_root);
+                        refresh(&library, &mut snapshot);
+                        if selection {
+                            match library.preview() {
+                                Ok(stack) => {
+                                    let _ = outgoing.send(Event::Apply(
+                                        stack,
+                                        library.active().to_vec(),
+                                        ApplyOrigin::User,
+                                    ));
+                                }
+                                Err(error) => snapshot.message = error.to_string(),
+                            }
+                        }
+                        let _ = outgoing.send(Event::Snapshot(snapshot.clone()));
+                    }
+                    continue;
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+            },
+        };
         if let Command::Action { action, revision } = &command
             && indexed(*action)
             && *revision != snapshot.revision
@@ -157,6 +190,9 @@ fn run(
                         | Action::Import
                         | Action::Delete(_)
                         | Action::Drop { .. }
+                        | Action::NewFolder
+                        | Action::DeleteFolder
+                        | Action::PutInFolder { .. }
                         | Action::CycleSort,
                     ..
                 }
@@ -252,6 +288,170 @@ fn run(
     }
 }
 
+/// How often the library's folder is checked for packs put in or taken out by hand.
+const SCAN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// Subfolders of the library's folder the scan leaves alone: where imported originals are kept,
+/// and the pack icons.
+const KEPT_FOLDERS: [&str; 2] = ["imported", "icons"];
+
+/// How deep inside the library's folder the scan looks for packs and folders.
+const SCAN_DEPTH: usize = 4;
+
+/// What the scan of the library's folder remembers between checks.
+#[derive(Default)]
+struct Watch {
+    /// A file's size and time when last seen, so a file still being copied in waits a round.
+    seen: std::collections::HashMap<PathBuf, (u64, Option<std::time::SystemTime>)>,
+    /// Files that failed to import as they were, which are not tried again until they change.
+    rejected: std::collections::HashMap<PathBuf, (u64, Option<std::time::SystemTime>)>,
+}
+
+/// The packs and folders found under `dir`, as paths with the folder each is in, relative to the
+/// library's folder.
+fn scan_tree(
+    library: &GlobalPackLibrary,
+    dir: &std::path::Path,
+    relative: &str,
+    depth: usize,
+    packs: &mut Vec<(PathBuf, String)>,
+    folders: &mut Vec<String>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if kind.is_dir() {
+            let hidden = name.starts_with('.');
+            let kept = relative.is_empty() && KEPT_FOLDERS.contains(&name.as_str());
+            if hidden || kept || depth >= SCAN_DEPTH {
+                continue;
+            }
+            let inner = if relative.is_empty() {
+                name.clone()
+            } else {
+                format!("{relative}/{name}")
+            };
+            folders.push(inner.clone());
+            scan_tree(library, &path, &inner, depth + 1, packs, folders);
+        } else if kind.is_file()
+            && resource_pack::is_pack_import_path(&path)
+            && !(relative.is_empty() && library.manages(&name))
+        {
+            packs.push((path, relative.to_owned()));
+        }
+    }
+}
+
+/// Checks the library's folder: archives deleted from it leave the library, packs put into it
+/// are imported at once, into the folder they were put in, and folders made in it appear as
+/// folders. The originals are kept in `imported`. Returns whether the lists changed and whether
+/// the selection did.
+fn scan_folder(
+    library: &mut GlobalPackLibrary,
+    snapshot: &mut Snapshot,
+    watch: &mut Watch,
+) -> (bool, bool) {
+    let mut changed = false;
+    let before = library.active().len();
+    let lost = library.reconcile();
+    let selection = library.active().len() != before;
+    if !lost.is_empty() {
+        snapshot.message = format!("Removed {}.", lost.join(", "));
+        changed = true;
+    }
+    let root = library.root().to_path_buf();
+    let (mut packs, mut folders) = (Vec::new(), Vec::new());
+    scan_tree(library, &root, "", 0, &mut packs, &mut folders);
+    for folder in folders {
+        let known = library.folders().contains(&folder);
+        if !known && library.ensure_folder(&folder).is_ok() {
+            changed = true;
+        }
+    }
+    packs.retain(|(path, _)| {
+        let Ok(meta) = std::fs::metadata(path) else {
+            return false;
+        };
+        let stamp = (meta.len(), meta.modified().ok());
+        if watch.rejected.get(path) == Some(&stamp) {
+            return false;
+        }
+        // Wait for a file to stop changing before reading it.
+        if watch.seen.get(path) != Some(&stamp) {
+            watch.seen.insert(path.clone(), stamp);
+            return false;
+        }
+        true
+    });
+    for (path, folder) in packs {
+        let stamp = std::fs::metadata(&path)
+            .ok()
+            .map(|meta| (meta.len(), meta.modified().ok()));
+        let label = path
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+        match library.import(&path) {
+            Ok(report) if !report.imported.is_empty() => {
+                if !folder.is_empty() {
+                    let _ = library.ensure_folder(&folder);
+                    for pack in &report.imported {
+                        let _ = library.place_pack(pack.id, &folder);
+                    }
+                }
+                snapshot.message = format!(
+                    "Imported {}.",
+                    report
+                        .imported
+                        .iter()
+                        .map(|pack| pack.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                watch.seen.remove(&path);
+                if !keep_original(&root, &path) {
+                    watch.rejected.extend(stamp.map(|stamp| (path.clone(), stamp)));
+                }
+                changed = true;
+            }
+            result => {
+                watch.rejected.extend(stamp.map(|stamp| (path.clone(), stamp)));
+                snapshot.message = match result {
+                    Err(error) => format!("{label}: {error}"),
+                    _ => format!("{label} has no resource pack in it."),
+                };
+                changed = true;
+            }
+        }
+    }
+    (changed, selection)
+}
+
+/// Moves an imported original into the library's `imported` folder, under a free name; whether
+/// it was moved.
+fn keep_original(root: &std::path::Path, path: &std::path::Path) -> bool {
+    let kept = root.join(KEPT_FOLDERS[0]);
+    if std::fs::create_dir_all(&kept).is_err() {
+        return false;
+    }
+    let name = path.file_name().map_or_else(
+        || std::ffi::OsString::from("pack"),
+        std::ffi::OsStr::to_os_string,
+    );
+    let mut target = kept.join(&name);
+    let mut number = 2;
+    while target.exists() {
+        target = kept.join(format!("{number}-{}", name.to_string_lossy()));
+        number += 1;
+    }
+    std::fs::rename(path, target).is_ok()
+}
+
 /// Reports an import acknowledgement against its submitted selection even after staging changes.
 fn commit_selection(
     library: &mut GlobalPackLibrary,
@@ -338,6 +538,9 @@ fn indexed(action: Action) -> bool {
             | Action::CancelDelete
             | Action::CycleSort
             | Action::SelectBase
+            | Action::FolderUp
+            | Action::NewFolder
+            | Action::DeleteFolder
             | Action::Search
             | Action::ClearSearch
     )
@@ -361,6 +564,10 @@ fn refresh(library: &GlobalPackLibrary, snapshot: &mut Snapshot) {
         .filter_map(|active| library.metadata(active).cloned())
         .collect();
     snapshot.sort = library.sort();
+    snapshot.folders = library.folders().to_vec();
+    if !snapshot.folder.is_empty() && !snapshot.folders.contains(&snapshot.folder) {
+        snapshot.folder.clear();
+    }
     snapshot.available = library
         .available()
         .iter()
@@ -379,6 +586,11 @@ fn refresh(library: &GlobalPackLibrary, snapshot: &mut Snapshot) {
             snapshot.available.reverse();
         }
     }
+    snapshot.available_folders = snapshot
+        .available
+        .iter()
+        .map(|pack| library.folder_of(pack.id).to_owned())
+        .collect();
 }
 
 /// Imports all resource halves and reports skipped behavior or unsupported entries.
@@ -388,6 +600,12 @@ fn import(
     snapshot: &mut Snapshot,
 ) -> Result<(), LibraryError> {
     let report = library.import(&path)?;
+    // A pack added while a folder is open goes into it.
+    if !snapshot.folder.is_empty() {
+        for pack in &report.imported {
+            library.place_pack(pack.id, &snapshot.folder)?;
+        }
+    }
     clear_indexed(snapshot);
     snapshot.message = format!(
         "Imported {} resource packs; skipped {} behavior packs. {}",
@@ -483,6 +701,36 @@ fn act(
         Action::SelectActive(index) => {
             snapshot.selected = Some((true, index));
             snapshot.base_selected = false;
+        }
+        Action::OpenFolder(index) => {
+            if let Some(folder) = snapshot.subfolders().get(index) {
+                snapshot.folder = (*folder).to_owned();
+                clear_indexed(snapshot);
+            }
+        }
+        Action::FolderUp => {
+            snapshot.folder = resource_pack::folder_parent(&snapshot.folder).to_owned();
+            clear_indexed(snapshot);
+        }
+        Action::NewFolder => {
+            library.create_folder(&snapshot.folder, "")?;
+        }
+        Action::DeleteFolder => {
+            if !snapshot.folder.is_empty() {
+                library.delete_folder(&snapshot.folder)?;
+                snapshot.folder = resource_pack::folder_parent(&snapshot.folder).to_owned();
+                clear_indexed(snapshot);
+            }
+        }
+        Action::PutInFolder { index, folder } => {
+            let target = match folder {
+                Some(folder) => snapshot.subfolders().get(folder).map(|path| (*path).to_owned()),
+                None => Some(resource_pack::folder_parent(&snapshot.folder).to_owned()),
+            };
+            if let (Some(pack), Some(target)) = (snapshot.available.get(index), target) {
+                library.place_pack(pack.id, &target)?;
+                clear_indexed(snapshot);
+            }
         }
         Action::SelectBase => {
             snapshot.selected = None;

@@ -1076,3 +1076,46 @@ fn a_selected_or_applied_pack_is_not_removed() {
     ));
     assert_eq!(library.available().len(), 1);
 }
+
+#[test]
+fn folders_organise_packs_without_changing_how_they_work() {
+    let fixture = Fixture::new();
+    let mut library = fixture.library();
+    install_active(&mut library, &fixture, 21);
+    library.deactivate(Uuid::from_u128(21));
+    let id = Uuid::from_u128(21);
+    let first = library.create_folder("", "PVP").unwrap();
+    assert_eq!(first, "PVP");
+    // A name in use is numbered; a blank or slashed one is cleaned.
+    assert_eq!(library.create_folder("", "PVP").unwrap(), "PVP 2");
+    assert_eq!(library.create_folder("", "  ").unwrap(), "New Folder");
+    assert_eq!(library.create_folder("PVP", "a/b").unwrap(), "PVP/ab");
+    assert!(matches!(
+        library.create_folder("missing", "x"),
+        Err(LibraryError::UnknownFolder)
+    ));
+    library.place_pack(id, "PVP/ab").unwrap();
+    assert_eq!(library.folder_of(id), "PVP/ab");
+    // A placed pack still selects, applies and survives a restart in its folder.
+    library.activate(id).unwrap();
+    library.apply().unwrap();
+    let restarted = fixture.library();
+    assert_eq!(restarted.folder_of(id), "PVP/ab");
+    assert_eq!(restarted.active().len(), 1);
+    assert!(restarted.folders().contains(&"PVP/ab".to_owned()));
+    // Deleting a folder moves what is inside up to its parent.
+    library.deactivate(id);
+    library.commit_selection(&[]).unwrap();
+    library.delete_folder("PVP/ab").unwrap();
+    assert_eq!(library.folder_of(id), "PVP");
+    library.delete_folder("PVP").unwrap();
+    assert_eq!(library.folder_of(id), "");
+    assert!(!library.folders().iter().any(|folder| folder.starts_with("PVP/")));
+    // Removing a pack forgets its place.
+    library.place_pack(id, "New Folder").unwrap();
+    library.remove(id).unwrap();
+    assert_eq!(library.folder_of(id), "");
+    assert_eq!(folder_parent("A/B/C"), "A/B");
+    assert_eq!(folder_name("A/B/C"), "C");
+    assert_eq!(folder_parent("A"), "");
+}

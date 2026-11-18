@@ -9,7 +9,9 @@ use java_resource_pack::menu_files::VANILLA_PACK_ICON;
 use launcher::{
     global_resources::{Action, Snapshot},
     menu::{
-        JavaSettingsAction, MenuAction, MenuField, MenuView, settings_sections::SettingSection,
+        JavaSettingsAction, MenuAction, MenuField, MenuView,
+        settings_sections::SettingSection,
+        settings_storage::{StorageAction, StorageFolder},
     },
 };
 use resource_pack::InstalledPack;
@@ -56,6 +58,56 @@ struct Entry<'a> {
     select: MenuAction,
 }
 
+/// One row of a list: a pack, or in the list of packs not in use a way into or out of a folder.
+enum Row<'a> {
+    /// The folder above the open one.
+    Back,
+    /// A folder inside the open one: its place in [`Snapshot::subfolders`], path and contents.
+    Folder {
+        index: usize,
+        path: &'a str,
+        folders: usize,
+        packs: usize,
+    },
+    Pack(Entry<'a>),
+}
+
+/// The rows of a list. The list of packs not in use shows the open folder's folders and packs
+/// while nothing is searched for, and every pack that matches otherwise.
+fn rows<'a>(snapshot: &'a Snapshot, query: &str, active: bool) -> Vec<Row<'a>> {
+    let searching = !query.trim().is_empty();
+    let mut rows = Vec::new();
+    if !active && !searching {
+        if !snapshot.folder.is_empty() {
+            rows.push(Row::Back);
+        }
+        for (index, path) in snapshot.subfolders().into_iter().enumerate() {
+            let inside = |other: &str| resource_pack::folder_parent(other) == path;
+            rows.push(Row::Folder {
+                index,
+                path,
+                folders: snapshot
+                    .folders
+                    .iter()
+                    .filter(|other| inside(other))
+                    .count(),
+                packs: snapshot
+                    .available_folders
+                    .iter()
+                    .filter(|folder| folder.as_str() == path)
+                    .count(),
+            });
+        }
+    }
+    rows.extend(
+        entries(snapshot, query, active)
+            .into_iter()
+            .filter(|entry| active || searching || snapshot.in_open_folder(entry.index))
+            .map(Row::Pack),
+    );
+    rows
+}
+
 /// The packs of a list that match the search, with their place in the unfiltered list.
 fn entries<'a>(snapshot: &'a Snapshot, query: &str, active: bool) -> Vec<Entry<'a>> {
     let packs = if active {
@@ -82,7 +134,8 @@ fn entries<'a>(snapshot: &'a Snapshot, query: &str, active: bool) -> Vec<Entry<'
 }
 
 /// The footer's buttons for what is selected.
-fn footer(snapshot: &Snapshot) -> (Vec<Btn<'static>>, Vec<Btn<'static>>) {
+/// `opens_folders` says whether this machine can open the folder packs are kept in.
+fn footer(snapshot: &Snapshot, opens_folders: bool) -> (Vec<Btn<'static>>, Vec<Btn<'static>>) {
     let idle = !snapshot.busy;
     let add = Btn::new("Add Pack...", idle.then_some(command(Action::Import)));
     let done = Btn::new("Done", Some(MenuAction::AddBack));
@@ -124,7 +177,13 @@ fn footer(snapshot: &Snapshot) -> (Vec<Btn<'static>>, Vec<Btn<'static>>) {
         ),
         None => (Btn::new("Move Up", None), Btn::new("Move Down", None)),
     };
-    (vec![add, second, third], vec![up, down, done])
+    let folder = Btn::new(
+        "Open Folder",
+        opens_folders.then_some(MenuAction::SettingsStorage(StorageAction::OpenFolder(
+            StorageFolder::ResourcePacks,
+        ))),
+    );
+    (vec![add, second, third], vec![up, down, folder, done])
 }
 
 /// Draws the Java Resource Packs screen.
@@ -134,7 +193,7 @@ pub(crate) fn draw(
     size: [f32; 2],
 ) -> Result<(), PaintError> {
     let snapshot = &*view.global_resources;
-    let (first, second) = footer(snapshot);
+    let (first, second) = footer(snapshot, view.storage.opens_folders);
     let status = if snapshot.message.is_empty() {
         None
     } else {
@@ -161,9 +220,14 @@ pub(crate) fn draw(
             (true, "Selected Packs", COLUMN_GAP / 2.0),
         ];
         for (active, heading, left) in columns {
-            let list = entries(snapshot, &view.pack_query, active);
+            let list = rows(snapshot, &view.pack_query, active);
+            let heading = if !active && !snapshot.folder.is_empty() {
+                format!("{heading} / {}", snapshot.folder.replace('/', " / "))
+            } else {
+                heading.to_owned()
+            };
             column(
-                canvas, view, snapshot, frame, active, heading, left, width, &list,
+                canvas, view, snapshot, frame, active, &heading, left, width, &list,
             )?;
         }
         held(canvas, snapshot, frame)
@@ -219,7 +283,7 @@ fn column(
     heading: &str,
     left: f32,
     width: f32,
-    list: &[Entry<'_>],
+    list: &[Row<'_>],
 ) -> Result<(), PaintError> {
     let unit = frame.unit;
     let [x0, x1] = frame.column(left, width);
@@ -236,7 +300,7 @@ fn column(
             .pack_drag
             .list(active, [x0, viewport[1], x1, viewport[3]]);
     }
-    let rows = list.len() + usize::from(active);
+    let rows = list.len() + usize::from(active) + usize::from(list.is_empty() && !active);
     let content = (PADDING + HEADING + rows as f32 * ENTRY_STEP + PADDING) * unit;
     let key = if active {
         "java_packs/active"
@@ -252,17 +316,22 @@ fn column(
         unit,
         |canvas, offset| {
             let top = viewport[1] - offset + PADDING * unit;
+            // Room for the folder buttons beside the heading of the list of unused packs.
+            let reserved = if active { 0.0 } else { 74.0 };
             put(
                 canvas,
                 heading,
                 [x0 + unit, top + 4.0 * unit],
                 unit,
                 TEXT,
-                width * unit,
+                (width - reserved) * unit,
             )?;
+            if !active {
+                folder_buttons(canvas, view, snapshot, [x1, top], unit)?;
+            }
             if list.is_empty() && !active {
                 let text = if view.pack_query.is_empty() {
-                    "No packs imported"
+                    "Drop packs in, or use Add Pack"
                 } else {
                     "No packs match"
                 };
@@ -275,15 +344,54 @@ fn column(
                     width * unit,
                 )?;
             }
-            for (row, entry) in list.iter().enumerate() {
+            for (row, item) in list.iter().enumerate() {
                 let y = top + (HEADING + row as f32 * ENTRY_STEP) * unit;
                 let bounds = [x0, y, x1, y + (ENTRY_STEP - 4.0) * unit];
-                let subtitle = if active {
-                    format!("Priority {}", entry.index + 1)
-                } else {
-                    String::new()
-                };
-                pack_entry(canvas, view, snapshot, entry, &subtitle, bounds, unit)?;
+                match item {
+                    Row::Pack(entry) => {
+                        let subtitle = if active {
+                            format!("Priority {}", entry.index + 1)
+                        } else {
+                            String::new()
+                        };
+                        pack_entry(canvas, view, snapshot, entry, &subtitle, bounds, unit)?;
+                    }
+                    Row::Back => {
+                        let parent = resource_pack::folder_parent(&snapshot.folder);
+                        let caption = if parent.is_empty() {
+                            "Back to all packs".to_owned()
+                        } else {
+                            format!("Back to {}", resource_pack::folder_name(parent))
+                        };
+                        folder_row(
+                            canvas,
+                            view,
+                            bounds,
+                            "..",
+                            &caption,
+                            true,
+                            None,
+                            command(Action::FolderUp),
+                            unit,
+                        )?;
+                    }
+                    Row::Folder {
+                        index,
+                        path,
+                        folders,
+                        packs,
+                    } => folder_row(
+                        canvas,
+                        view,
+                        bounds,
+                        resource_pack::folder_name(path),
+                        &format!("Folders: {folders} / Packs: {packs}"),
+                        false,
+                        Some(*index),
+                        command(Action::OpenFolder(*index)),
+                        unit,
+                    )?,
+                }
             }
             if active {
                 let y = top + (HEADING + list.len() as f32 * ENTRY_STEP) * unit;
@@ -293,6 +401,116 @@ fn column(
             Ok(())
         },
     )
+}
+
+/// The buttons beside the heading of the list of unused packs: make a folder, and in a folder
+/// delete it.
+fn folder_buttons(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    snapshot: &Snapshot,
+    [right, top]: [f32; 2],
+    unit: f32,
+) -> Result<(), PaintError> {
+    let idle = !snapshot.busy;
+    let width = 72.0;
+    if snapshot.folder.is_empty() {
+        let bounds = [right - width * unit, top, right, top + 14.0 * unit];
+        return super::button::draw(
+            canvas,
+            view,
+            bounds,
+            "New Folder",
+            idle.then_some(command(Action::NewFolder)),
+            unit,
+        );
+    }
+    let delete = [right - width * unit, top, right, top + 14.0 * unit];
+    super::button::draw(
+        canvas,
+        view,
+        delete,
+        "Delete Folder",
+        idle.then_some(command(Action::DeleteFolder)),
+        unit,
+    )
+}
+
+/// Draws a folder with squares: a tab on a body, its front lighter, and when `up` a green arrow.
+/// It is the client's own picture, so no game file is needed.
+fn folder_icon(canvas: &mut Canvas<'_>, icon: Bounds, up: bool) -> Result<(), PaintError> {
+    let cell = (icon[2] - icon[0]) / 32.0;
+    let at = |left: f32, top: f32, right: f32, bottom: f32| {
+        [
+            icon[0] + left * cell,
+            icon[1] + top * cell,
+            icon[0] + right * cell,
+            icon[1] + bottom * cell,
+        ]
+    };
+    canvas.fill(at(3.0, 7.0, 15.0, 12.0), [170, 126, 34, 255])?;
+    canvas.fill(at(3.0, 10.0, 29.0, 27.0), [170, 126, 34, 255])?;
+    canvas.fill(at(4.0, 8.0, 14.0, 11.0), [232, 184, 64, 255])?;
+    canvas.fill(at(4.0, 11.0, 28.0, 26.0), [244, 200, 84, 255])?;
+    canvas.fill(at(4.0, 15.0, 28.0, 26.0), [252, 220, 120, 255])?;
+    if up {
+        canvas.fill(at(21.0, 17.0, 25.0, 25.0), [64, 168, 64, 255])?;
+        canvas.fill(at(19.0, 17.0, 27.0, 20.0), [64, 168, 64, 255])?;
+        canvas.fill(at(20.0, 15.0, 26.0, 18.0), [64, 168, 64, 255])?;
+        canvas.fill(at(22.0, 13.0, 24.0, 16.0), [64, 168, 64, 255])?;
+    }
+    Ok(())
+}
+
+/// A folder's row, or the row that goes up one: its icon, name and what it holds. Pressing it
+/// opens it, and a pack dragged onto it goes into it.
+#[allow(clippy::too_many_arguments)]
+fn folder_row(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    bounds: Bounds,
+    name: &str,
+    caption: &str,
+    up: bool,
+    target: Option<usize>,
+    open: MenuAction,
+    unit: f32,
+) -> Result<(), PaintError> {
+    let over = canvas
+        .transitions
+        .as_deref()
+        .and_then(|transitions| transitions.pack_drag.over_target())
+        == Some(target);
+    mark(canvas, view, bounds, over, Some(open), unit)?;
+    let icon = [
+        bounds[0],
+        bounds[1],
+        bounds[0] + ICON * unit,
+        bounds[1] + ICON * unit,
+    ];
+    folder_icon(canvas, icon, up)?;
+    let text_left = bounds[0] + (ICON + 3.0) * unit;
+    let room = bounds[2] - text_left;
+    put(
+        canvas,
+        name,
+        [text_left, bounds[1] + unit],
+        unit,
+        TEXT,
+        room,
+    )?;
+    put(
+        canvas,
+        caption,
+        [text_left, bounds[1] + 12.0 * unit],
+        unit,
+        GREY,
+        room,
+    )?;
+    if let Some(transitions) = canvas.transitions.as_deref_mut() {
+        transitions.pack_drag.target(bounds, target);
+    }
+    canvas.hit(open, bounds)
 }
 
 /// The box that marks a selected entry, or a faint one under the pointer.
@@ -347,15 +565,172 @@ fn pack_entry(
         unit,
     )?;
     pack_face(canvas, snapshot, entry.pack, subtitle, bounds, unit)?;
+    canvas.hit(entry.select, bounds)?;
+    let hot = arrows(canvas, view, snapshot, entry, bounds, unit)?;
     if let Some(transitions) = canvas.transitions.as_deref_mut() {
         transitions.pack_drag.entry(DragEntry {
             active: entry.active,
             index: entry.index,
             bounds,
             select: entry.select,
+            hot,
         });
     }
-    canvas.hit(entry.select, bounds)
+    Ok(())
+}
+
+/// Which way an arrow over a pack's icon points, and the sprite that draws it at rest and under
+/// the pointer.
+#[derive(Clone, Copy)]
+enum Arrow {
+    Select,
+    Unselect,
+    Up,
+    Down,
+}
+
+impl Arrow {
+    fn sprites(self) -> [&'static str; 2] {
+        match self {
+            Self::Select => [
+                "sprites/transferable_list/select.png",
+                "sprites/transferable_list/select_highlighted.png",
+            ],
+            Self::Unselect => [
+                "sprites/transferable_list/unselect.png",
+                "sprites/transferable_list/unselect_highlighted.png",
+            ],
+            Self::Up => [
+                "sprites/transferable_list/move_up.png",
+                "sprites/transferable_list/move_up_highlighted.png",
+            ],
+            Self::Down => [
+                "sprites/transferable_list/move_down.png",
+                "sprites/transferable_list/move_down_highlighted.png",
+            ],
+        }
+    }
+}
+
+/// Draws `arrow` in `zone` with plain squares, for a game or pack that has no picture for it.
+fn plain_arrow(
+    canvas: &mut Canvas<'_>,
+    zone: Bounds,
+    arrow: Arrow,
+    lit: bool,
+    unit: f32,
+) -> Result<(), PaintError> {
+    let colour = if lit {
+        [255, 255, 160, 255]
+    } else {
+        [255, 255, 255, 255]
+    };
+    let centre = [(zone[0] + zone[2]) * 0.5, (zone[1] + zone[3]) * 0.5];
+    // A triangle of five stripes, two Java pixels thick.
+    for step in 0..5 {
+        let along = (step as f32 - 2.0) * 2.0 * unit;
+        let span = (2.5 - (step as f32 - 2.0).abs()) * 2.0 * unit;
+        let stripe = match arrow {
+            Arrow::Select => [
+                centre[0] + along - unit,
+                centre[1] - span,
+                centre[0] + along + unit,
+                centre[1] + span,
+            ],
+            Arrow::Unselect => [
+                centre[0] - along - unit,
+                centre[1] - span,
+                centre[0] - along + unit,
+                centre[1] + span,
+            ],
+            Arrow::Up => [
+                centre[0] - span,
+                centre[1] - along - unit,
+                centre[0] + span,
+                centre[1] - along + unit,
+            ],
+            Arrow::Down => [
+                centre[0] - span,
+                centre[1] + along - unit,
+                centre[0] + span,
+                centre[1] + along + unit,
+            ],
+        };
+        canvas.fill(stripe, colour)?;
+    }
+    Ok(())
+}
+
+/// The arrows Java shows over a hovered pack's icon: a pack that is not in use can be selected,
+/// a selected one deselected, and moved up or down. Each is the game's sprite, or the pack's own
+/// when a resource pack restyles it, else a plain arrow. Returns the areas that act on a press,
+/// so a drag does not start from them.
+fn arrows(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    snapshot: &Snapshot,
+    entry: &Entry<'_>,
+    bounds: Bounds,
+    unit: f32,
+) -> Result<[Option<Bounds>; 3], PaintError> {
+    let idle = !snapshot.busy;
+    let icon = [
+        bounds[0],
+        bounds[1],
+        bounds[0] + ICON * unit,
+        bounds[1] + ICON * unit,
+    ];
+    let half = ICON * unit * 0.5;
+    let mut zones: Vec<(Bounds, Arrow, MenuAction)> = Vec::new();
+    if !entry.active {
+        zones.push((icon, Arrow::Select, command(Action::Activate(entry.index))));
+    } else {
+        zones.push((
+            [icon[0], icon[1], icon[0] + half, icon[3]],
+            Arrow::Unselect,
+            command(Action::Deactivate(entry.index)),
+        ));
+        if entry.index > 0 {
+            zones.push((
+                [icon[0] + half, icon[1], icon[2], icon[1] + half],
+                Arrow::Up,
+                command(Action::MoveUp(entry.index)),
+            ));
+        }
+        if entry.index + 1 < snapshot.active.len() {
+            zones.push((
+                [icon[0] + half, icon[1] + half, icon[2], icon[3]],
+                Arrow::Down,
+                command(Action::MoveDown(entry.index)),
+            ));
+        }
+    }
+    let mut hot = [None; 3];
+    if !idle {
+        return Ok(hot);
+    }
+    for (slot, (zone, _, action)) in zones.iter().enumerate() {
+        canvas.pointer_hit(*action, *zone)?;
+        hot[slot] = Some(*zone);
+    }
+    let hovered = canvas.interaction(view, Some(entry.select)).hovered
+        || zones
+            .iter()
+            .any(|(_, _, action)| canvas.interaction(view, Some(*action)).hovered);
+    if !hovered {
+        return Ok(hot);
+    }
+    canvas.fill(icon, [144, 144, 144, 160])?;
+    for (zone, arrow, action) in &zones {
+        let lit = canvas.interaction(view, Some(*action)).hovered;
+        let [rest, highlighted] = arrow.sprites();
+        let key = crate::images::java::key(if lit { highlighted } else { rest });
+        // The sprite spans the whole icon, with the arrow in its own part of it.
+        if !canvas.sprite(&key, icon, [255; 4])? {
+            plain_arrow(canvas, *zone, *arrow, lit, unit)?;
+        }
+    }
+    Ok(hot)
 }
 
 /// A pack's icon, name, version and description in `bounds`.
@@ -542,7 +917,7 @@ mod tests {
             ..Default::default()
         };
         let labels = |snapshot: &Snapshot| {
-            let (first, second) = footer(snapshot);
+            let (first, second) = footer(snapshot, true);
             first
                 .iter()
                 .chain(&second)

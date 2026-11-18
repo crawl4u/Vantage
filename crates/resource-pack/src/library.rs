@@ -14,6 +14,7 @@ use std::{
 use uuid::Uuid;
 
 mod storage;
+pub use storage::{MAX_FOLDER_NAME_CHARS, folder_name, folder_parent};
 
 const CATALOG_FILE: &str = "global_packs.json";
 const MAX_CATALOG_BYTES: usize = 16 * 1024 * 1024;
@@ -103,6 +104,10 @@ pub enum LibraryError {
     UnknownPack,
     #[error("deselect the pack and apply the change before deleting it")]
     PackInUse,
+    #[error("that folder does not exist")]
+    UnknownFolder,
+    #[error("the library holds as many folders as it can")]
+    TooManyFolders,
     #[error("pack requires a newer game version")]
     NewerEngine,
     #[error("installed resource-pack catalog exceeds its storage limit")]
@@ -148,6 +153,12 @@ impl PackSort {
 struct Catalog {
     #[serde(default)]
     sort: PackSort,
+    /// The folders that organise the library, as paths of names joined by `/`.
+    #[serde(default)]
+    folders: Vec<String>,
+    /// The folder each placed pack is in; a pack not named here is at the top level.
+    #[serde(default)]
+    placement: std::collections::BTreeMap<Uuid, String>,
     #[serde(default)]
     available: Vec<InstalledPack>,
     #[serde(default)]

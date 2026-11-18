@@ -22,6 +22,8 @@ pub(crate) struct DragEntry {
     pub bounds: Bounds,
     /// What releasing without a drag does.
     pub select: MenuAction,
+    /// Areas of the pack that act on a press of their own, so a press there does not grab it.
+    pub hot: [Option<Bounds>; 3],
 }
 
 #[derive(Clone, Copy)]
@@ -38,6 +40,9 @@ pub(crate) struct PackDrag {
     /// The visible area of the list of unused packs, then of the selected list.
     lists: [Option<Bounds>; 2],
     entries: Vec<DragEntry>,
+    /// The folder rows a pack can be dropped on, with the folder each means: a place in the
+    /// open folder's subfolders, or none for the folder above.
+    targets: Vec<(Bounds, Option<usize>)>,
     /// How many packs the selected list holds, shown or not.
     active_len: usize,
     capture: Option<Capture>,
@@ -61,6 +66,7 @@ impl PackDrag {
     pub(crate) fn begin_layout(&mut self, active_len: usize) {
         self.lists = [None; 2];
         self.entries.clear();
+        self.targets.clear();
         self.active_len = active_len;
         self.touched = true;
     }
@@ -68,6 +74,23 @@ impl PackDrag {
     /// Reports the visible area of a list.
     pub(crate) fn list(&mut self, active: bool, area: Bounds) {
         self.lists[usize::from(active)] = Some(area);
+    }
+
+    /// Reports a folder row a pack can be dropped on.
+    pub(crate) fn target(&mut self, bounds: Bounds, folder: Option<usize>) {
+        self.targets.push((bounds, folder));
+    }
+
+    /// The folder the held pack is over, when it came from the list of unused packs.
+    pub(crate) fn over_target(&self) -> Option<Option<usize>> {
+        let (entry, pointer, _) = self.held()?;
+        if entry.active {
+            return None;
+        }
+        self.targets
+            .iter()
+            .find(|(bounds, _)| contains(*bounds, pointer))
+            .map(|(_, folder)| *folder)
     }
 
     /// Reports a pack the pointer can grab.
@@ -81,6 +104,7 @@ impl PackDrag {
             self.cancel();
             self.lists = [None; 2];
             self.entries.clear();
+            self.targets.clear();
         }
     }
 
@@ -149,6 +173,11 @@ impl PackDrag {
             && let Some(point) = point
             && let Some(entry) = self.entries.iter().find(|entry| {
                 contains(entry.bounds, point)
+                    && !entry
+                        .hot
+                        .iter()
+                        .flatten()
+                        .any(|zone| contains(*zone, point))
                     && self.lists[usize::from(entry.active)]
                         .is_some_and(|area| contains(area, point))
             })
@@ -175,7 +204,15 @@ impl PackDrag {
             self.capture = Some(capture);
             return (true, None);
         }
-        let action = if capture.dragging {
+        let into_folder = self.over_target().map(|folder| {
+            MenuAction::GlobalResources(Action::PutInFolder {
+                index: capture.entry.index,
+                folder,
+            })
+        });
+        let action = if capture.dragging && into_folder.is_some() {
+            into_folder
+        } else if capture.dragging {
             self.destination(point).and_then(|to| {
                 let entry = capture.entry;
                 // Putting a pack back where it already is changes nothing.
@@ -242,6 +279,7 @@ mod tests {
                     } else {
                         Action::SelectAvailable(index)
                     }),
+                    hot: [None; 3],
                 });
             }
         }
@@ -331,6 +369,32 @@ mod tests {
         assert_eq!(drag.marker(), Some([110.0, 210.0, 40.0]));
         drag.pointer(Some(point(150.0, 45.0)), false, false);
         assert_eq!(drag.marker(), None);
+    }
+
+    #[test]
+    fn a_pack_dropped_on_a_folder_row_goes_into_that_folder() {
+        let mut drag = layout();
+        drag.target([0.0, 300.0, 100.0, 336.0], Some(1));
+        drag.target([0.0, 340.0, 100.0, 376.0], None);
+        assert_eq!(
+            gesture(&mut drag, point(20.0, 50.0), point(50.0, 310.0)),
+            Some(MenuAction::GlobalResources(Action::PutInFolder {
+                index: 1,
+                folder: Some(1),
+            }))
+        );
+        assert_eq!(
+            gesture(&mut drag, point(20.0, 50.0), point(50.0, 350.0)),
+            Some(MenuAction::GlobalResources(Action::PutInFolder {
+                index: 1,
+                folder: None,
+            }))
+        );
+        // A selected pack cannot be dropped on a folder.
+        assert_eq!(
+            gesture(&mut drag, point(150.0, 50.0), point(50.0, 310.0)),
+            None
+        );
     }
 
     #[test]

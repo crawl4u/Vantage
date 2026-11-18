@@ -34,6 +34,20 @@ pub enum Action {
         index: usize,
         to: Option<usize>,
     },
+    /// Open the subfolder at this index of [`Snapshot::subfolders`].
+    OpenFolder(usize),
+    /// Go up to the folder holding the open one.
+    FolderUp,
+    /// Make a folder inside the open one.
+    NewFolder,
+    /// Delete the open folder; its packs move up into the folder that held it.
+    DeleteFolder,
+    /// Put the available pack at `index` in the subfolder at `folder` of
+    /// [`Snapshot::subfolders`], or in the folder above the open one for none.
+    PutInFolder {
+        index: usize,
+        folder: Option<usize>,
+    },
     /// Step the order the unselected packs are listed in.
     CycleSort,
     /// Focus the pack search field.
@@ -63,6 +77,12 @@ pub struct Snapshot {
     pub delete_pending: Option<usize>,
     /// The order `available` is listed in.
     pub sort: resource_pack::PackSort,
+    /// Every folder of the library, as paths of names joined by `/`.
+    pub folders: Vec<String>,
+    /// The folder each pack of `available` is in, an empty path for the top level.
+    pub available_folders: Vec<String>,
+    /// The folder the list of packs not in use shows, an empty path for the top level.
+    pub folder: String,
     pub available_expanded: bool,
     pub active_expanded: bool,
     pub busy: bool,
@@ -70,6 +90,27 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// The folders directly inside the open one, as full paths in name order.
+    #[must_use]
+    pub fn subfolders(&self) -> Vec<&str> {
+        let mut found: Vec<&str> = self
+            .folders
+            .iter()
+            .map(String::as_str)
+            .filter(|folder| resource_pack::folder_parent(folder) == self.folder)
+            .collect();
+        found.sort_by_key(|folder| folder.to_lowercase());
+        found
+    }
+
+    /// Whether the pack of `available` at `index` is in the open folder.
+    #[must_use]
+    pub fn in_open_folder(&self, index: usize) -> bool {
+        self.available_folders
+            .get(index)
+            .is_some_and(|folder| *folder == self.folder)
+    }
+
     /// Whether the Apply changes action is enabled for the staged selection.
     pub fn can_apply(&self) -> bool {
         !self.busy && self.has_pending_changes()
@@ -99,6 +140,9 @@ impl Default for Snapshot {
             settings: None,
             delete_pending: None,
             sort: resource_pack::PackSort::default(),
+            folders: Vec::new(),
+            available_folders: Vec::new(),
+            folder: String::new(),
             available_expanded: true,
             active_expanded: true,
             busy: false,

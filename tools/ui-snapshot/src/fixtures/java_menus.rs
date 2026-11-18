@@ -120,8 +120,10 @@ fn java_packs() -> Fixture {
             pack("Old Library", ""),
         ],
         active: vec![pack("Vonpack", "Dark menus and blue buttons.")],
-        selected: Some((false, 0)),
+        selected: Some((false, 1)),
         message: "Texture packs applied.".to_owned(),
+        folders: vec!["PVP".to_owned(), "Textures".to_owned()],
+        available_folders: vec!["PVP".to_owned(), String::new(), String::new()],
         ..Default::default()
     });
     let options = Arc::make_mut(&mut view.settings_options);

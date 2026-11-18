@@ -1126,3 +1126,155 @@ fn dragging_packs_moves_them_between_the_lists_and_within_the_selected_one() {
     assert!(!snapshot.base_selected);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn folders_are_made_opened_filled_and_deleted_from_the_list() {
+    let root = std::env::temp_dir().join(format!("cinnabar-pack-folders-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let mut library = GlobalPackLibrary::open(root.join("library"), [9, 0, 0]).unwrap();
+    import_fixture(&mut library, &root, 1);
+    import_fixture(&mut library, &root, 2);
+    let mut snapshot = Snapshot::default();
+    let (outgoing, _events) = crossbeam_channel::unbounded();
+    refresh(&library, &mut snapshot);
+    let mut run = |library: &mut GlobalPackLibrary, snapshot: &mut Snapshot, action| {
+        act(library, snapshot, action, &outgoing).unwrap();
+        refresh(library, snapshot);
+    };
+    run(&mut library, &mut snapshot, Action::NewFolder);
+    assert_eq!(snapshot.subfolders(), ["New Folder"]);
+    // Put the first available pack in it; it leaves the top level's view.
+    run(
+        &mut library,
+        &mut snapshot,
+        Action::PutInFolder {
+            index: 0,
+            folder: Some(0),
+        },
+    );
+    assert_eq!(
+        snapshot
+            .available_folders
+            .iter()
+            .filter(|folder| !folder.is_empty())
+            .count(),
+        1
+    );
+    run(&mut library, &mut snapshot, Action::OpenFolder(0));
+    assert_eq!(snapshot.folder, "New Folder");
+    assert!(
+        (0..2)
+            .filter(|index| snapshot.in_open_folder(*index))
+            .count()
+            == 1
+    );
+    // A pack added while the folder is open lands in it.
+    let path = write_fixture(&root, 3);
+    import(&mut library, path, &mut snapshot).unwrap();
+    refresh(&library, &mut snapshot);
+    assert!(
+        (0..3)
+            .filter(|index| snapshot.in_open_folder(*index))
+            .count()
+            == 2
+    );
+    // Dropping a pack on the way up puts it back at the top level.
+    let inside = (0..3)
+        .find(|index| snapshot.in_open_folder(*index))
+        .unwrap();
+    run(
+        &mut library,
+        &mut snapshot,
+        Action::PutInFolder {
+            index: inside,
+            folder: None,
+        },
+    );
+    assert!(
+        (0..3)
+            .filter(|index| snapshot.in_open_folder(*index))
+            .count()
+            == 1
+    );
+    // Deleting the open folder keeps its pack and steps up.
+    run(&mut library, &mut snapshot, Action::DeleteFolder);
+    assert_eq!(snapshot.folder, "");
+    assert!(snapshot.folders.is_empty());
+    assert_eq!(snapshot.available.len(), 3);
+    assert!(snapshot.available_folders.iter().all(String::is_empty));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn packs_put_into_the_library_folder_are_imported_at_once_and_deleted_ones_leave() {
+    let root = std::env::temp_dir().join(format!("cinnabar-pack-watch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let library_root = root.join("library");
+    std::fs::create_dir_all(&library_root).unwrap();
+    let mut library = GlobalPackLibrary::open(&library_root, [9, 0, 0]).unwrap();
+    let mut snapshot = Snapshot::default();
+    let mut watch = Watch::default();
+    refresh(&library, &mut snapshot);
+
+    // A pack dropped in the top level and one in a new subfolder.
+    std::fs::copy(write_fixture(&root, 1), library_root.join("dropped.mcpack")).unwrap();
+    std::fs::create_dir_all(library_root.join("PVP")).unwrap();
+    std::fs::copy(
+        write_fixture(&root, 2),
+        library_root.join("PVP").join("inside.zip"),
+    )
+    .unwrap();
+    // The first look only notes the files, so one still being copied is not read half done.
+    let (changed, _) = scan_folder(&mut library, &mut snapshot, &mut watch);
+    assert!(changed, "the new folder shows at once");
+    assert!(library.available().is_empty());
+    let (changed, selection) = scan_folder(&mut library, &mut snapshot, &mut watch);
+    assert!(changed && !selection);
+    assert_eq!(library.available().len(), 2);
+    assert!(library.folders().contains(&"PVP".to_owned()));
+    let in_pvp = library
+        .available()
+        .iter()
+        .filter(|pack| library.folder_of(pack.id) == "PVP")
+        .count();
+    assert_eq!(in_pvp, 1);
+    // Originals are kept, not deleted, and not imported again.
+    assert!(
+        library_root
+            .join("imported")
+            .join("dropped.mcpack")
+            .exists()
+    );
+    assert!(!library_root.join("dropped.mcpack").exists());
+    let (changed, _) = scan_folder(&mut library, &mut snapshot, &mut watch);
+    assert!(!changed);
+    assert_eq!(library.available().len(), 2);
+
+    // A pack's archive deleted by hand takes the pack out of the library.
+    let archive = std::fs::read_dir(&library_root)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| library.manages(name))
+        })
+        .expect("a managed archive");
+    std::fs::remove_file(archive).unwrap();
+    let (changed, _) = scan_folder(&mut library, &mut snapshot, &mut watch);
+    assert!(changed);
+    assert_eq!(library.available().len(), 1);
+    assert!(snapshot.message.starts_with("Removed "));
+
+    // A file that is not a pack is reported once and left alone.
+    std::fs::write(library_root.join("broken.zip"), b"not a zip").unwrap();
+    scan_folder(&mut library, &mut snapshot, &mut watch);
+    let (changed, _) = scan_folder(&mut library, &mut snapshot, &mut watch);
+    assert!(changed && snapshot.message.starts_with("broken.zip"));
+    let (changed, _) = scan_folder(&mut library, &mut snapshot, &mut watch);
+    assert!(!changed);
+    assert!(library_root.join("broken.zip").exists());
+    std::fs::remove_dir_all(root).unwrap();
+}
