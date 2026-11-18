@@ -309,7 +309,8 @@ impl InstallLayout {
     /// The record that the store install of the game was found on this machine.
     #[must_use]
     pub fn ownership_install_file(&self) -> PathBuf {
-        self.license_cache().with_file_name("ownership-install.json")
+        self.license_cache()
+            .with_file_name("ownership-install.json")
     }
 
     /// The log of how ownership was shown at launch.

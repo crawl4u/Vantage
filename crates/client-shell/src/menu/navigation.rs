@@ -7,7 +7,10 @@ pub(super) use focus::NavigationFocus;
 
 use {
     super::MenuRuntime,
-    launcher::menu::{MenuAction, MenuScreen, worlds_tab::LocalWorldAction},
+    launcher::menu::{
+        JavaSettingsView, MenuAction, MenuScreen, settings_options::menu_style::MenuStyle,
+        worlds_tab::LocalWorldAction,
+    },
 };
 
 impl MenuRuntime {
@@ -217,6 +220,9 @@ impl MenuRuntime {
             self.settings_query.set_text("");
             self.storage_query.set_text("");
         }
+        if screen == MenuScreen::Settings && self.screen != MenuScreen::Settings {
+            self.settings.java_view = JavaSettingsView::Hub;
+        }
         self.screen = screen;
         self.navigation_focus.enter();
         if screen != MenuScreen::DressingRoom && self.dressing_room.editor.is_some() {
@@ -296,6 +302,18 @@ impl MenuRuntime {
             && let Some(index) = self.settings.dropdown
         {
             self.activate(MenuAction::SettingsDropdown(index));
+            return;
+        }
+        // Back on a Java option page, or on the Bedrock Settings opened from one, returns to the
+        // list of pages.
+        if self.screen == MenuScreen::Settings
+            && self.settings_options.menu_style() == MenuStyle::Java
+            && matches!(
+                self.settings.java_view,
+                JavaSettingsView::Page | JavaSettingsView::Bedrock
+            )
+        {
+            self.settings.java_view = JavaSettingsView::Hub;
             return;
         }
         if self.local_screen_open() {

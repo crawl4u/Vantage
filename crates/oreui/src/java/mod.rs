@@ -6,6 +6,7 @@
 mod button;
 mod font;
 pub(super) mod home;
+pub(super) mod options;
 pub(super) mod pause;
 mod splash;
 

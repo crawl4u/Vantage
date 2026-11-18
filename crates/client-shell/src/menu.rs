@@ -91,7 +91,10 @@ use launcher::menu::DEFAULT_PORT;
 
 use launcher::menu::split_address;
 
-use launcher::menu::{MenuAction, MenuDialog, MenuField, MenuScreen, MenuServerTab};
+use launcher::menu::{
+    JavaSettingsAction, JavaSettingsView, MenuAction, MenuDialog, MenuField, MenuScreen,
+    MenuServerTab,
+};
 
 #[derive(Debug, Resource)]
 pub struct MenuRuntime {
@@ -548,7 +551,19 @@ impl MenuRuntime {
             MenuAction::OpenSettingsSection(section) => {
                 self.enter(MenuScreen::Settings);
                 self.activate(MenuAction::SettingsSection(section));
+                self.settings.java_view = JavaSettingsView::Direct;
             }
+            MenuAction::JavaSettings(action) => match action {
+                JavaSettingsAction::Hub => self.settings.java_view = JavaSettingsView::Hub,
+                JavaSettingsAction::Page(section) => {
+                    self.activate(MenuAction::SettingsSection(section));
+                    self.settings.java_view = JavaSettingsView::Page;
+                }
+                JavaSettingsAction::Bedrock(section) => {
+                    self.activate(MenuAction::SettingsSection(section));
+                    self.settings.java_view = JavaSettingsView::Bedrock;
+                }
+            },
             MenuAction::OpenExitDialog => {
                 self.dialog = Some(MenuDialog::Exit);
                 self.focused = 0;

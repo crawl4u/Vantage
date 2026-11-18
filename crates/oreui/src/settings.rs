@@ -57,6 +57,58 @@ pub(super) struct State {
     index: Option<usize>,
 }
 
+/// Whether the device and host offer the option `id`, for every screen that lists options.
+pub(super) fn available(view: &MenuView, id: SettingId) -> bool {
+    use launcher::menu::settings_options::layout::SettingPanel;
+    if id == SettingId::GraphicsApi
+        && launcher::graphics_backend::Platform::current()
+            .backends()
+            .len()
+            < 2
+    {
+        return false;
+    }
+    id.definition()
+        .section
+        .iter()
+        .all(|(panel, _)| match panel {
+            SettingPanel::Touch => view.touch_available,
+            SettingPanel::Updates => view.updates.active,
+            _ => true,
+        })
+}
+
+/// The text a slider row shows for `value`, with `word` resolving translation keys.
+pub(super) fn slider_text(id: SettingId, value: i32, word: &dyn Fn(&str) -> String) -> String {
+    match id {
+        SettingId::FieldOfView => format!("{value}°"),
+        SettingId::RenderDistance | SettingId::CloudDistance => {
+            word("options.renderDistanceFormat").replace("%s", &value.to_string())
+        }
+        SettingId::MaxFramerate => {
+            launcher::menu::settings_options::frame_rate_label(value, &|key: &str| word(key))
+        }
+        SettingId::Msaa => value.to_string(),
+        SettingId::ChatFontSize => format!("{}%", value * 10),
+        _ => format!("{value}%"),
+    }
+}
+
+/// The text of the translation key `key` in the player's language.
+pub(super) fn text(view: &MenuView, translate: Translate<'_>, key: &str) -> String {
+    localization::word(key, view.settings_options.language(), translate)
+}
+
+/// The title a settings row shows for the option `id`: its label key resolved.
+pub(super) fn option_title(view: &MenuView, translate: Translate<'_>, id: SettingId) -> String {
+    let option = id.definition();
+    localization::word(
+        option.oreui_label.unwrap_or(option.label),
+        view.settings_options.language(),
+        translate,
+    )
+}
+
 pub(super) fn draw(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
@@ -496,23 +548,7 @@ impl Content<'_, '_> {
 
     /// Applies the same device and host availability to normal rows and search results.
     pub(super) fn option_available(&self, id: SettingId) -> bool {
-        use launcher::menu::settings_options::layout::SettingPanel;
-        if id == SettingId::GraphicsApi
-            && launcher::graphics_backend::Platform::current()
-                .backends()
-                .len()
-                < 2
-        {
-            return false;
-        }
-        id.definition()
-            .section
-            .iter()
-            .all(|(panel, _)| match panel {
-                SettingPanel::Touch => self.view.touch_available,
-                SettingPanel::Updates => self.view.updates.active,
-                _ => true,
-            })
+        available(self.view, id)
     }
 
     pub(super) fn option(&mut self, id: SettingId) -> Result<(), PaintError> {
@@ -559,20 +595,7 @@ impl Content<'_, '_> {
             }
             SettingKind::Slider => {
                 let [left, right] = self.inset();
-                let shown = match id {
-                    SettingId::FieldOfView => format!("{value}°"),
-                    SettingId::RenderDistance | SettingId::CloudDistance => self
-                        .word("options.renderDistanceFormat")
-                        .replace("%s", &value.to_string()),
-                    SettingId::MaxFramerate => {
-                        launcher::menu::settings_options::frame_rate_label(value, &|key: &str| {
-                            self.word(key)
-                        })
-                    }
-                    SettingId::Msaa => value.to_string(),
-                    SettingId::ChatFontSize => format!("{}%", value * 10),
-                    _ => format!("{value}%"),
-                };
+                let shown = slider_text(id, value, &|key| self.word(key));
                 let (title, shown) = if id == SettingId::ChatFontSize && title.contains("%s") {
                     (title.replace("%s", &shown), String::new())
                 } else {

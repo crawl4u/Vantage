@@ -84,9 +84,17 @@ Java sprites and font when the active packs change, as the other pack-driven art
    launcher's asset store first, then the jar, because the jar holds one-pixel stand-ins for
    some pictures. Still to do: Java's Unifont fallback for scripts the bitmap sheets lack, and
    the date-based splashes.
-5. Resource pack following (the three steps above) for sprites and font together.
-6. Pause menu.
-7. Options pages generated from the settings definitions, plus "More settings".
+5. Resource pack following. Done: the importer keeps a pack's menu files under `javaui/`, one
+   resolver (`images/java.rs`) reads each file from the selected packs and then the cache, and the
+   Java menus' pages are a reserved block of the UI textures whose pixels change with the packs
+   without changing the renderer's fixed identity. A pack button without its own borders takes
+   the game's, scaled. Sheets up to 2048 pixels fit.
+6. Pause menu. Done (`java/pause.rs`): Java's rows, holding what this client offers in place of
+   advancements, statistics and the icon links.
+7. Options pages. Done (`java/options.rs`): the list of pages and a page for each section with
+   options in the settings registry, built from the registry's panels, with every other section
+   and each page's "More settings..." reaching the Bedrock-style Settings. The view in use is
+   `SettingsInteraction::java_view`; Back steps page, then list, then out.
 8. Behaviour parity across the Java screens (the fourth requirement), checked screen by screen.
 
 Later rounds: world and server lists, create world, mods, the rest of the menus.

@@ -25,6 +25,27 @@ pub(super) fn label_style(canvas: &Canvas<'_>, unit: f32) -> Type {
     }
 }
 
+/// `label` cut short with an ellipsis until Java's font draws it in at most `max` Java pixels, as
+/// Java does for a button whose text is too long. A label that fits, or that Java's font cannot
+/// measure, is returned as it is.
+fn fitted(label: &str, max: f32) -> String {
+    let Some(font) = crate::images::java::font() else {
+        return label.to_owned();
+    };
+    let width = |text: &str| super::font::width_with(&font, text);
+    if width(label).is_none_or(|width| width <= max) {
+        return label.to_owned();
+    }
+    let mut kept: Vec<char> = label.chars().collect();
+    while kept.pop().is_some() {
+        let candidate: String = kept.iter().collect::<String>().trim_end().to_owned() + "...";
+        if width(&candidate).is_none_or(|width| width <= max) {
+            return candidate;
+        }
+    }
+    "...".to_owned()
+}
+
 /// Draws `label` centred in `bounds` in Java's font, or in the client's own font when Java's
 /// cannot draw all of it (a character its sheets lack, or no Java font installed).
 pub(super) fn label_centred(
@@ -34,6 +55,8 @@ pub(super) fn label_centred(
     unit: f32,
     color: [u8; 4],
 ) -> Result<(), PaintError> {
+    let label = fitted(label, (bounds[2] - bounds[0]) / unit - 4.0);
+    let label = label.as_str();
     if super::font::centred(canvas, label, bounds, unit, color, true)? {
         return Ok(());
     }

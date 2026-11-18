@@ -2,7 +2,7 @@
 //! view the renderers draw from.
 
 mod settings;
-pub use settings::SettingsInteraction;
+pub use settings::{JavaSettingsAction, JavaSettingsView, SettingsInteraction};
 
 use crate::download::DownloadTracker;
 use std::collections::HashMap;

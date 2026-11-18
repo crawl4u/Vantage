@@ -370,6 +370,25 @@ impl Screen for OreUiScreen {
                     }
                     focus = Some(focus_actions(&canvas));
                 }
+                MenuScreen::Settings
+                    if java::selected(view, &canvas) && java::options::shows_java(view) =>
+                {
+                    canvas.capture_focus = true;
+                    let rollback = (canvas.nodes.len(), *canvas.next);
+                    for attempt in 0..2 {
+                        java::options::draw(&mut canvas, view, size, translate)?;
+                        if !scroll_focus::reveal(&mut canvas, scrolls, view) || attempt == 1 {
+                            break;
+                        }
+                        canvas.nodes.truncate(rollback.0);
+                        *canvas.next = rollback.1;
+                        canvas.hits.clear();
+                        canvas.clear_focus_geometry();
+                        canvas.scrolls.clear();
+                        canvas.slider_tracks.clear();
+                    }
+                    focus = Some(focus_actions(&canvas));
+                }
                 MenuScreen::Settings => {
                     if self.settings_state.query != view.settings_query {
                         scrolls.scroll_to_start(settings::SEARCH_SCROLL_KEY);

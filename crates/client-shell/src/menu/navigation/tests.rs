@@ -192,3 +192,55 @@ fn tab_shortcuts_leave_the_tabs_alone_while_a_text_field_has_focus() {
     menu.step_play_tab(1);
     assert_eq!(menu.screen(), MenuScreen::Play);
 }
+
+#[test]
+fn java_settings_open_on_the_list_and_back_steps_out_one_level_at_a_time() {
+    use launcher::menu::{
+        JavaSettingsAction, JavaSettingsView,
+        settings_options::{SettingId, menu_style::MenuStyle},
+        settings_sections::SettingSection,
+    };
+
+    let mut menu = MenuRuntime::new(true, 2, "Player".into());
+    std::sync::Arc::make_mut(&mut menu.settings_options)
+        .set(SettingId::MenuStyle.index(), MenuStyle::Java.value());
+    let video = SettingSection::Video.definition().index;
+    menu.show_home();
+    menu.activate(MenuAction::Navigate(MenuScreen::Settings));
+    assert_eq!(menu.view().settings.java_view, JavaSettingsView::Hub);
+    // Hub, then a page, then the Bedrock page for the same section, and back down again.
+    menu.activate(MenuAction::JavaSettings(JavaSettingsAction::Page(video)));
+    assert_eq!(menu.view().settings.java_view, JavaSettingsView::Page);
+    assert_eq!(menu.settings_section(), Some(SettingSection::Video));
+    menu.activate(MenuAction::JavaSettings(JavaSettingsAction::Bedrock(video)));
+    assert_eq!(menu.view().settings.java_view, JavaSettingsView::Bedrock);
+    menu.activate(MenuAction::AddBack);
+    assert_eq!(menu.view().settings.java_view, JavaSettingsView::Hub);
+    assert_eq!(menu.screen(), MenuScreen::Settings);
+    menu.activate(MenuAction::AddBack);
+    assert_eq!(menu.screen(), MenuScreen::Home);
+    // Entering Settings again starts on the list, not the page left open.
+    menu.activate(MenuAction::Navigate(MenuScreen::Settings));
+    assert_eq!(menu.view().settings.java_view, JavaSettingsView::Hub);
+    // A page opened straight from another screen is left in one step.
+    menu.activate(MenuAction::AddBack);
+    menu.activate(MenuAction::OpenSettingsSection(video));
+    assert_eq!(menu.view().settings.java_view, JavaSettingsView::Direct);
+    menu.activate(MenuAction::AddBack);
+    assert_eq!(menu.screen(), MenuScreen::Home);
+}
+
+#[test]
+fn the_bedrock_style_ignores_the_java_settings_view() {
+    use launcher::menu::{JavaSettingsAction, JavaSettingsView, settings_sections::SettingSection};
+
+    let mut menu = MenuRuntime::new(true, 2, "Player".into());
+    menu.show_home();
+    menu.activate(MenuAction::Navigate(MenuScreen::Settings));
+    let video = SettingSection::Video.definition().index;
+    menu.activate(MenuAction::JavaSettings(JavaSettingsAction::Page(video)));
+    assert_eq!(menu.view().settings.java_view, JavaSettingsView::Page);
+    // Back leaves Settings at once, as it always did.
+    menu.activate(MenuAction::AddBack);
+    assert_eq!(menu.screen(), MenuScreen::Home);
+}

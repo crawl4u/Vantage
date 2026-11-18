@@ -1,10 +1,36 @@
 use super::{MenuAction, SettingsSliderPointer};
 use crate::menu::settings_options::SettingId;
 
+/// Which Settings screen the Java menu style shows. The Bedrock style ignores it.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum JavaSettingsView {
+    /// The list of option pages, which Settings opens on.
+    #[default]
+    Hub,
+    /// One option page, reached from the hub; Back returns to the hub.
+    Page,
+    /// One option page opened straight from another screen; Back leaves Settings.
+    Direct,
+    /// The full Bedrock-style Settings, for what the Java pages do not offer.
+    Bedrock,
+}
+
+/// A change of [`JavaSettingsView`] pressed on a Java settings screen.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JavaSettingsAction {
+    /// Opens the page of this settings section, selected by its index.
+    Page(u8),
+    /// Returns to the list of pages.
+    Hub,
+    /// Shows the Bedrock-style Settings on this section.
+    Bedrock(u8),
+}
+
 /// Transient settings controls shared by the live menu and its presented views.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SettingsInteraction {
     pub section: u8,
+    pub java_view: JavaSettingsView,
     pub dropdown: Option<u16>,
     /// Last interactive activation and its monotonic input revision.
     pub control_activation: Option<(MenuAction, u64)>,

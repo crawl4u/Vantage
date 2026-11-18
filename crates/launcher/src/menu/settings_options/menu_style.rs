@@ -65,15 +65,42 @@ pub const DEFAULT: i32 = MenuStyle::Bedrock.value();
 /// it does not fit the window; Auto is the largest that fits. The saved value is the number, with
 /// zero for Auto.
 pub const JAVA_GUI_SCALE_CHOICES: &[SettingChoice] = &[
-    SettingChoice { name: "java_gui_scale_auto", label: "Auto" },
-    SettingChoice { name: "java_gui_scale_1", label: "1" },
-    SettingChoice { name: "java_gui_scale_2", label: "2" },
-    SettingChoice { name: "java_gui_scale_3", label: "3" },
-    SettingChoice { name: "java_gui_scale_4", label: "4" },
-    SettingChoice { name: "java_gui_scale_5", label: "5" },
-    SettingChoice { name: "java_gui_scale_6", label: "6" },
-    SettingChoice { name: "java_gui_scale_7", label: "7" },
-    SettingChoice { name: "java_gui_scale_8", label: "8" },
+    SettingChoice {
+        name: "java_gui_scale_auto",
+        label: "Auto",
+    },
+    SettingChoice {
+        name: "java_gui_scale_1",
+        label: "1",
+    },
+    SettingChoice {
+        name: "java_gui_scale_2",
+        label: "2",
+    },
+    SettingChoice {
+        name: "java_gui_scale_3",
+        label: "3",
+    },
+    SettingChoice {
+        name: "java_gui_scale_4",
+        label: "4",
+    },
+    SettingChoice {
+        name: "java_gui_scale_5",
+        label: "5",
+    },
+    SettingChoice {
+        name: "java_gui_scale_6",
+        label: "6",
+    },
+    SettingChoice {
+        name: "java_gui_scale_7",
+        label: "7",
+    },
+    SettingChoice {
+        name: "java_gui_scale_8",
+        label: "8",
+    },
 ];
 
 impl SettingsOptions {
@@ -142,7 +169,10 @@ mod tests {
         let restored = SettingsOptions::decode(&serde_json::to_vec(&options).unwrap()).unwrap();
         assert_eq!(restored.java_gui_scale(), Some(3));
         assert!(options.set(SettingId::JavaGuiScale.index(), 99));
-        assert_eq!(options.java_gui_scale(), Some(JAVA_GUI_SCALE_CHOICES.len() as u8 - 1));
+        assert_eq!(
+            options.java_gui_scale(),
+            Some(JAVA_GUI_SCALE_CHOICES.len() as u8 - 1)
+        );
     }
 
     #[test]

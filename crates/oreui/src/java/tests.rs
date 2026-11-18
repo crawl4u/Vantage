@@ -327,3 +327,38 @@ fn the_java_pause_rows_sit_where_java_puts_them() {
     assert_eq!(mods.width(), 48.0 * unit);
     assert_eq!(inbox.min().x() - friends.max().x(), 8.0 * unit);
 }
+
+#[test]
+fn the_java_options_list_every_section_and_each_page_offers_its_registry_options() {
+    use launcher::menu::{JavaSettingsAction, JavaSettingsView};
+    let size = [1280.0, 720.0];
+    // The list of pages: Done, the field of view and a button for every shown section.
+    let mut view = java_view();
+    view.screen = MenuScreen::Settings;
+    view.settings.java_view = JavaSettingsView::Hub;
+    let (hits, _) = paint(true, size, |canvas| {
+        options::draw(canvas, &view, size, &|_| None).unwrap()
+    });
+    assert!(
+        hits.iter()
+            .any(|(action, _)| *action == MenuAction::AddBack)
+    );
+    let video = SettingSection::Video.definition().index;
+    assert!(hits.iter().any(|(action, _)| {
+        *action == MenuAction::JavaSettings(JavaSettingsAction::Page(video))
+    }));
+}
+
+#[test]
+fn a_java_page_with_no_registry_options_falls_back_to_the_bedrock_page() {
+    use launcher::menu::JavaSettingsView;
+    let mut view = java_view();
+    view.screen = MenuScreen::Settings;
+    view.settings.java_view = JavaSettingsView::Page;
+    view.settings.section = SettingSection::Language.definition().index;
+    assert!(!options::shows_java(&view));
+    view.settings.section = SettingSection::Video.definition().index;
+    assert!(options::shows_java(&view));
+    view.settings.java_view = JavaSettingsView::Bedrock;
+    assert!(!options::shows_java(&view));
+}

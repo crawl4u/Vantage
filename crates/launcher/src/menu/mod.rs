@@ -33,10 +33,10 @@ pub use profile::{
 };
 pub use view::{
     ButtonArt, CatalogFile, CatalogFriend, CatalogServer, EXPERIENCE_ADDRESS_PREFIX,
-    FRIEND_ADDRESS_PREFIX, InboxItem, JoinKind, JoinProgress, JoinStage, LiveEventCard,
-    LocalWorldCard, MenuCaret, MenuFeeds, MenuFriendCard, MenuGameCard, MenuHome, MenuProfile,
-    MenuRealmCard, MenuServerCard, MenuView, PingInfo, REALM_ADDRESS_PREFIX, SavedServer,
-    ServerDetails, ServerTrustPrompt, is_nethernet_target, joined_realm, pingable,
+    FRIEND_ADDRESS_PREFIX, InboxItem, JavaSettingsAction, JavaSettingsView, JoinKind, JoinProgress,
+    JoinStage, LiveEventCard, LocalWorldCard, MenuCaret, MenuFeeds, MenuFriendCard, MenuGameCard,
+    MenuHome, MenuProfile, MenuRealmCard, MenuServerCard, MenuView, PingInfo, REALM_ADDRESS_PREFIX,
+    SavedServer, ServerDetails, ServerTrustPrompt, is_nethernet_target, joined_realm, pingable,
 };
 pub use worlds_tab::{LocalWorldAction, civil_date, file_size};
 
@@ -228,6 +228,8 @@ pub enum MenuAction {
     /// Opens Settings on this section from another screen, such as the Java title's language
     /// and accessibility buttons.
     OpenSettingsSection(u8),
+    /// Moves between the Java style's Settings pages.
+    JavaSettings(JavaSettingsAction),
     Respawn,
     PlayLocalWorld(usize),
     /// A press on a local-world screen (create, edit, templates) or its modals.
