@@ -116,3 +116,18 @@ fn reasons_are_short_printable_codes() {
     assert_eq!(log_safe("\n"), "");
     assert_eq!(log_safe(&"x".repeat(100)).len(), 64);
 }
+
+#[test]
+fn the_machine_binding_is_stable_and_names_the_machine_and_the_user() {
+    let here = bind(Some("guid-1"), "player");
+    assert_eq!(here, bind(Some("guid-1"), "player"));
+    assert_ne!(here, bind(Some("guid-2"), "player"));
+    assert_ne!(here, bind(Some("guid-1"), "someone"));
+    assert_eq!(here.len(), 64);
+}
+
+#[test]
+fn a_machine_that_cannot_be_named_has_no_binding() {
+    assert_eq!(bind(None, "player"), "");
+    assert_eq!(bind(Some(""), "player"), "");
+}

@@ -178,6 +178,76 @@ pub fn record(
     }
 }
 
+/// Local evidence that the store install of the game was found on this machine, kept so the game
+/// need not stay installed afterwards. Not a signed proof: it is bound to the machine and user it
+/// was earned on, so a copy carried to another machine is ignored.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct InstallRecord {
+    /// Unix seconds of the first check that found the install for this binding.
+    pub first_verified_at: u64,
+    /// Unix seconds of the latest check that found it.
+    pub last_verified_at: u64,
+    /// Hash naming the machine and user the install was found for.
+    pub binding: String,
+}
+
+/// Whether `record` was earned on the machine and user named by `binding`. An unknown binding
+/// (empty) never matches, so a platform that cannot name its machine keeps checking every launch.
+#[must_use]
+pub fn install_record_valid(record: Option<&InstallRecord>, binding: &str) -> bool {
+    !binding.is_empty() && record.is_some_and(|record| record.binding == binding)
+}
+
+/// The record after a check at `now` found the install for `binding`. A record for another
+/// binding is replaced, since it proves nothing here.
+#[must_use]
+pub fn note_install(record: Option<InstallRecord>, binding: &str, now: u64) -> InstallRecord {
+    match record.filter(|record| record.binding == binding) {
+        Some(record) => InstallRecord {
+            last_verified_at: record.last_verified_at.max(now),
+            ..record
+        },
+        None => InstallRecord {
+            first_verified_at: now,
+            last_verified_at: now,
+            binding: binding.to_owned(),
+        },
+    }
+}
+
+/// The saved install record; a missing or unreadable one is none.
+#[must_use]
+pub fn load_install_record(path: &Path) -> Option<InstallRecord> {
+    let bytes = crate::accounts::read_optional(path).ok()??;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Saves `record` privately.
+pub fn save_install_record(path: &Path, record: &InstallRecord) -> io::Result<()> {
+    crate::accounts::write_private(path, &serde_json::to_vec(record).map_err(io::Error::other)?)
+}
+
+/// The log stops growing past this size; it only notes how ownership was shown.
+const LOG_LIMIT_BYTES: u64 = 64 * 1024;
+
+/// Appends one line noting that ownership was shown by `source` at `now`, such as the first
+/// time the install was found or a later launch admitted by the saved record.
+pub fn append_log(path: &Path, event: &str, source: &str, now: u64) -> io::Result<()> {
+    use std::io::Write;
+    if std::fs::metadata(path).is_ok_and(|meta| meta.len() >= LOG_LIMIT_BYTES) {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let line = serde_json::json!({ "at": now, "event": event, "source": source });
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    writeln!(file, "{line}")
+}
+
 /// Held for one whole license check, from starting the helper to recording its answer, so checks
 /// and [`forget_license`] on this install never interleave.
 pub struct CheckLock {

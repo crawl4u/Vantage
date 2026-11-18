@@ -137,7 +137,7 @@ impl Screen {
             (Self::SignIn { .. }, _) => "Sign in with Microsoft",
             (Self::Refused { refusal, .. }, _) => ownership::title(*refusal),
             (Self::Consent, false) => "First-time setup",
-            (Self::Consent, true) => "Cinnabar needs updated resources",
+            (Self::Consent, true) => concat!(launcher::product_name!(), " needs updated resources"),
             (Self::Starting | Self::Downloading { .. } | Self::Preparing { .. }, true) => {
                 "Updating Minecraft resources…"
             }
@@ -146,7 +146,7 @@ impl Screen {
             (Self::Preparing { .. }, false) => "Preparing assets…",
             (Self::Failed { .. }, false) => "Setup failed",
             (Self::Failed { .. }, true) => "Update failed",
-            (Self::Done, _) => "Starting Cinnabar…",
+            (Self::Done, _) => concat!("Starting ", launcher::product_name!(), "…"),
         }
     }
 

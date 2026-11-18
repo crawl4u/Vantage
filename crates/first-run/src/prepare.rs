@@ -32,8 +32,9 @@ fn compiler<'a>(
     let kit = layout.prep_kit();
     if !kit.is_dir() {
         bail!(
-            "installer preparation kit is missing at {}; reinstall Cinnabar",
-            kit.display()
+            "installer preparation kit is missing at {}; reinstall {}",
+            kit.display(),
+            launcher::PRODUCT_NAME
         );
     }
     Ok(Compiler {

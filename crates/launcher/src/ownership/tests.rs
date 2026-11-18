@@ -294,3 +294,64 @@ fn a_failed_forget_drops_the_pass_and_keeps_the_credentials() {
     assert_eq!(load_pass(&pass_file), None);
     assert!(cache.exists());
 }
+
+#[test]
+fn a_record_counts_only_for_the_machine_and_user_it_was_earned_on() {
+    let record = note_install(None, "machine-a", T0);
+    assert!(install_record_valid(Some(&record), "machine-a"));
+    assert!(!install_record_valid(Some(&record), "machine-b"));
+    assert!(!install_record_valid(None, "machine-a"));
+    // A machine that cannot be named never matches, even a record saved with an empty binding.
+    let unnamed = note_install(None, "", T0);
+    assert!(!install_record_valid(Some(&unnamed), ""));
+}
+
+#[test]
+fn finding_the_install_again_keeps_the_first_time_and_moves_the_latest() {
+    let first = note_install(None, "machine-a", T0);
+    let again = note_install(Some(first.clone()), "machine-a", T0 + DAY);
+    assert_eq!(again.first_verified_at, T0);
+    assert_eq!(again.last_verified_at, T0 + DAY);
+    // A clock set back never moves the latest time backwards.
+    let back = note_install(Some(again.clone()), "machine-a", T0);
+    assert_eq!(back.last_verified_at, T0 + DAY);
+}
+
+#[test]
+fn a_record_for_another_machine_is_replaced_not_kept() {
+    let other = note_install(None, "machine-a", T0);
+    let here = note_install(Some(other), "machine-b", T0 + DAY);
+    assert_eq!(here.binding, "machine-b");
+    assert_eq!(here.first_verified_at, T0 + DAY);
+}
+
+#[test]
+fn the_install_record_round_trips_and_an_unreadable_one_is_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("license/ownership-install.json");
+    assert_eq!(load_install_record(&path), None);
+    let record = note_install(None, "machine-a", T0);
+    save_install_record(&path, &record).unwrap();
+    assert_eq!(load_install_record(&path), Some(record));
+    std::fs::write(&path, b"not json").unwrap();
+    assert_eq!(load_install_record(&path), None);
+}
+
+#[test]
+fn the_ownership_log_notes_each_event_and_stops_growing_at_its_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("license/ownership.log");
+    append_log(&path, "verified", "local_install", T0).unwrap();
+    append_log(&path, "allowed", "stored_record", T0 + DAY).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    let lines: Vec<serde_json::Value> = text
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0]["event"], "verified");
+    assert_eq!(lines[1]["source"], "stored_record");
+    std::fs::write(&path, vec![b'x'; LOG_LIMIT_BYTES as usize]).unwrap();
+    append_log(&path, "allowed", "stored_record", T0).unwrap();
+    assert_eq!(std::fs::metadata(&path).unwrap().len(), LOG_LIMIT_BYTES);
+}

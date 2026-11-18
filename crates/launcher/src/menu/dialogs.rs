@@ -124,9 +124,19 @@ pub fn dialog(view: &MenuView, dialog: MenuDialog, translate: Translate<'_>) -> 
         MenuDialog::RemoveLicenseAccount => (
             "Remove ownership account?".into(),
             if crate::ownership::sources().local_install {
-                "Cinnabar uses this Microsoft account only to confirm that you own Minecraft. Without it, Cinnabar needs Minecraft installed from the Microsoft Store or the Xbox app, or a new sign-in, the next time it starts."
+                concat!(
+                    crate::product_name!(),
+                    " uses this Microsoft account only to confirm that you own Minecraft. Without it, ",
+                    crate::product_name!(),
+                    " needs Minecraft installed from the Microsoft Store or the Xbox app, or a new sign-in, the next time it starts."
+                )
             } else {
-                "Cinnabar uses this Microsoft account only to confirm that you own Minecraft. Without it, Cinnabar asks you to sign in again the next time it starts."
+                concat!(
+                    crate::product_name!(),
+                    " uses this Microsoft account only to confirm that you own Minecraft. Without it, ",
+                    crate::product_name!(),
+                    " asks you to sign in again the next time it starts."
+                )
             }
             .into(),
             "Remove".into(),

@@ -39,7 +39,7 @@ pub(crate) fn open_without_asking(layout: &InstallLayout) -> bool {
         tracing::info!("ownership gate off: no proof source on this platform in this build");
         return true;
     }
-    if found_locally(available) {
+    if found_locally(layout, available) || remembered_locally(layout, available) {
         return true;
     }
     let Some(client_id) = available.client_id() else {
@@ -64,13 +64,25 @@ pub(crate) fn open_without_asking(layout: &InstallLayout) -> bool {
     true
 }
 
-/// Whether `available` includes a local install and it was found.
-fn found_locally(available: Sources) -> bool {
+/// Whether `available` includes a local install and it was found. A find is remembered, so the
+/// game need not stay installed.
+fn found_locally(layout: &InstallLayout, available: Sources) -> bool {
     let found = available.local_install && sources::local_install_found();
     if found {
         tracing::info!(source = "local_install", "ownership verified");
+        sources::record_local_install(layout);
     }
     found
+}
+
+/// Whether `available` includes a local install and a record of finding it on this machine
+/// remains, so the game need not be installed now.
+fn remembered_locally(layout: &InstallLayout, available: Sources) -> bool {
+    let remembered = available.local_install && sources::stored_install_valid(layout);
+    if remembered {
+        tracing::info!(source = "stored_record", "ownership verified");
+    }
+    remembered
 }
 
 /// Checks every source once, the local install first. `sign_in` replaces the license account
@@ -82,7 +94,7 @@ pub(crate) fn verify(
     on_code: &mut dyn FnMut(&str, &str),
 ) -> Answer {
     let available = policy::sources();
-    if !sign_in && found_locally(available) {
+    if !sign_in && (found_locally(layout, available) || remembered_locally(layout, available)) {
         return Answer::Allowed;
     }
     let Some(client_id) = available.client_id() else {
@@ -100,7 +112,10 @@ pub(crate) fn verify(
 }
 
 /// Shown on every refusal.
-pub(crate) const NOTICE: &str = "Cinnabar is not an official Minecraft product and is not approved by or associated with Mojang or Microsoft.";
+pub(crate) const NOTICE: &str = concat!(
+    launcher::product_name!(),
+    " is not an official Minecraft product and is not approved by or associated with Mojang or Microsoft."
+);
 
 /// The refusal's heading.
 pub(crate) const fn title(refusal: Refusal) -> &'static str {
@@ -114,18 +129,21 @@ pub(crate) const fn title(refusal: Refusal) -> &'static str {
 
 /// The refusal's explanation for `available` sources, ending with the notice.
 pub(crate) fn body(refusal: Refusal, available: Sources) -> String {
-    let install = "On Windows, Cinnabar can use Minecraft installed from the Microsoft Store or the Xbox app. If you bought Minecraft for Windows or Minecraft: Java & Bedrock Edition for PC, it's already in your library there.";
+    let name = launcher::PRODUCT_NAME;
+    let install = format!(
+        "On Windows, {name} can use Minecraft installed from the Microsoft Store or the Xbox app. If you bought Minecraft for Windows or Minecraft: Java & Bedrock Edition for PC, it's already in your library there."
+    );
     let mut text = match refusal {
         Refusal::NotInstalled => format!(
-            "Cinnabar is for people who own Minecraft. {install} Install it, then select Try again."
+            "{name} is for people who own Minecraft. {install} Install it, then select Try again. Once {name} has found it, it remembers that you own Minecraft, so the game doesn't have to stay installed."
         ),
         Refusal::NotOwned => "The Microsoft account you signed in with doesn't own Minecraft for PC. A copy bought on a phone or console doesn't include PC. Sign in with the account that bought it, or get Minecraft.".to_owned(),
-        Refusal::SignInRequired => "Cinnabar is for people who own Minecraft. Sign in once with the Microsoft account that owns Minecraft for PC so Cinnabar can confirm it. Afterwards you can play with any of your accounts.".to_owned(),
-        Refusal::Unverifiable => "Cinnabar couldn't reach Microsoft to confirm that you own Minecraft. Check your connection, then try again.".to_owned(),
+        Refusal::SignInRequired => format!("{name} is for people who own Minecraft. Sign in once with the Microsoft account that owns Minecraft for PC so {name} can confirm it. Afterwards you can play with any of your accounts."),
+        Refusal::Unverifiable => format!("{name} couldn't reach Microsoft to confirm that you own Minecraft. Check your connection, then try again."),
     };
     if available.local_install && refusal != Refusal::NotInstalled {
         text.push('\n');
-        text.push_str(install);
+        text.push_str(&install);
     }
     text.push('\n');
     text.push_str(NOTICE);

@@ -62,6 +62,103 @@ pub const fn local_install_found() -> bool {
     false
 }
 
+/// The Windows machine identifier, which stays the same across reinstalls of the game.
+#[cfg(windows)]
+fn machine_guid() -> Option<String> {
+    use windows_sys::Win32::System::Registry::{
+        HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6464KEY, RegGetValueW,
+    };
+    let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Cryptography\0".encode_utf16().collect();
+    let value: Vec<u16> = "MachineGuid\0".encode_utf16().collect();
+    let mut buffer = [0u16; 128];
+    let mut bytes = u32::try_from(std::mem::size_of_val(&buffer)).ok()?;
+    // SAFETY: both names are NUL-terminated, and `bytes` is the buffer's size in bytes.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            subkey.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY,
+            std::ptr::null_mut(),
+            buffer.as_mut_ptr().cast(),
+            &mut bytes,
+        )
+    };
+    if status != 0 {
+        return None;
+    }
+    let units = (bytes as usize / 2).min(buffer.len());
+    let text = String::from_utf16_lossy(&buffer[..units]);
+    let text = text.trim_end_matches('\0').trim();
+    (!text.is_empty()).then(|| text.to_owned())
+}
+
+/// No machine identifier is read off Windows, so no record is kept there.
+#[cfg(not(windows))]
+fn machine_guid() -> Option<String> {
+    None
+}
+
+/// Hash naming a machine and user; empty when the machine cannot be named.
+fn bind(machine: Option<&str>, user: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let Some(machine) = machine.filter(|machine| !machine.is_empty()) else {
+        return String::new();
+    };
+    let digest = Sha256::digest(format!("vantage-ownership-v1\0{machine}\0{user}").as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// The machine and user this install runs for, as a hash; empty when unknown.
+fn machine_binding() -> String {
+    let user = std::env::var("USERNAME").unwrap_or_default();
+    bind(machine_guid().as_deref(), &user)
+}
+
+/// Remembers that the store install was found on this machine, so later launches pass without
+/// it. Notes the first time in the ownership log; saves nothing when the machine cannot be named.
+pub fn record_local_install(layout: &InstallLayout) {
+    let binding = machine_binding();
+    if binding.is_empty() {
+        return;
+    }
+    let path = layout.ownership_install_file();
+    let previous = policy::load_install_record(&path);
+    let first = !policy::install_record_valid(previous.as_ref(), &binding);
+    let now = unix_now();
+    let record = policy::note_install(previous, &binding, now);
+    if let Err(error) = policy::save_install_record(&path, &record) {
+        tracing::warn!(kind = ?error.kind(), "ownership record not saved");
+        return;
+    }
+    if first {
+        let _ = policy::append_log(
+            &layout.ownership_log_file(),
+            "verified",
+            "local_install",
+            now,
+        );
+    }
+}
+
+/// Whether a record earned on this machine and user lets a launch pass without the install; notes
+/// each such launch in the ownership log.
+#[must_use]
+pub fn stored_install_valid(layout: &InstallLayout) -> bool {
+    let binding = machine_binding();
+    let record = policy::load_install_record(&layout.ownership_install_file());
+    let valid = policy::install_record_valid(record.as_ref(), &binding);
+    if valid {
+        let _ = policy::append_log(
+            &layout.ownership_log_file(),
+            "allowed",
+            "stored_record",
+            unix_now(),
+        );
+    }
+    valid
+}
+
 /// One account check's answer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Finding {
