@@ -117,6 +117,10 @@ fn extras(view: &MenuView, section: SettingSection) -> Vec<Entry> {
                 vec![link("Sign In", MenuAction::StartSignIn)]
             }
         }
+        SettingSection::Updates => vec![link(
+            "Check for Updates",
+            MenuAction::Update(launcher::menu::updates::Action::CheckNow),
+        )],
         SettingSection::Touch => {
             if view.touch_available {
                 vec![link("Edit Layout...", MenuAction::EditTouchControls)]
@@ -206,7 +210,11 @@ fn page_options(view: &MenuView, section: SettingSection) -> Vec<SettingId> {
 fn has_page(section: SettingSection) -> bool {
     matches!(
         section,
-        SettingSection::GlobalTexturePack | SettingSection::Shaders | SettingSection::Language
+        SettingSection::GlobalTexturePack
+            | SettingSection::Shaders
+            | SettingSection::Language
+            | SettingSection::StorageManagement
+            | SettingSection::Mods
     )
 }
 
@@ -327,6 +335,8 @@ pub(crate) fn draw(
             SettingSection::GlobalTexturePack => super::packs::draw(canvas, view, size),
             SettingSection::Shaders => super::shaders::draw(canvas, view, size),
             SettingSection::Language => super::language::draw(canvas, view, size),
+            SettingSection::StorageManagement => super::storage::draw(canvas, view, size),
+            SettingSection::Mods => super::mods::draw(canvas, view, size),
             _ => Ok(()),
         };
     }

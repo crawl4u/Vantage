@@ -83,6 +83,24 @@ pub(super) const STATES: &[State] = &[
         fixture: || java_settings(JavaSettingsView::Page, SettingSection::Account),
     },
     State {
+        name: "java-mods",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_mods,
+    },
+    State {
+        name: "java-storage",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_storage,
+    },
+    State {
+        name: "java-language",
+        size: SMALL_SIZE,
+        gui_scale: 1,
+        fixture: java_language,
+    },
+    State {
         name: "java-shaders",
         size: SIZE,
         gui_scale: GUI_SCALE,
@@ -106,6 +124,81 @@ fn java_pack_folder() -> Fixture {
     view.global_resources = Arc::new(snapshot);
     view.pack_renaming = true;
     view.pack_folder_name = "PVP".to_owned();
+    Fixture::Menu(view)
+}
+
+/// A Java page of `section`, in the Java style, ready for the caller to fill in.
+fn java_page(section: SettingSection) -> Box<MenuView> {
+    let mut view = MenuView::new(true, "Player".into());
+    view.screen = MenuScreen::Settings;
+    view.auth_state = AuthState::Authenticated;
+    view.settings.section = section.definition().index;
+    view.settings.java_view = JavaSettingsView::Page;
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    Box::new(view)
+}
+
+/// The Mods page with three installed mods, one active and one chosen.
+fn java_mods() -> Fixture {
+    let mut view = java_page(SettingSection::Mods);
+    let installed = |id: u64, name: &str| launcher::mods::InstalledMod {
+        id,
+        file: format!("{name}.wasm"),
+        bytes: 1,
+        permissions: Vec::new(),
+        metadata: ui::mod_metadata::ModMetadata {
+            name: Some(name.to_owned()),
+            version: Some("1.0".to_owned()),
+            authors: Some("Someone".to_owned()),
+            ..Default::default()
+        },
+    };
+    let mut snapshot = launcher::mods::Snapshot::default();
+    snapshot.library.installed = vec![
+        installed(1, "Vantage"),
+        installed(2, "Zoom"),
+        installed(3, "Keystrokes"),
+    ];
+    snapshot.library.active = vec![launcher::mods::ActiveMod {
+        id: 1,
+        status: launcher::mods::Status::Running,
+    }];
+    snapshot.details_expanded = Some(2);
+    view.mods = Arc::new(snapshot);
+    Fixture::Menu(view)
+}
+
+/// The Storage page with worlds and downloaded packs.
+fn java_storage() -> Fixture {
+    let mut view = java_page(SettingSection::StorageManagement);
+    let item = |name: &str, bytes: u64| launcher::menu::settings_storage::StorageItem {
+        name: name.to_owned(),
+        bytes,
+        date: "2026-11-02".to_owned(),
+        version: "1.21.4".to_owned(),
+        ..Default::default()
+    };
+    let storage = Arc::make_mut(&mut view.storage);
+    storage.worlds = vec![item("Home Base", 48 << 20), item("Creative", 5 << 30)];
+    storage.cached = vec![item("Server Textures", 12 << 20)];
+    storage.selected_world = Some(0);
+    storage.opens_folders = true;
+    Fixture::Menu(view)
+}
+
+/// The Language page with a handful of languages.
+fn java_language() -> Fixture {
+    let mut view = java_page(SettingSection::Language);
+    view.language_choices = [
+        ("en_US", "English (US)"),
+        ("de_DE", "Deutsch"),
+        ("fr_FR", "FranÃ§ais"),
+        ("es_ES", "EspaÃ±ol"),
+    ]
+    .iter()
+    .map(|(code, name)| ((*code).to_owned(), (*name).to_owned()))
+    .collect();
     Fixture::Menu(view)
 }
 
