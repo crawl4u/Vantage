@@ -101,14 +101,53 @@ pub enum LibraryError {
     UnsupportedExtension,
     #[error("pack is not installed or not active")]
     UnknownPack,
+    #[error("deselect the pack and apply the change before deleting it")]
+    PackInUse,
     #[error("pack requires a newer game version")]
     NewerEngine,
     #[error("installed resource-pack catalog exceeds its storage limit")]
     CatalogTooLarge,
 }
 
+/// How the library lists the packs that are not selected.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PackSort {
+    /// In the order they were imported.
+    #[default]
+    Added,
+    /// By name, A to Z.
+    Name,
+    /// By name, Z to A.
+    NameReverse,
+}
+
+impl PackSort {
+    /// The next order a sort button steps to.
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Added => Self::Name,
+            Self::Name => Self::NameReverse,
+            Self::NameReverse => Self::Added,
+        }
+    }
+
+    /// The order's name for a button.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Added => "Date added",
+            Self::Name => "Name A-Z",
+            Self::NameReverse => "Name Z-A",
+        }
+    }
+}
+
 #[derive(Clone, Default, Deserialize, Serialize)]
 struct Catalog {
+    #[serde(default)]
+    sort: PackSort,
     #[serde(default)]
     available: Vec<InstalledPack>,
     #[serde(default)]
@@ -182,6 +221,21 @@ impl GlobalPackLibrary {
             .iter()
             .chain(&self.catalog.retained)
             .find(|pack| pack.id == active.id && pack.revision == active.revision)
+    }
+
+    /// The order the library lists unselected packs in.
+    pub fn sort(&self) -> PackSort {
+        self.catalog.sort
+    }
+
+    /// Chooses and saves the order the library lists unselected packs in.
+    pub fn set_sort(&mut self, sort: PackSort) -> Result<(), LibraryError> {
+        let previous = std::mem::replace(&mut self.catalog.sort, sort);
+        if let Err(error) = self.persist() {
+            self.catalog.sort = previous;
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Lists installed resource packs, including active packs.

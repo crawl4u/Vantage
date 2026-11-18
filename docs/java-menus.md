@@ -95,6 +95,10 @@ Java sprites and font when the active packs change, as the other pack-driven art
    options in the settings registry, built from the registry's panels, with every other section
    and each page's "More settings..." reaching the Bedrock-style Settings. The view in use is
    `SettingsInteraction::java_view`; Back steps page, then list, then out.
-8. Multiplayer list. Done (`java/servers.rs`): Java's entries, buttons and ping bars for saved and\n   featured servers; Join, Add, Edit and Delete use the existing server actions. Java's Direct\n   Connection and Refresh have no counterpart here yet.\n9. Behaviour parity across the Java screens (the fourth requirement), checked screen by screen.
+8. Multiplayer list. Done (`java/servers.rs`): Java's entries, buttons and ping bars for saved and\n   featured servers; Join, Add, Edit and Delete use the existing server actions. Java's Direct\n   Connection and Refresh have no counterpart here yet.\n9. Own pages for what the registry cannot lay out. Done for Resource Packs (`java/packs.rs`:
+   two lists, search, sort, activate, deactivate, move, delete after a question) and Shader Packs
+   (`java/shaders.rs`); both share `java/frame.rs`. Still to do: language, mods, storage,
+   account, touch, key bindings, and folders for packs.
+10. Behaviour parity across the Java screens (the fourth requirement), checked screen by screen.
 
 Later rounds: world list, create world, mods, the rest of the menus.

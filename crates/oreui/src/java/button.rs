@@ -16,7 +16,7 @@ const DISABLED: &str = "sprites/widget/button_disabled.png";
 const DISABLED_TEXT: [u8; 4] = [160, 160, 160, 255];
 
 /// The label style at `unit` logical pixels per Java pixel: Java text is 8 pixels tall.
-pub(super) fn label_style(canvas: &Canvas<'_>, unit: f32) -> Type {
+pub(crate) fn label_style(canvas: &Canvas<'_>, unit: f32) -> Type {
     let size = 8.0 * unit / canvas.rem.max(f32::EPSILON) * 1.35;
     Type {
         size,
@@ -28,7 +28,7 @@ pub(super) fn label_style(canvas: &Canvas<'_>, unit: f32) -> Type {
 /// `label` cut short with an ellipsis until Java's font draws it in at most `max` Java pixels, as
 /// Java does for a button whose text is too long. A label that fits, or that Java's font cannot
 /// measure, is returned as it is.
-fn fitted(label: &str, max: f32) -> String {
+pub(super) fn fitted(label: &str, max: f32) -> String {
     let Some(font) = crate::images::java::font() else {
         return label.to_owned();
     };

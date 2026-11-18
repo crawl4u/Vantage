@@ -96,6 +96,15 @@ fn page_options(view: &MenuView, section: SettingSection) -> Vec<SettingId> {
     found
 }
 
+/// Whether `section` has a Java page of its own, laid out by hand rather than from the settings
+/// registry's options.
+fn has_page(section: SettingSection) -> bool {
+    matches!(
+        section,
+        SettingSection::GlobalTexturePack | SettingSection::Shaders
+    )
+}
+
 /// The section whose page is shown.
 fn section(view: &MenuView) -> SettingSection {
     SettingSection::from_index(view.settings.section)
@@ -108,7 +117,7 @@ pub(crate) fn shows_java(view: &MenuView) -> bool {
     match view.settings.java_view {
         JavaSettingsView::Hub => true,
         JavaSettingsView::Page | JavaSettingsView::Direct => {
-            !page_options(view, section(view)).is_empty()
+            has_page(section(view)) || !page_options(view, section(view)).is_empty()
         }
         JavaSettingsView::Bedrock => false,
     }
@@ -171,7 +180,7 @@ fn hub_entries(view: &MenuView, translate: Translate<'_>) -> Vec<Entry> {
             .unwrap_or(JAVA_PAGE_ORDER.len())
     });
     for definition in sections {
-        let action = if page_options(view, definition.id).is_empty() {
+        let action = if !has_page(definition.id) && page_options(view, definition.id).is_empty() {
             JavaSettingsAction::Bedrock(definition.index)
         } else {
             JavaSettingsAction::Page(definition.index)
@@ -205,10 +214,17 @@ pub(crate) fn draw(
     size: [f32; 2],
     translate: Translate<'_>,
 ) -> Result<(), PaintError> {
-    let unit = unit(view, canvas, size);
-    let java_width = (size[0] / unit).ceil();
     let hub = view.settings.java_view == JavaSettingsView::Hub;
     let open = section(view);
+    if !hub && has_page(open) {
+        return match open {
+            SettingSection::GlobalTexturePack => super::packs::draw(canvas, view, size),
+            SettingSection::Shaders => super::shaders::draw(canvas, view, size),
+            _ => Ok(()),
+        };
+    }
+    let unit = unit(view, canvas, size);
+    let java_width = (size[0] / unit).ceil();
     let (title, entries) = if hub {
         ("Options".to_owned(), hub_entries(view, translate))
     } else {

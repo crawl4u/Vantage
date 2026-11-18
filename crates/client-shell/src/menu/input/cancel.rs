@@ -56,6 +56,19 @@ impl MenuRuntime {
             ));
             return;
         }
+        if self.screen == launcher::menu::MenuScreen::Settings
+            && self.settings.section
+                == launcher::menu::settings_sections::SettingSection::GlobalTexturePack
+                    .definition()
+                    .index
+            && self.dialog.is_none()
+            && !self.pack_query.as_str().is_empty()
+        {
+            self.activate(launcher::menu::MenuAction::GlobalResources(
+                launcher::global_resources::Action::ClearSearch,
+            ));
+            return;
+        }
         if self.clear_settings_slider_selection() {
             return;
         }

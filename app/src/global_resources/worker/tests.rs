@@ -977,3 +977,75 @@ fn minecraft_import_completion_tracks_submitted_revisions_after_replacement_and_
         }
     }
 }
+
+#[test]
+fn deleting_an_available_pack_asks_first_and_removes_it_for_good() {
+    let root = std::env::temp_dir().join(format!("cinnabar-pack-delete-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let mut library = GlobalPackLibrary::open(root.join("library"), [9, 0, 0]).unwrap();
+    import_fixture(&mut library, &root, 1);
+    import_fixture(&mut library, &root, 2);
+    let mut snapshot = Snapshot::default();
+    refresh(&library, &mut snapshot);
+    let (outgoing, _events) = crossbeam_channel::unbounded();
+    assert_eq!(snapshot.available.len(), 2);
+    let doomed = snapshot.available[0].name.clone();
+
+    act(&mut library, &mut snapshot, Action::AskDelete(0), &outgoing).unwrap();
+    assert_eq!(snapshot.delete_pending, Some(0));
+    assert_eq!(library.available().len(), 2, "asking deletes nothing");
+    act(&mut library, &mut snapshot, Action::CancelDelete, &outgoing).unwrap();
+    assert_eq!(snapshot.delete_pending, None);
+
+    act(&mut library, &mut snapshot, Action::Delete(0), &outgoing).unwrap();
+    refresh(&library, &mut snapshot);
+    assert_eq!(snapshot.available.len(), 1);
+    assert!(snapshot.available.iter().all(|pack| pack.name != doomed));
+    assert_eq!(snapshot.message, format!("Deleted {doomed}."));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn the_sort_order_applies_to_the_available_list_and_is_kept() {
+    let root = std::env::temp_dir().join(format!("cinnabar-pack-sort-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let mut library = GlobalPackLibrary::open(root.join("library"), [9, 0, 0]).unwrap();
+    import_fixture(&mut library, &root, 1);
+    import_fixture(&mut library, &root, 2);
+    let mut snapshot = Snapshot::default();
+    let (outgoing, _events) = crossbeam_channel::unbounded();
+    refresh(&library, &mut snapshot);
+    let added: Vec<String> = snapshot
+        .available
+        .iter()
+        .map(|pack| pack.name.clone())
+        .collect();
+    act(&mut library, &mut snapshot, Action::CycleSort, &outgoing).unwrap();
+    refresh(&library, &mut snapshot);
+    let by_name: Vec<String> = snapshot
+        .available
+        .iter()
+        .map(|pack| pack.name.clone())
+        .collect();
+    let mut expected = added.clone();
+    expected.sort_by_key(|name| name.to_lowercase());
+    assert_eq!(by_name, expected);
+    act(&mut library, &mut snapshot, Action::CycleSort, &outgoing).unwrap();
+    refresh(&library, &mut snapshot);
+    expected.reverse();
+    assert_eq!(
+        snapshot
+            .available
+            .iter()
+            .map(|pack| pack.name.clone())
+            .collect::<Vec<_>>(),
+        expected
+    );
+    // The choice survives a restart.
+    drop(library);
+    let reopened = GlobalPackLibrary::open(root.join("library"), [9, 0, 0]).unwrap();
+    assert_eq!(reopened.sort(), resource_pack::PackSort::NameReverse);
+    std::fs::remove_dir_all(root).unwrap();
+}

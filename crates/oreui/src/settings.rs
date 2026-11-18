@@ -11,7 +11,7 @@ mod mods;
 pub(super) mod picker;
 mod presets;
 mod renderer;
-mod resources;
+pub(crate) mod resources;
 mod search;
 mod sections;
 mod services;

@@ -90,3 +90,50 @@ impl GlobalPackLibrary {
         Ok(())
     }
 }
+
+impl GlobalPackLibrary {
+    /// Deletes an imported pack and every stored revision of it. A pack the player has selected,
+    /// staged or applied, or that a restore point keeps, stays until it is deselected and the
+    /// change applied.
+    pub fn remove(&mut self, id: uuid::Uuid) -> Result<(), LibraryError> {
+        let selected = self
+            .active
+            .iter()
+            .chain(&self.catalog.active)
+            .chain(&self.catalog.restore)
+            .any(|active| active.id == id);
+        if selected {
+            return Err(LibraryError::PackInUse);
+        }
+        if !self.catalog.available.iter().any(|pack| pack.id == id) {
+            return Err(LibraryError::UnknownPack);
+        }
+        let mut candidate = self.catalog.clone();
+        let doomed: Vec<InstalledPack> = candidate
+            .available
+            .iter()
+            .chain(&candidate.retained)
+            .filter(|pack| pack.id == id)
+            .cloned()
+            .collect();
+        candidate.available.retain(|pack| pack.id != id);
+        candidate.retained.retain(|pack| pack.id != id);
+        // The catalog stops naming the pack first, so a failed deletion leaves only an orphan file.
+        atomic_write(&self.root.join(CATALOG_FILE), &encode_catalog(&candidate)?)?;
+        self.catalog = candidate;
+        let mut failure = None;
+        for pack in doomed {
+            match fs::remove_file(self.root.join(pack.filename())) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    failure.get_or_insert(error);
+                }
+            }
+        }
+        match failure {
+            Some(error) => Err(error.into()),
+            None => Ok(()),
+        }
+    }
+}

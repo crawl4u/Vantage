@@ -219,6 +219,7 @@ impl MenuRuntime {
         if screen != MenuScreen::Settings {
             self.settings_query.set_text("");
             self.storage_query.set_text("");
+            self.pack_query.set_text("");
         }
         if screen == MenuScreen::Settings && self.screen != MenuScreen::Settings {
             self.settings.java_view = JavaSettingsView::Hub;
@@ -313,6 +314,7 @@ impl MenuRuntime {
                 JavaSettingsView::Page | JavaSettingsView::Bedrock
             )
         {
+            self.apply_global_resources_on_leave();
             self.settings.java_view = JavaSettingsView::Hub;
             return;
         }

@@ -18,6 +18,18 @@ pub enum Action {
     ToggleActive,
     Import,
     Apply,
+    /// Ask whether to delete the available pack at this index.
+    AskDelete(usize),
+    /// Drop the question without deleting.
+    CancelDelete,
+    /// Delete the available pack at this index and its stored files.
+    Delete(usize),
+    /// Step the order the unselected packs are listed in.
+    CycleSort,
+    /// Focus the pack search field.
+    Search,
+    /// Empty the pack search field.
+    ClearSearch,
 }
 
 /// Immutable view of the staged selection and worker status.
@@ -35,6 +47,10 @@ pub struct Snapshot {
     pub selected: Option<(bool, usize)>,
     pub details_expanded: Option<(bool, usize)>,
     pub settings: Option<usize>,
+    /// The available pack the player was asked to confirm deleting.
+    pub delete_pending: Option<usize>,
+    /// The order `available` is listed in.
+    pub sort: resource_pack::PackSort,
     pub available_expanded: bool,
     pub active_expanded: bool,
     pub busy: bool,
@@ -68,6 +84,8 @@ impl Default for Snapshot {
             selected: None,
             details_expanded: None,
             settings: None,
+            delete_pending: None,
+            sort: resource_pack::PackSort::default(),
             available_expanded: true,
             active_expanded: true,
             busy: false,

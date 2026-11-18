@@ -269,22 +269,39 @@ fn expanded_pack_details_leave_equal_gutters_for_text_and_controls() {
                 .find(|(action, _)| *action == command(Action::ReadMore(active, 0)))
                 .unwrap()
                 .1;
-            for (action, bounds) in &hits {
-                if !matches!(
-                    action,
-                    MenuAction::GlobalResources(
-                        Action::Activate(_) | Action::Deactivate(_) | Action::Settings(_)
+            // Controls sharing a row span the card's width, so the row's outer gutters are equal.
+            let controls: Vec<_> = hits
+                .iter()
+                .filter(|(action, _)| {
+                    matches!(
+                        action,
+                        MenuAction::GlobalResources(
+                            Action::Activate(_)
+                                | Action::Deactivate(_)
+                                | Action::AskDelete(_)
+                                | Action::Settings(_)
+                        )
                     )
-                ) {
-                    continue;
-                }
-                let left = bounds.min().x() - header.min().x();
-                let right = header.max().x() - bounds.max().x();
-                assert!(
-                    left > 0.0 && right > 0.0,
-                    "detail controls need side padding"
-                );
-                assert!((left - right).abs() < 0.01, "detail gutters must be equal");
+                })
+                .map(|(_, bounds)| *bounds)
+                .collect();
+            assert!(!controls.is_empty());
+            let left = controls
+                .iter()
+                .map(|bounds| bounds.min().x())
+                .fold(f32::MAX, f32::min)
+                - header.min().x();
+            let right = header.max().x()
+                - controls
+                    .iter()
+                    .map(|bounds| bounds.max().x())
+                    .fold(f32::MIN, f32::max);
+            assert!(
+                left > 0.0 && right > 0.0,
+                "detail controls need side padding"
+            );
+            assert!((left - right).abs() < 0.01, "detail gutters must be equal");
+            for bounds in &controls {
                 assert!(bounds.min().y() > header.max().y());
             }
             let description = nodes
@@ -509,4 +526,15 @@ fn filtered_variants_preserve_the_declared_index_and_root_identity() {
             .iter()
             .any(|label| label == "Variant: Default textures")
     );
+}
+
+#[test]
+fn the_pack_search_needs_every_term_in_the_name_or_description_in_any_case() {
+    let mut pack = pack();
+    pack.name = "Faithful Stone".to_owned();
+    pack.description = "Crisp textures".to_owned();
+    assert!(super::matches_query(&pack, ""));
+    assert!(super::matches_query(&pack, "faith"));
+    assert!(super::matches_query(&pack, "TEXTURES stone"));
+    assert!(!super::matches_query(&pack, "stone wood"));
 }

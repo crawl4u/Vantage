@@ -59,12 +59,75 @@ pub(super) const STATES: &[State] = &[
         fixture: java_servers,
     },
     State {
+        name: "java-packs",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_packs,
+    },
+    State {
+        name: "java-shaders",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_shaders,
+    },
+    State {
         name: "java-servers-featured",
         size: SMALL_SIZE,
         gui_scale: 1,
         fixture: java_featured_servers,
     },
 ];
+
+/// The Shader Packs page with two packs, one active.
+fn java_shaders() -> Fixture {
+    let mut view = MenuView::new(true, "Player".into());
+    view.screen = MenuScreen::Settings;
+    view.auth_state = AuthState::Authenticated;
+    view.settings.section = SettingSection::Shaders.definition().index;
+    view.settings.java_view = JavaSettingsView::Page;
+    view.shader_packs = vec!["BSL v8.zip".to_owned(), "Complementary".to_owned()].into();
+    view.shader_packs_revision = 1;
+    view.render_mode = ui::RenderMode::ShaderPack;
+    view.renderer = Some(launcher::menu::RendererChoice::ShaderPack(0, 1));
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    Fixture::Menu(Box::new(view))
+}
+
+/// The Resource Packs page with packs in both lists, one chosen.
+fn java_packs() -> Fixture {
+    let mut view = MenuView::new(true, "Player".into());
+    view.screen = MenuScreen::Settings;
+    view.auth_state = AuthState::Authenticated;
+    view.settings.section = SettingSection::GlobalTexturePack.definition().index;
+    view.settings.java_view = JavaSettingsView::Page;
+    let pack = |name: &str, description: &str| resource_pack::InstalledPack {
+        id: Default::default(),
+        version: [1, 2, 0],
+        name: name.to_owned(),
+        description: description.to_owned(),
+        min_engine_version: None,
+        subpacks: Vec::new(),
+        revision: 0,
+    };
+    view.global_resources = Arc::new(launcher::global_resources::Snapshot {
+        available: vec![
+            pack(
+                "Faithful 64x",
+                "Doubles the detail of every block and item.",
+            ),
+            pack("Bare Bones", "A flat, minimal look."),
+            pack("Old Library", ""),
+        ],
+        active: vec![pack("Vonpack", "Dark menus and blue buttons.")],
+        selected: Some((false, 0)),
+        message: "Texture packs applied.".to_owned(),
+        ..Default::default()
+    });
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    Fixture::Menu(Box::new(view))
+}
 
 /// The Multiplayer screen's featured tab, with one featured and one creator server.
 fn java_featured_servers() -> Fixture {

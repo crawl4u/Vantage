@@ -127,6 +127,7 @@ impl MenuRuntime {
             friend_query: field_editor(MenuField::FriendQuery),
             settings_query: field_editor(MenuField::SettingsQuery),
             storage_query: field_editor(MenuField::StorageQuery),
+            pack_query: field_editor(MenuField::PackQuery),
             macro_commands: macro_editors(&settings_options),
             message,
             gui_scale_preference: gui_scale

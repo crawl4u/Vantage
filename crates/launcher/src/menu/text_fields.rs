@@ -14,6 +14,9 @@ impl MenuAction {
             Self::EditSkinName => Some(MenuField::SkinName),
             Self::SearchFriends => Some(MenuField::FriendQuery),
             Self::SearchSettings => Some(MenuField::SettingsQuery),
+            Self::GlobalResources(crate::global_resources::Action::Search) => {
+                Some(MenuField::PackQuery)
+            }
             Self::SettingsStorage(super::settings_storage::StorageAction::Search) => {
                 Some(MenuField::StorageQuery)
             }

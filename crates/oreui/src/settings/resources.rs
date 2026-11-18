@@ -147,6 +147,15 @@ pub(super) fn cards<T: CardItem>(
     Ok(())
 }
 
+/// Whether `pack` has every whitespace-separated term of `query` in its name or description,
+/// ignoring case; an empty query matches every pack.
+pub(crate) fn matches_query(pack: &resource_pack::InstalledPack, query: &str) -> bool {
+    let text = format!("{} {}", pack.name, pack.description).to_lowercase();
+    query
+        .split_whitespace()
+        .all(|term| text.contains(&term.to_lowercase()))
+}
+
 fn pack_cards(
     content: &mut Content<'_, '_>,
     snapshot: &Snapshot,
@@ -154,6 +163,9 @@ fn pack_cards(
     group: Group,
 ) -> Result<(), PaintError> {
     cards(content, motion, group, |content, card| {
+        if !matches_query(&card.item, &content.view.pack_query) {
+            return Ok(());
+        }
         pack_card(
             content,
             snapshot,
@@ -176,6 +188,11 @@ fn toolbar(content: &mut Content<'_, '_>, snapshot: &Snapshot) -> Result<(), Pai
                 (!snapshot.busy).then_some(command(Action::Import)),
             ),
             (
+                &format!("Sort: {}", snapshot.sort.label()),
+                Variant::Neutral,
+                (!snapshot.busy).then_some(command(Action::CycleSort)),
+            ),
+            (
                 "Apply changes",
                 Variant::Primary,
                 snapshot.can_apply().then_some(command(Action::Apply)),
@@ -183,6 +200,46 @@ fn toolbar(content: &mut Content<'_, '_>, snapshot: &Snapshot) -> Result<(), Pai
         ],
     )?;
     content.y += content.canvas.r(1.2);
+    search(content)
+}
+
+/// The search field over both lists, with a button to empty it.
+fn search(content: &mut Content<'_, '_>) -> Result<(), PaintError> {
+    let [left, right] = content.inset();
+    let view = content.view;
+    let clear = !view.pack_query.is_empty();
+    let gap = content.canvas.r(0.8);
+    let clear_width = if clear {
+        (content.canvas.measure("Clear", BODY)? + content.canvas.r(3.2)).max(content.canvas.r(8.0))
+    } else {
+        0.0
+    };
+    let field_right = if clear {
+        right - clear_width - gap
+    } else {
+        right
+    };
+    let height = content.canvas.r(4.4);
+    widgets::search_field(
+        content.canvas,
+        view,
+        [left, content.y, field_right, content.y + height],
+        &view.pack_query,
+        "Search packs",
+        view.field == Some(launcher::menu::MenuField::PackQuery),
+        Some(command(Action::Search)),
+    )?;
+    if clear {
+        widgets::button(
+            content.canvas,
+            view,
+            [field_right + gap, content.y, right, content.y + height],
+            Variant::Secondary,
+            "Clear",
+            Some(command(Action::ClearSearch)),
+        )?;
+    }
+    content.y += height + content.canvas.r(1.2);
     Ok(())
 }
 
@@ -620,11 +677,27 @@ fn pack_card(
                 Variant::Secondary,
                 available.then_some(command(Action::Deactivate(index))),
             ));
+        } else if snapshot.delete_pending == Some(index) {
+            buttons.push((
+                "Delete for good",
+                Variant::Primary,
+                available.then_some(command(Action::Delete(index))),
+            ));
+            buttons.push((
+                "Keep",
+                Variant::Secondary,
+                available.then_some(command(Action::CancelDelete)),
+            ));
         } else {
             buttons.push((
                 "Activate",
                 Variant::Primary,
                 available.then_some(command(Action::Activate(index))),
+            ));
+            buttons.push((
+                "Delete",
+                Variant::Neutral,
+                available.then_some(command(Action::AskDelete(index))),
             ));
         }
         actions(content, &buttons)

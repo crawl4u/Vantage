@@ -5,10 +5,14 @@
 
 mod button;
 mod font;
+pub(super) mod frame;
+pub(crate) use button::label_style;
 pub(super) mod home;
 pub(super) mod options;
+mod packs;
 pub(super) mod pause;
 pub(super) mod servers;
+mod shaders;
 mod splash;
 
 use launcher::menu::{MenuView, settings_options::menu_style::MenuStyle};

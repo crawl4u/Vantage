@@ -128,6 +128,7 @@ pub struct MenuRuntime {
     friend_query: ui::ChatEditor,
     settings_query: ui::ChatEditor,
     storage_query: ui::ChatEditor,
+    pack_query: ui::ChatEditor,
     /// Command macro command boxes; edits write through to persisted settings.
     macro_commands: [ui::ChatEditor; launcher::menu::settings_options::COMMAND_MACRO_COUNT],
     message: Option<String>,
@@ -825,6 +826,11 @@ impl MenuRuntime {
             MenuAction::SelectRealm(index) => self.feeds.selected_realm = Some(index),
             MenuAction::ToggleReadMore(section) => self.feeds.toggle_read_more(section),
             MenuAction::OpenLiveEvent => self.open_live_event(),
+            MenuAction::GlobalResources(launcher::global_resources::Action::Search) => {}
+            MenuAction::GlobalResources(launcher::global_resources::Action::ClearSearch) => {
+                self.pack_query.set_text("");
+                self.focus_field(MenuField::PackQuery);
+            }
             MenuAction::GlobalResources(action) => self.global_resource_actions.push(action),
             MenuAction::Mods(launcher::mods::Action::ViewUpdates) => {
                 if !self.over_world() {

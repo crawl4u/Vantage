@@ -3,7 +3,9 @@
 use bevy::prelude::Resource;
 use launcher::global_resources::{Action, Snapshot};
 use launcher_host::desktop::picker::{self, Filter};
-use resource_pack::{GlobalPackLibrary, LibraryError, PACK_IMPORT_EXTENSIONS, ValidatedPackStack};
+use resource_pack::{
+    GlobalPackLibrary, LibraryError, PACK_IMPORT_EXTENSIONS, PackSort, ValidatedPackStack,
+};
 use std::{path::PathBuf, sync::Arc};
 
 const PACKS: Filter = Filter {
@@ -152,7 +154,9 @@ fn run(
                         | Action::MoveUp(_)
                         | Action::MoveDown(_)
                         | Action::Subpack(_)
-                        | Action::Import,
+                        | Action::Import
+                        | Action::Delete(_)
+                        | Action::CycleSort,
                     ..
                 }
         );
@@ -330,6 +334,10 @@ fn indexed(action: Action) -> bool {
             | Action::CloseSettings
             | Action::Import
             | Action::Apply
+            | Action::CancelDelete
+            | Action::CycleSort
+            | Action::Search
+            | Action::ClearSearch
     )
 }
 
@@ -350,12 +358,25 @@ fn refresh(library: &GlobalPackLibrary, snapshot: &mut Snapshot) {
         .iter()
         .filter_map(|active| library.metadata(active).cloned())
         .collect();
+    snapshot.sort = library.sort();
     snapshot.available = library
         .available()
         .iter()
         .filter(|pack| !library.active().iter().any(|active| active.id == pack.id))
         .cloned()
         .collect();
+    match snapshot.sort {
+        PackSort::Added => {}
+        PackSort::Name => snapshot
+            .available
+            .sort_by_cached_key(|pack| pack.name.to_lowercase()),
+        PackSort::NameReverse => {
+            snapshot
+                .available
+                .sort_by_cached_key(|pack| pack.name.to_lowercase());
+            snapshot.available.reverse();
+        }
+    }
 }
 
 /// Imports all resource halves and reports skipped behavior or unsupported entries.
@@ -376,6 +397,7 @@ fn import(
 }
 
 fn clear_indexed(snapshot: &mut Snapshot) {
+    snapshot.delete_pending = None;
     snapshot.selected = None;
     snapshot.details_expanded = None;
     snapshot.settings = None;
@@ -397,6 +419,10 @@ fn act(
             | Action::CloseSettings
             | Action::ToggleAvailable
             | Action::ToggleActive
+            | Action::AskDelete(_)
+            | Action::CancelDelete
+            | Action::Search
+            | Action::ClearSearch
     ) {
         snapshot.message.clear();
     }
@@ -447,6 +473,25 @@ fn act(
                     .map(|(active, item)| (active, if active { moved(item) } else { item }));
                 snapshot.settings = snapshot.settings.map(moved);
                 snapshot.selected = Some((true, to));
+            }
+        }
+        Action::AskDelete(index) => {
+            snapshot.delete_pending = (index < snapshot.available.len()).then_some(index);
+        }
+        Action::CancelDelete => snapshot.delete_pending = None,
+        // The query lives in the menu; the worker only sees these when a remote control sends them.
+        Action::Search | Action::ClearSearch => {}
+        Action::CycleSort => {
+            library.set_sort(library.sort().next())?;
+            clear_indexed(snapshot);
+        }
+        Action::Delete(index) => {
+            snapshot.delete_pending = None;
+            if let Some(pack) = snapshot.available.get(index) {
+                let name = pack.name.clone();
+                library.remove(pack.id)?;
+                clear_indexed(snapshot);
+                snapshot.message = format!("Deleted {name}.");
             }
         }
         Action::Settings(index) => snapshot.settings = Some(index),

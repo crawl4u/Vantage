@@ -1032,3 +1032,47 @@ fn review_corrupt_nested_archive_keeps_valid_siblings() {
     assert_eq!(report.imported.len(), 1);
     assert_eq!(report.rejected.len(), 1);
 }
+
+#[test]
+fn removing_a_pack_deletes_its_archives_and_forgets_it_across_restarts() {
+    let fixture = Fixture::new();
+    let mut library = fixture.library();
+    install_active(&mut library, &fixture, 7);
+    library.deactivate(Uuid::from_u128(7));
+    let archive = fixture
+        .0
+        .join("installed")
+        .join(library.available()[0].filename());
+    assert!(archive.exists());
+    library.remove(Uuid::from_u128(7)).unwrap();
+    assert!(library.available().is_empty());
+    assert!(!archive.exists());
+    assert!(fixture.library().available().is_empty());
+    assert!(matches!(
+        library.remove(Uuid::from_u128(7)),
+        Err(LibraryError::UnknownPack)
+    ));
+}
+
+#[test]
+fn a_selected_or_applied_pack_is_not_removed() {
+    let fixture = Fixture::new();
+    let mut library = fixture.library();
+    install_active(&mut library, &fixture, 8);
+    // Staged as selected.
+    assert!(matches!(
+        library.remove(Uuid::from_u128(8)),
+        Err(LibraryError::PackInUse)
+    ));
+    library.apply().unwrap();
+    library
+        .commit_selection(&library.active().to_vec())
+        .unwrap();
+    // Deselected but the applied selection still names it.
+    library.deactivate(Uuid::from_u128(8));
+    assert!(matches!(
+        library.remove(Uuid::from_u128(8)),
+        Err(LibraryError::PackInUse)
+    ));
+    assert_eq!(library.available().len(), 1);
+}

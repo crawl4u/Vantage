@@ -486,6 +486,8 @@ pub struct MenuView {
     /// Transient text filtering settings across categories.
     pub settings_query: String,
     pub storage_query: String,
+    /// The text the resource pack lists are filtered by.
+    pub pack_query: String,
     /// Command box drafts, including invalid edits that have not been saved.
     pub macro_commands: Option<[String; super::settings_options::COMMAND_MACRO_COUNT]>,
     pub message: Option<String>,
@@ -774,6 +776,7 @@ impl MenuView {
             friend_query: String::new(),
             settings_query: String::new(),
             storage_query: String::new(),
+            pack_query: String::new(),
             field: None,
             caret: MenuCaret {
                 shown: true,

@@ -104,6 +104,8 @@ pub enum MenuField {
     FriendQuery,
     /// Searches options across settings categories.
     SettingsQuery,
+    /// Filters the resource pack lists by name and description.
+    PackQuery,
     StorageQuery,
     Name,
     Address,

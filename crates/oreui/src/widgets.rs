@@ -602,6 +602,7 @@ pub(super) fn text_field(
         action,
         NEUTRAL100,
         None,
+        None,
     )
 }
 
@@ -624,6 +625,7 @@ pub(super) fn text_field_on_panel(
         focused,
         action,
         NEUTRAL80.fill,
+        None,
         None,
     )
 }
@@ -648,6 +650,34 @@ pub(super) fn search_field(
         action,
         NEUTRAL90,
         Some(super::icons::Icon::Search),
+        None,
+    )
+}
+
+/// An editable field drawn in the Java style from Java's text field sprites, `unit` logical
+/// pixels to a Java pixel.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn java_field(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    b: Bounds,
+    value: &str,
+    placeholder: &str,
+    focused: bool,
+    action: Option<MenuAction>,
+    unit: f32,
+) -> Result<(), PaintError> {
+    field(
+        canvas,
+        view,
+        b,
+        value,
+        placeholder,
+        focused,
+        action,
+        NEUTRAL100,
+        None,
+        Some(unit),
     )
 }
 
@@ -662,17 +692,32 @@ fn field(
     action: Option<MenuAction>,
     fill: Rgba,
     leading: Option<super::icons::Icon>,
+    java: Option<f32>,
 ) -> Result<(), PaintError> {
     let mut state = canvas.interaction(view, action);
     state.focused |= focused;
     let motion = canvas.feedback(state, action.is_some(), false, Kind::Field);
-    canvas.fill(b, BORDER)?;
     let edge = canvas.r(EDGE);
-    let face = [b[0] + edge, b[1] + edge, b[2] - edge, b[3] - edge];
-    let fill = canvas.appearance.surface(fill);
-    let hovered = canvas.role(NEUTRAL80).hovered;
-    canvas.fill(face, mix(fill, hovered, motion.hover))?;
+    let style = java.map_or(BODY, |unit| crate::java::label_style(canvas, unit));
     let mut left = b[0] + canvas.r(1.4);
+    if let Some(unit) = java {
+        let name = if state.focused || state.hovered {
+            "sprites/widget/text_field_highlighted.png"
+        } else {
+            "sprites/widget/text_field.png"
+        };
+        let key = crate::images::java::key(name);
+        let slices = crate::images::java::border(&key).unwrap_or([0; 4]);
+        let widths = slices.map(|texels| f32::from(texels) * unit / canvas.rem.max(f32::EPSILON));
+        canvas.nine_slice(&key, b, slices, widths, true, [255; 4])?;
+        left = b[0] + 4.0 * unit;
+    } else {
+        canvas.fill(b, BORDER)?;
+        let face = [b[0] + edge, b[1] + edge, b[2] - edge, b[3] - edge];
+        let fill = canvas.appearance.surface(fill);
+        let hovered = canvas.role(NEUTRAL80).hovered;
+        canvas.fill(face, mix(fill, hovered, motion.hover))?;
+    }
     if let Some(icon) = leading {
         super::icons::draw(
             canvas,
@@ -690,7 +735,7 @@ fn field(
         TEXT
     };
     let viewport = [left, b[1], left + width - edge, b[3]];
-    let mut line = canvas.editable_line(value, placeholder, viewport, BODY)?;
+    let mut line = canvas.editable_line(value, placeholder, viewport, style)?;
     let target = line.caret(view.caret.byte);
     let (caret, insertion) = if focused
         && let Some(action) = action
@@ -729,7 +774,7 @@ fn field(
         canvas.fill([caret_x, top, caret_x + edge, bottom], FIELD_CARET)?;
     }
     canvas.end_clip(clip);
-    if motion.focus > 0.0 {
+    if java.is_none() && motion.focus > 0.0 {
         let ring = if focused { 0.0 } else { canvas.r(0.4) };
         canvas.frame(
             [b[0] - ring, b[1] - ring, b[2] + ring, b[3] + ring],
@@ -747,7 +792,7 @@ fn field(
         && hit == action
     {
         let metrics = canvas.metrics;
-        let request = canvas.text_request(value, 65536 * 64, BODY)?;
+        let request = canvas.text_request(value, 65536 * 64, style)?;
         let factor = request.scale.get() / metrics.scale.get();
         let letter_spacing_64 = request.wrap.letter_spacing_64;
         canvas.spots.push(TextSpot {
@@ -757,7 +802,7 @@ fn field(
             left: line.at[0],
             factor,
             effect_scale_1024: 0,
-            font: Some(BODY.face.name().into()),
+            font: Some(style.face.name().into()),
             letter_spacing_64,
             metrics,
         });

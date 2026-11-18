@@ -253,6 +253,7 @@ impl UiPresentationRuntime {
                     | launcher::menu::MenuField::WorldOption(_)
                     | launcher::menu::MenuField::FriendQuery
                     | launcher::menu::MenuField::StorageQuery
+                    | launcher::menu::MenuField::PackQuery
                     | launcher::menu::MenuField::SettingsQuery
                     | launcher::menu::MenuField::SkinName
                     | launcher::menu::MenuField::RealmCode
