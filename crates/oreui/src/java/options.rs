@@ -6,9 +6,10 @@
 //! show, such as key bindings, language and resource packs, stays in the Bedrock-style Settings,
 //! which the list and every page reach.
 
+use assets::audio_category::AudioCategory;
 use launcher::menu::{
     JavaSettingsAction, JavaSettingsView, MenuAction, MenuView,
-    settings_options::{SettingId, SettingKind, layout::SettingPanel},
+    settings_options::{SETTINGS_OPTIONS, SettingId, SettingKind, layout::SettingPanel},
     settings_sections::{SECTION_DEFINITIONS, SettingSection},
 };
 use ui_engine::engine::screen::{PaintError, Translate};
@@ -23,6 +24,7 @@ use crate::{
 
 /// Sizes in Java pixels.
 const WIDGET_WIDTH: f32 = 150.0;
+const WIDE_WIDTH: f32 = 310.0;
 const WIDGET_HEIGHT: f32 = 20.0;
 const ROW: f32 = 25.0;
 const COLUMN_GAP: f32 = 10.0;
@@ -61,6 +63,15 @@ const HANDLE_SIZE: [f32; 2] = [8.0, 20.0];
 enum Entry {
     Option(SettingId),
     Link(String, MenuAction),
+}
+
+impl Entry {
+    /// Whether the widget spans the list's whole width: the master volume, which Java sets above
+    /// the other volumes.
+    fn wide(&self) -> bool {
+        matches!(self, Self::Option(id)
+            if SETTINGS_OPTIONS[id.index()].volume == Some(AudioCategory::Master))
+    }
 }
 
 /// The options a page of `section` lists, in the registry's order.
@@ -103,22 +114,69 @@ pub(crate) fn shows_java(view: &MenuView) -> bool {
     }
 }
 
+/// The pages Java has, in the order its Options screen lists them. Pages this client adds follow
+/// in the settings registry's order.
+const JAVA_PAGE_ORDER: &[SettingSection] = &[
+    SettingSection::Sound,
+    SettingSection::Video,
+    SettingSection::KeyboardAndMouse,
+    SettingSection::ControllerAndSwitch,
+    SettingSection::Touch,
+    SettingSection::Language,
+    SettingSection::Chat,
+    SettingSection::GlobalTexturePack,
+    SettingSection::Accessibility,
+];
+
+/// What Java calls the page of `section`, where it has a page by that name.
+fn java_name(section: SettingSection) -> Option<&'static str> {
+    Some(match section {
+        SettingSection::Sound => "Music & Sounds",
+        SettingSection::Video => "Video Settings",
+        SettingSection::KeyboardAndMouse => "Controls",
+        SettingSection::Chat => "Chat Settings",
+        SettingSection::GlobalTexturePack => "Resource Packs",
+        SettingSection::Accessibility => "Accessibility Settings",
+        _ => return None,
+    })
+}
+
+/// The name of the page of `section`: Java's, else the section's own tab title.
+fn page_name(view: &MenuView, translate: Translate<'_>, section: SettingSection) -> String {
+    java_name(section).map_or_else(
+        || {
+            let title = section
+                .definition()
+                .tab_title
+                .unwrap_or("hbui.Settings.title");
+            settings::text(view, translate, title)
+        },
+        str::to_owned,
+    )
+}
+
 /// The widgets of the list of pages: the field of view, then a button for every section.
 fn hub_entries(view: &MenuView, translate: Translate<'_>) -> Vec<Entry> {
     let mut entries = vec![Entry::Option(SettingId::FieldOfView)];
-    for definition in SECTION_DEFINITIONS {
-        let Some(title) = definition.tab_title else {
-            continue;
-        };
-        if !view.settings_section_shown(definition.id) {
-            continue;
-        }
+    let mut sections: Vec<_> = SECTION_DEFINITIONS
+        .iter()
+        .filter(|definition| {
+            definition.tab_title.is_some() && view.settings_section_shown(definition.id)
+        })
+        .collect();
+    sections.sort_by_key(|definition| {
+        JAVA_PAGE_ORDER
+            .iter()
+            .position(|section| *section == definition.id)
+            .unwrap_or(JAVA_PAGE_ORDER.len())
+    });
+    for definition in sections {
         let action = if page_options(view, definition.id).is_empty() {
             JavaSettingsAction::Bedrock(definition.index)
         } else {
             JavaSettingsAction::Page(definition.index)
         };
-        let name = settings::text(view, translate, title);
+        let name = page_name(view, translate, definition.id);
         entries.push(Entry::Link(
             format!("{name}..."),
             MenuAction::JavaSettings(action),
@@ -152,19 +210,9 @@ pub(crate) fn draw(
     let hub = view.settings.java_view == JavaSettingsView::Hub;
     let open = section(view);
     let (title, entries) = if hub {
-        (
-            settings::text(view, translate, "hbui.Settings.title"),
-            hub_entries(view, translate),
-        )
+        ("Options".to_owned(), hub_entries(view, translate))
     } else {
-        (
-            settings::text(
-                view,
-                translate,
-                open.definition().tab_title.unwrap_or("hbui.Settings.title"),
-            ),
-            page_entries(view, open),
-        )
+        (page_name(view, translate, open), page_entries(view, open))
     };
     canvas.fill([0.0, 0.0, size[0], size[1]], DIM)?;
     let screen =
@@ -231,6 +279,49 @@ fn separators(canvas: &mut Canvas<'_>, size: [f32; 2], unit: f32) -> Result<(), 
     Ok(())
 }
 
+/// Where one widget sits in the list.
+#[derive(Debug, PartialEq)]
+struct Place {
+    row: usize,
+    column: usize,
+    /// It spans both columns, as Java's master volume does.
+    wide: bool,
+}
+
+/// Places `entries` two to a row, a wide one alone on a row of its own.
+fn places(entries: &[Entry]) -> Vec<Place> {
+    let (mut row, mut column) = (0, 0);
+    entries
+        .iter()
+        .map(|entry| {
+            if entry.wide() {
+                if column != 0 {
+                    row += 1;
+                }
+                let place = Place {
+                    row,
+                    column: 0,
+                    wide: true,
+                };
+                row += 1;
+                column = 0;
+                return place;
+            }
+            let place = Place {
+                row,
+                column,
+                wide: false,
+            };
+            column += 1;
+            if column == 2 {
+                column = 0;
+                row += 1;
+            }
+            place
+        })
+        .collect()
+}
+
 /// The scrolling list of widgets in two columns.
 #[allow(clippy::too_many_arguments, reason = "one screen's drawing state")]
 fn list(
@@ -249,7 +340,8 @@ fn list(
     } else {
         format!("java_options/{}", open.definition().name)
     };
-    let rows = entries.len().div_ceil(2) as f32;
+    let places = places(entries);
+    let rows = places.last().map_or(0, |place| place.row + 1) as f32;
     let content = (LIST_PADDING * 2.0 + rows * ROW) * unit;
     let max = (content - (viewport[3] - viewport[1])).max(0.0);
     if let Some(offset) = canvas.offsets.get_mut(&key) {
@@ -268,10 +360,11 @@ fn list(
         centre - COLUMN_GAP / 2.0 - WIDGET_WIDTH,
         centre + COLUMN_GAP / 2.0,
     ];
-    for (index, entry) in entries.iter().enumerate() {
-        let x = columns[index % 2];
-        let y = viewport[1] / unit + LIST_PADDING + (index / 2) as f32 * ROW;
-        let bounds = [x, y, x + WIDGET_WIDTH, y + WIDGET_HEIGHT].map(|value| value * unit);
+    for (entry, place) in entries.iter().zip(&places) {
+        let x = columns[place.column];
+        let width = if place.wide { WIDE_WIDTH } else { WIDGET_WIDTH };
+        let y = viewport[1] / unit + LIST_PADDING + place.row as f32 * ROW;
+        let bounds = [x, y, x + width, y + WIDGET_HEIGHT].map(|value| value * unit);
         let bounds = [
             bounds[0],
             bounds[1] - scroll.offset,
@@ -443,6 +536,44 @@ mod tests {
 
     fn view() -> MenuView {
         MenuView::new(true, "Player".into())
+    }
+
+    #[test]
+    fn the_list_of_pages_follows_javas_order_and_names_then_this_clients_pages() {
+        let view = view();
+        let labels: Vec<String> = hub_entries(&view, &|_| None)
+            .into_iter()
+            .filter_map(|entry| match entry {
+                Entry::Link(label, _) => Some(label),
+                Entry::Option(_) => None,
+            })
+            .collect();
+        let at = |name: &str| labels.iter().position(|label| label == name);
+        let (sounds, video, controls) = (
+            at("Music & Sounds..."),
+            at("Video Settings..."),
+            at("Controls..."),
+        );
+        assert!(sounds < video && video < controls, "{labels:?}");
+        assert!(controls.is_some(), "{labels:?}");
+        // Java's pages come before the pages this client adds.
+        let accessibility = at("Accessibility Settings...").unwrap();
+        assert!(labels[accessibility + 1..].iter().all(|label| {
+            !["Music & Sounds...", "Video Settings...", "Controls..."].contains(&label.as_str())
+        }));
+    }
+
+    #[test]
+    fn a_wide_entry_sits_alone_on_its_row_and_the_rest_pair_up() {
+        let mut view = view();
+        view.settings.java_view = JavaSettingsView::Page;
+        view.settings.section = SettingSection::Sound.definition().index;
+        let entries = page_entries(&view, SettingSection::Sound);
+        let places = places(&entries);
+        assert!(places[0].wide && places[0].row == 0);
+        assert_eq!((places[1].row, places[1].column), (1, 0));
+        assert_eq!((places[2].row, places[2].column), (1, 1));
+        assert!(places.iter().skip(1).all(|place| !place.wide));
     }
 
     #[test]
