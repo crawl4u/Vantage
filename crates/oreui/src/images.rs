@@ -304,6 +304,12 @@ impl OreUiImages {
             let Art::Still(width, height, pixels) = art else {
                 continue;
             };
+            // Every Java page keeps one size, so a sheet larger than a page is left out rather than
+            // given a page of its own.
+            if width > EXTRA_PAGE_SIDE || height > EXTRA_PAGE_SIDE {
+                tracing::warn!("Java menu image {key} ({width}x{height}) is larger than a page");
+                continue;
+            }
             let sprite = pack.insert(&pixels, width, height)?;
             let page = sprite
                 .page
@@ -336,7 +342,7 @@ impl OreUiImages {
 }
 
 /// Side of the pages added for the Java-style menus' sprites and font sheets.
-const EXTRA_PAGE_SIDE: u32 = 1024;
+const EXTRA_PAGE_SIDE: u32 = 2048;
 
 /// How many pages [`with_java`] adds: the renderer keeps fixed pages for the whole run, so the
 /// Java menus' pages are reserved at this count and only their pixels change with the packs.

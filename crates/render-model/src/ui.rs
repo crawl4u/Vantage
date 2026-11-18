@@ -13,7 +13,7 @@ pub const MAX_UI_DRAW_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_UI_TEXTURE_SIDE: u32 = assets::texture::policy::MAX_TEXTURE_SIDE;
 pub const MAX_UI_TEXTURE_LAYERS: u32 = 256;
 /// Fixed artwork and blank native slots retain the ordinary UI budget.
-pub const MAX_UI_FIXED_TEXTURE_BYTES: usize = 128 * 1024 * 1024;
+pub const MAX_UI_FIXED_TEXTURE_BYTES: usize = 192 * 1024 * 1024;
 /// Native slot growth has dedicated capacity without allocating unused reserves.
 pub const MAX_UI_TEXTURE_BYTES: usize =
     MAX_UI_FIXED_TEXTURE_BYTES + crate::ui_textures::MAX_UI_NATIVE_TEXTURE_GROWTH_BYTES;
