@@ -621,6 +621,11 @@ Interaction rotation retains picked aim independently of body, head and camera i
 Active assistance publishes its target direction, or body facing when no target is found,
 to the matching unsent tick. Ordinary crosshair input uses the direction lookup table.
 The touch and classic control modes aim interactions along the ray through the finger and report their interaction model; picking from the camera origin in third person, the idle selection between touches and camera-actor substitution remain incomplete.
+Each finger landing on a touch control is its own press, including before a frame saw it
+released. As vanilla's touch buttons follow one finger at a time, a finger landing on a control
+that an earlier finger still holds does not press it. Incomplete: a control pressed twice within
+one frame presses once, as touch has no ordered event stream like desktop, and a control handed
+from one finger to another stays held instead of releasing as vanilla's does.
 Keep raw, analogue and processed input semantics distinct. A boat steered from its
 controlling seat is client-predicted with vanilla paddle, momentum, steering and buoyancy
 constants; rendered BDS acceptance covers straight and turning rows. A seat that locks
@@ -663,6 +668,10 @@ authority through the same ordered controls. Synthetic creation keeps that lifet
 and its already accepted updates and effects. Replacement retires cached flags, pose
 comparisons, dimensions, item use and movement attributes. Replay retains ordered
 actor and controller writes independently of the replaced actor state.
+The local player's direct passengers do not take its picks and aim assistance, as vanilla's
+actor picking skips them; riders of those passengers stay pickable. They also do not block
+its predicted movement, which is provisional because the native collision rule for a
+player's own passengers is unverified (incomplete).
 Passenger order follows vanilla's `Actor::addPassenger` and `ActorLinkSystem::_tick`: links
 apply in arrival order, a player boarding behind a non-player takes the front seat, and a
 rider whose actor is missing never holds back later riders. A rider spawning in its link's
@@ -1667,8 +1676,12 @@ OS Alt-Tab acceptance on macOS, Windows and Linux remains incomplete.
   settings close. Embedding their controls within the settings panel instead of a
   separate form remains incomplete.
   NPC dialogue actions expose command/URL labels and pointer hit targets through
-  their JSON-UI collection. Actor portraits, matched acceptance for larger action
-  lists and touch/console behavior remain incomplete.
+  their JSON-UI collection. A dialogue without a scene name shows the NPC actor's
+  synced name tag, `InteractText` and `Actions` instead of the packet's fields.
+  That text is read once when the screen opens rather than following later actor
+  data updates, and a dialogue for an unknown or non-NPC actor still opens instead
+  of being ignored. Actor portraits, matched acceptance for larger action lists
+  and touch/console behavior remain incomplete.
   A command block opens vanilla's JSON-UI editor from the server's `ContainerOpen`, loaded from
   its block and actor, and reports a `CommandBlockUpdate` when a changed screen closes. The
   minecart command block editor, command autocomplete (`IntellisenseHandler`), the paste
@@ -2003,6 +2016,17 @@ On macOS and extracted Linux AppDirs, a staged update's carriers build in the ba
 the lowest priority with bounded parallelism, and its first launch promotes them without
 setup. Windows MSI updates still prepare at launch. Packaged update acceptance and frame-time
 captures of a game running beside the background build remain incomplete.
+Packaged launches pass an ownership gate before first-run setup, downloads, worlds or joins.
+Proof sources plug in per platform and any one passes: Minecraft for Windows registered for
+the user (Windows package API, best-effort, checked every launch), and a Microsoft account
+signed in through Cinnabar's own app when `CINNABAR_MSA_CLIENT_ID` is built in. The account
+check keeps a 30-day pass, re-checks in the background, survives outages with a prior pass and
+revokes only after two not-owned answers a day apart; the account manager lists that account
+and warns before removing it. The gate is on where a source exists: Windows now; macOS and
+Linux once the client ID is set, which waits on Mojang approving Cinnabar's app; Android after
+its install source lands; iOS needs an in-game gate, since its setup runs no first-run window.
+No release has qualified the account path against real accounts (owned, Game Pass, Java-only,
+child, non-owner) or the Windows source against a current Store or Xbox app install.
 Bootstrap windows initialize only the platform-preferred graphics API by default, preserving explicit `WGPU_BACKEND` overrides, so unused Windows Vulkan drivers are not loaded before setup can fall back to system dialogs. Affected Intel driver and dual-GPU acceptance remain incomplete.
 Particle atlas updates scope dynamic tile staging as well as base allocation. A failed tile update drops its partial atlas, keeps the generation uncommitted and retries the base plus current patches after retirement. Repeated failures keep exponential backoff until both the base and tiles upload successfully. Low-memory desktop GPU acceptance remains incomplete.
 
@@ -2196,7 +2220,7 @@ Flathub submission remain incomplete.
   cache publication use a no-overwrite rename instead of hard links; device acceptance and skin
   imports that need a sibling geometry file remain open.
   Keep browser gesture activation and background work within the host's event-loop rules.
-  Touch-capable hosts expose persisted look sensitivity and control guidance. A utility dropdown, chat and pause share a centered row; the dropdown toggles Debug Overlay and Player List and opens Emotes; inventory access follows the HUD hotbar. The joystick-and-crosshair layout uses proportional movement/action centers and height-based sizes. A Control mode option offers Bedrock's three modes, saved per install and defaulting to tap to interact: joystick or the classic D-pad (default centre and height share, forward diagonals while moving forward, centre jump) for movement, and world taps and holds (0.25 s tap window, 0.4 s hold, 0.05 screen-width turn threshold) or crosshair attack and use buttons for interaction. Unverified and provisional: which action each gesture performs on each target, crosshair visibility per mode, the turn threshold's sensitivity factor, D-pad axis values and diagonal rule, down diagonals, and sneak and sprint in the classic layout. Confirmed gap: the classic D-pad covers the start of bottom-left chat lines. Touchscreen settings offers a touch-control layout draft with dragging, corner resizing (0.5–3× uniform scale), alignment guides, snapping, grid, touch-accessible Undo/Redo, Save, Cancel and Reset; saved positions and sizes drive both artwork and hit regions. Control resizing is a Cinnabar layout-editor feature with no verified Bedrock size range. Mods with the controls grant add up to four labelled buttons each (sixteen shown) in the dropdown's button style; taps complete on release inside the button, reach only the owning mod's next frame, and placements persist by button id in the same editor. The sensitivity curve, movement/action parity, remapping, cutout handling and physical-device layout acceptance remain open.
+  Touch-capable hosts expose persisted look sensitivity and control guidance. A utility dropdown, chat and pause share a centered row; the dropdown toggles Debug Overlay and Player List and opens Emotes; inventory access follows the HUD hotbar. With that button the built-in HUD's status rows and bars span the hotbar's full width, as `centered_gui_elements_at_bottom_middle_touch` does in the pinned vanilla pack; a matched native touch frame remains outstanding. The joystick-and-crosshair layout uses proportional movement/action centers and height-based sizes. A Control mode option offers Bedrock's three modes, saved per install and defaulting to tap to interact: joystick or the classic D-pad (default centre and height share, forward diagonals while moving forward, centre jump) for movement, and world taps and holds (0.25 s tap window, 0.4 s hold, 0.05 screen-width turn threshold) or crosshair attack and use buttons for interaction. Unverified and provisional: which action each gesture performs on each target, crosshair visibility per mode, the turn threshold's sensitivity factor, D-pad axis values and diagonal rule, down diagonals, and sneak and sprint in the classic layout. Confirmed gap: the classic D-pad covers the start of bottom-left chat lines. Touchscreen settings offers a touch-control layout draft with dragging, corner resizing (0.5–3× uniform scale), alignment guides, snapping, grid, touch-accessible Undo/Redo, Save, Cancel and Reset; saved positions and sizes drive both artwork and hit regions. Control resizing is a Cinnabar layout-editor feature with no verified Bedrock size range. Mods with the controls grant add up to four labelled buttons each (sixteen shown) in the dropdown's button style; taps complete on release inside the button, reach only the owning mod's next frame, and placements persist by button id in the same editor. The sensitivity curve, movement/action parity, remapping, cutout handling and physical-device layout acceptance remain open.
   Touch-capable hosts expose persisted look sensitivity and control guidance. A utility dropdown, chat and pause share a centered row; the dropdown toggles Debug Overlay and Player List and opens Emotes; inventory access follows the HUD hotbar. The touch Use button admits block placement and held repeats through the shared block-use handler. The sensitivity curve, movement/action layouts, remapping, customization, cutout handling and device layout acceptance remain open.
   Menu scroll regions and chat history accept captured finger drags; swipes cancel pending taps, and form slider gestures retain their own control. Native gesture calibration and full route/device acceptance remain open.
   Menu text editors request platform keyboards again on field changes and retaps. Android keyboard overlap reduces the UI layout viewport and reveals unchanged menu focus after resize. The People drawer filters the current friend list by gamertag. Global people lookup, gameplay text entry, full composition support and device IME acceptance remain open.
