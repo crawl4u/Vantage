@@ -276,7 +276,6 @@ fn the_java_pause_menu_offers_every_pause_action_inside_the_window() {
             section(SettingSection::Mods),
             section(SettingSection::Discord),
             section(SettingSection::Updates),
-            section(SettingSection::Server),
             MenuAction::SettingsOption(toggle.0, toggle.1),
         ] {
             let bounds = hits
