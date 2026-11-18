@@ -9,6 +9,7 @@ pub(super) mod frame;
 pub(crate) use button::label_style;
 pub(super) mod home;
 pub(super) mod options;
+pub(crate) mod pack_drag;
 mod packs;
 pub(super) mod pause;
 pub(super) mod servers;

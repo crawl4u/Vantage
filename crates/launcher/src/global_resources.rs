@@ -24,6 +24,16 @@ pub enum Action {
     CancelDelete,
     /// Delete the available pack at this index and its stored files.
     Delete(usize),
+    /// Select the base game's textures, which stay in place under every pack.
+    SelectBase,
+    /// Move a pack by dragging it. `from_active` says which list it came from and `index` its
+    /// place there. `to` is where it was let go: a place in the selected list, or none for the
+    /// list of packs not in use.
+    Drop {
+        from_active: bool,
+        index: usize,
+        to: Option<usize>,
+    },
     /// Step the order the unselected packs are listed in.
     CycleSort,
     /// Focus the pack search field.
@@ -45,6 +55,8 @@ pub struct Snapshot {
     /// Exact last runtime acknowledgement; absent until initial pack preparation completes.
     pub applied_selection: Option<Vec<ActivePack>>,
     pub selected: Option<(bool, usize)>,
+    /// The base game's textures are the selected entry.
+    pub base_selected: bool,
     pub details_expanded: Option<(bool, usize)>,
     pub settings: Option<usize>,
     /// The available pack the player was asked to confirm deleting.
@@ -82,6 +94,7 @@ impl Default for Snapshot {
             selection: Vec::new(),
             applied_selection: None,
             selected: None,
+            base_selected: false,
             details_expanded: None,
             settings: None,
             delete_pending: None,

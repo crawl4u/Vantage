@@ -207,6 +207,10 @@ impl super::super::OreUiScreen {
         (held, pressed): (bool, bool),
         seconds: f64,
     ) -> (bool, Option<MenuAction>, f32) {
+        if screen == Some(MenuScreen::Settings) {
+            let (captured, action) = self.pack_drag_pointer(screen, pointer, (held, pressed));
+            return (captured, action, 0.0);
+        }
         let state = &mut self.transitions.server_list;
         if !matches!(screen, Some(MenuScreen::Servers | MenuScreen::Play)) {
             state.cancel();

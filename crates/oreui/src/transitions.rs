@@ -81,6 +81,7 @@ pub struct Transitions {
     pub(super) resources: resources::Resources,
     pub(super) mods: resources::Mods,
     pub(super) server_list: super::play_servers::drag::DragState,
+    pub(super) pack_drag: super::java::pack_drag::PackDrag,
 }
 
 struct Switch {
@@ -138,6 +139,7 @@ impl Transitions {
                 .server_icon
                 .is_some_and(|(_, start)| seconds - start < ICON_HIGHLIGHT_DURATION)
             || self.server_list.captured()
+            || self.pack_drag.captured()
     }
 
     pub fn configure_motion(&mut self, enabled: bool) {
@@ -388,6 +390,7 @@ impl Transitions {
         self.resources.end_frame();
         self.mods.end_frame();
         self.server_list.end_frame();
+        self.pack_drag.end_frame();
         if !std::mem::take(&mut self.play_drawn) {
             self.play_icon = None;
         }

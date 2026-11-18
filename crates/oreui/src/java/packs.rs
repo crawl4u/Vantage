@@ -5,6 +5,7 @@
 //! offers what can be done with it: activate, deactivate, delete (after a question), and move.
 //! Packs the screen cannot describe, such as variant choices, stay on the Bedrock-style page.
 
+use java_resource_pack::menu_files::VANILLA_PACK_ICON;
 use launcher::{
     global_resources::{Action, Snapshot},
     menu::{
@@ -14,7 +15,10 @@ use launcher::{
 use resource_pack::InstalledPack;
 use ui_engine::engine::screen::PaintError;
 
-use super::frame::{self, Btn, Frame, Spec, put};
+use super::{
+    frame::{self, Btn, Frame, Spec, put},
+    pack_drag::DragEntry,
+};
 use crate::{
     paint::{Bounds, Canvas},
     settings::resources::matches_query,
@@ -45,6 +49,8 @@ fn command(action: Action) -> MenuAction {
 /// One pack of a list.
 struct Entry<'a> {
     pack: &'a InstalledPack,
+    /// It is in the selected list.
+    active: bool,
     index: usize,
     selected: bool,
     select: MenuAction,
@@ -63,6 +69,7 @@ fn entries<'a>(snapshot: &'a Snapshot, query: &str, active: bool) -> Vec<Entry<'
         .filter(|(_, pack)| matches_query(pack, query))
         .map(|(index, pack)| Entry {
             pack,
+            active,
             index,
             selected: snapshot.selected == Some((active, index)),
             select: command(if active {
@@ -144,6 +151,9 @@ pub(crate) fn draw(
         more: Some(more),
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
+        if let Some(transitions) = canvas.transitions.as_deref_mut() {
+            transitions.pack_drag.begin_layout(snapshot.active.len());
+        }
         search_row(canvas, view, snapshot, frame)?;
         let width = COLUMN_MAX.min(frame.centre - COLUMN_GAP / 2.0 - 12.0);
         let columns = [
@@ -156,7 +166,7 @@ pub(crate) fn draw(
                 canvas, view, snapshot, frame, active, heading, left, width, &list,
             )?;
         }
-        Ok(())
+        held(canvas, snapshot, frame)
     })
 }
 
@@ -213,13 +223,19 @@ fn column(
 ) -> Result<(), PaintError> {
     let unit = frame.unit;
     let [x0, x1] = frame.column(left, width);
+    // The list reaches a little past its entries so a selected one's box is not cut off.
     let viewport: Bounds = [
-        x0,
+        x0 - 3.0 * unit,
         frame.viewport[1],
         x1 + (BAR_GAP + 6.0) * unit,
         frame.viewport[3],
     ];
     // The selected list ends in the base pack, which stays under every other.
+    if let Some(transitions) = canvas.transitions.as_deref_mut() {
+        transitions
+            .pack_drag
+            .list(active, [x0, viewport[1], x1, viewport[3]]);
+    }
     let rows = list.len() + usize::from(active);
     let content = (PADDING + HEADING + rows as f32 * ENTRY_STEP + PADDING) * unit;
     let key = if active {
@@ -271,7 +287,8 @@ fn column(
             }
             if active {
                 let y = top + (HEADING + list.len() as f32 * ENTRY_STEP) * unit;
-                base_entry(canvas, [x0, y, x1, y + (ENTRY_STEP - 4.0) * unit], unit)?;
+                let bounds = [x0, y, x1, y + (ENTRY_STEP - 4.0) * unit];
+                base_entry(canvas, view, snapshot.base_selected, bounds, unit)?;
             }
             Ok(())
         },
@@ -329,6 +346,27 @@ fn pack_entry(
         Some(entry.select),
         unit,
     )?;
+    pack_face(canvas, snapshot, entry.pack, subtitle, bounds, unit)?;
+    if let Some(transitions) = canvas.transitions.as_deref_mut() {
+        transitions.pack_drag.entry(DragEntry {
+            active: entry.active,
+            index: entry.index,
+            bounds,
+            select: entry.select,
+        });
+    }
+    canvas.hit(entry.select, bounds)
+}
+
+/// A pack's icon, name, version and description in `bounds`.
+fn pack_face(
+    canvas: &mut Canvas<'_>,
+    snapshot: &Snapshot,
+    pack: &InstalledPack,
+    subtitle: &str,
+    bounds: Bounds,
+    unit: f32,
+) -> Result<(), PaintError> {
     let icon = [
         bounds[0],
         bounds[1],
@@ -338,7 +376,7 @@ fn pack_entry(
     canvas.fill(icon, ICON_FILL)?;
     let art = snapshot
         .icons
-        .get(&(entry.pack.id.to_string(), entry.pack.revision))
+        .get(&(pack.id.to_string(), pack.revision))
         .and_then(|path| canvas.artwork?.get(path.as_str()).copied());
     if let Some(art) = art {
         canvas.icon_ref(art, icon)?;
@@ -347,13 +385,13 @@ fn pack_entry(
     let room = bounds[2] - text_left;
     put(
         canvas,
-        &entry.pack.name,
+        &pack.name,
         [text_left, bounds[1] + unit],
         unit,
         TEXT,
         room,
     )?;
-    let version = entry.pack.version.map(|part| part.to_string()).join(".");
+    let version = pack.version.map(|part| part.to_string()).join(".");
     let detail = if subtitle.is_empty() {
         format!("v{version}")
     } else {
@@ -367,8 +405,7 @@ fn pack_entry(
         GREY,
         room,
     )?;
-    let description: String = entry
-        .pack
+    let description: String = pack
         .description
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -381,18 +418,61 @@ fn pack_entry(
         GREY,
         room,
     )?;
-    canvas.hit(entry.select, bounds)
+    Ok(())
 }
 
-/// The base game's textures, always at the bottom of the selected list.
-fn base_entry(canvas: &mut Canvas<'_>, bounds: Bounds, unit: f32) -> Result<(), PaintError> {
+/// The held pack drawn under the pointer, and the line showing where it would land.
+fn held(canvas: &mut Canvas<'_>, snapshot: &Snapshot, frame: &Frame) -> Result<(), PaintError> {
+    let Some((entry, pointer, grab, marker)) = canvas.transitions.as_deref().and_then(|t| {
+        let (entry, pointer, grab) = t.pack_drag.held()?;
+        Some((entry, pointer, grab, t.pack_drag.marker()))
+    }) else {
+        return Ok(());
+    };
+    let unit = frame.unit;
+    if let Some([left, right, y]) = marker {
+        canvas.fill([left, y - unit, right, y + unit], [255, 255, 255, 255])?;
+    }
+    let packs = if entry.active {
+        &snapshot.active
+    } else {
+        &snapshot.available
+    };
+    let Some(pack) = packs.get(entry.index) else {
+        return Ok(());
+    };
+    let size = [
+        entry.bounds[2] - entry.bounds[0],
+        entry.bounds[3] - entry.bounds[1],
+    ];
+    let at = [pointer.x() - grab[0], pointer.y() - grab[1]];
+    let bounds = [at[0], at[1], at[0] + size[0], at[1] + size[1]];
+    canvas.fill(bounds, [0, 0, 0, 200])?;
+    pack_face(canvas, snapshot, pack, "", bounds, unit)
+}
+
+/// The base game's textures, always at the bottom of the selected list. It can be chosen, to see
+/// what it is, but not moved or taken out.
+fn base_entry(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    selected: bool,
+    bounds: Bounds,
+    unit: f32,
+) -> Result<(), PaintError> {
+    let select = command(Action::SelectBase);
+    mark(canvas, view, bounds, selected, Some(select), unit)?;
     let icon = [
         bounds[0],
         bounds[1],
         bounds[0] + ICON * unit,
         bounds[1] + ICON * unit,
     ];
-    canvas.fill(icon, ICON_FILL)?;
+    // The game's own picture, else a plain square.
+    if !canvas.sprite(&crate::images::java::key(VANILLA_PACK_ICON), icon, [255; 4])? {
+        canvas.fill(icon, ICON_FILL)?;
+    }
+    canvas.hit(select, bounds)?;
     let text_left = bounds[0] + (ICON + 3.0) * unit;
     let room = bounds[2] - text_left;
     put(

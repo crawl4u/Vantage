@@ -10,6 +10,13 @@ pub const CACHE_FOLDER: &str = "java-ui";
 /// Where the GUI files below sit, relative to `assets/minecraft/`.
 pub const GUI_ROOT: &str = "textures/gui/";
 
+/// The picture the game shows for its own textures in the pack list, relative to [`GUI_ROOT`].
+/// The game keeps it as `pack.png` at the root of its client jar, so it is copied from there.
+pub const VANILLA_PACK_ICON: &str = "vanilla_pack.png";
+
+/// Where the client jar holds the picture [`VANILLA_PACK_ICON`] is copied from.
+pub const JAR_PACK_ICON: &str = "pack.png";
+
 /// The GUI sprites and backgrounds the menus draw, relative to [`GUI_ROOT`]. Each may have a
 /// `.mcmeta` beside it that sets its nine-slice borders.
 pub const GUI_FILES: &[&str] = &[
@@ -33,6 +40,7 @@ pub const GUI_FILES: &[&str] = &[
     "sprites/server_list/pinging_1.png",
     "sprites/widget/scroller.png",
     "sprites/widget/scroller_background.png",
+    VANILLA_PACK_ICON,
     "sprites/widget/text_field.png",
     "sprites/widget/text_field_highlighted.png",
     "sprites/icon/language.png",

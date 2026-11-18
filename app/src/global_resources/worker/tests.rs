@@ -1049,3 +1049,80 @@ fn the_sort_order_applies_to_the_available_list_and_is_kept() {
     assert_eq!(reopened.sort(), resource_pack::PackSort::NameReverse);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn dragging_packs_moves_them_between_the_lists_and_within_the_selected_one() {
+    let root = std::env::temp_dir().join(format!("cinnabar-pack-drop-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let mut library = GlobalPackLibrary::open(root.join("library"), [9, 0, 0]).unwrap();
+    for id in 1..=3 {
+        import_fixture(&mut library, &root, id);
+    }
+    let mut snapshot = Snapshot::default();
+    let (outgoing, _events) = crossbeam_channel::unbounded();
+    refresh(&library, &mut snapshot);
+    let names = |snapshot: &Snapshot| {
+        snapshot
+            .active
+            .iter()
+            .map(|pack| pack.name.clone())
+            .collect::<Vec<_>>()
+    };
+    let drop_on =
+        |library: &mut GlobalPackLibrary, snapshot: &mut Snapshot, from_active, index, to| {
+            act(
+                library,
+                snapshot,
+                Action::Drop {
+                    from_active,
+                    index,
+                    to,
+                },
+                &outgoing,
+            )
+            .unwrap();
+            refresh(library, snapshot);
+        };
+    let by_id = |snapshot: &Snapshot, from: &[resource_pack::InstalledPack]| {
+        let _ = snapshot;
+        from.iter()
+            .map(|pack| pack.name.clone())
+            .collect::<Vec<_>>()
+    };
+    let all = by_id(&snapshot, &snapshot.available);
+    // Drop two packs into the selected list, the second before the first.
+    drop_on(&mut library, &mut snapshot, false, 0, Some(0));
+    assert_eq!(names(&snapshot).len(), 1);
+    let first = names(&snapshot)[0].clone();
+    drop_on(&mut library, &mut snapshot, false, 0, Some(0));
+    let order = names(&snapshot);
+    assert_eq!(order.len(), 2);
+    assert_eq!(order[1], first, "the pack let go before it sits above it");
+    assert_eq!(snapshot.selected, Some((true, 0)));
+    // Dragging the top pack below the other: letting go at place 2 means the end.
+    drop_on(&mut library, &mut snapshot, true, 0, Some(2));
+    assert_eq!(names(&snapshot), [order[1].clone(), order[0].clone()]);
+    // Dragging a selected pack out deselects it and lists it again.
+    drop_on(&mut library, &mut snapshot, true, 0, None);
+    assert_eq!(names(&snapshot).len(), 1);
+    assert_eq!(snapshot.available.len(), 2);
+    assert!(all.iter().all(|name| {
+        names(&snapshot).contains(name) || snapshot.available.iter().any(|pack| &pack.name == name)
+    }));
+    // A drop that means nothing changes nothing.
+    drop_on(&mut library, &mut snapshot, false, 0, None);
+    assert_eq!(snapshot.available.len(), 2);
+    // Choosing the base textures clears any pack selection.
+    act(&mut library, &mut snapshot, Action::SelectBase, &outgoing).unwrap();
+    assert!(snapshot.base_selected && snapshot.selected.is_none());
+    act(
+        &mut library,
+        &mut snapshot,
+        Action::SelectAvailable(0),
+        &outgoing,
+    )
+    .unwrap();
+    assert!(!snapshot.base_selected);
+    std::fs::remove_dir_all(root).unwrap();
+}

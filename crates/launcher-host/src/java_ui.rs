@@ -15,15 +15,15 @@ use std::{
 };
 
 use java_resource_pack::menu_files::{
-    FONT_DEFINITIONS, FONT_TEXTURES, GUI_FILES, PANORAMA_FACES, REQUIRED_GUI_FILES, SPLASHES,
-    gui_path, mcmeta,
+    FONT_DEFINITIONS, FONT_TEXTURES, GUI_FILES, JAR_PACK_ICON, PANORAMA_FACES, REQUIRED_GUI_FILES,
+    SPLASHES, VANILLA_PACK_ICON, gui_path, mcmeta,
 };
 use launcher::install_layout::InstallLayout;
 use serde::{Deserialize, Serialize};
 
 /// What the cache holds. A cache written under an older number is read from the game again, so a
 /// new kind of file reaches players whose game has not changed.
-const CACHE_FORMAT: u32 = 6;
+const CACHE_FORMAT: u32 = 7;
 
 /// A panorama face smaller than this on a side is a placeholder, not the picture.
 const MIN_PANORAMA_SIDE: u32 = 64;
@@ -218,6 +218,24 @@ impl Source {
         })
     }
 
+    /// The bytes of `name` at the root of the client jar, none when it is not there.
+    fn read_root(&mut self, name: &str, limit: u64) -> Result<Option<Vec<u8>>, String> {
+        let entry = match self.archive.by_name(name) {
+            Ok(entry) => entry,
+            Err(zip::result::ZipError::FileNotFound) => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        if entry.size() > limit {
+            return Err(format!("{name} is larger than expected"));
+        }
+        let mut bytes = Vec::with_capacity(entry.size() as usize);
+        entry
+            .take(limit)
+            .read_to_end(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        Ok(Some(bytes))
+    }
+
     /// The bytes of `path`, relative to `assets/minecraft/`, none when neither the store nor the
     /// jar has it. A file over `limit` bytes is an error.
     fn read(&mut self, path: &str, limit: u64) -> Result<Option<Vec<u8>>, String> {
@@ -325,6 +343,11 @@ pub fn extract(jar: &ClientJar, cache: &Path) -> Result<Manifest, String> {
         if let Some(bytes) = source.read(&mcmeta(&path), MAX_SPRITE_BYTES)? {
             keep(&mut manifest, mcmeta(&path), bytes)?;
         }
+    }
+    // The game's own pack icon lives in the jar's root rather than among its assets.
+    let icon = gui_path(VANILLA_PACK_ICON);
+    if let Some(bytes) = source.read_root(JAR_PACK_ICON, MAX_SPRITE_BYTES)? {
+        keep(&mut manifest, icon, bytes)?;
     }
     // The font definitions, then the sheets they name; a game without them has no Java font.
     let mut sheets = Vec::new();

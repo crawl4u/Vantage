@@ -156,6 +156,7 @@ fn run(
                         | Action::Subpack(_)
                         | Action::Import
                         | Action::Delete(_)
+                        | Action::Drop { .. }
                         | Action::CycleSort,
                     ..
                 }
@@ -336,6 +337,7 @@ fn indexed(action: Action) -> bool {
             | Action::Apply
             | Action::CancelDelete
             | Action::CycleSort
+            | Action::SelectBase
             | Action::Search
             | Action::ClearSearch
     )
@@ -396,7 +398,53 @@ fn import(
     Ok(())
 }
 
+/// Moves a dragged pack to where it was let go: into the selected list at a place, back out of
+/// it, or to another place in it. Letting go anywhere else changes nothing.
+fn drop_pack(
+    library: &mut GlobalPackLibrary,
+    snapshot: &mut Snapshot,
+    from_active: bool,
+    index: usize,
+    to: Option<usize>,
+) -> Result<(), LibraryError> {
+    match (from_active, to) {
+        (false, Some(place)) => {
+            let Some(pack) = snapshot.available.get(index) else {
+                return Ok(());
+            };
+            let id = pack.id;
+            library.activate(id)?;
+            // Activating puts the pack in the list; `place` counts the packs that were there.
+            let place = place.min(library.active().len().saturating_sub(1));
+            library.move_pack(id, place)?;
+            clear_indexed(snapshot);
+            snapshot.selected = Some((true, place));
+        }
+        (true, None) => {
+            let Some(pack) = snapshot.active.get(index) else {
+                return Ok(());
+            };
+            library.deactivate(pack.id);
+            clear_indexed(snapshot);
+        }
+        (true, Some(place)) => {
+            let Some(pack) = snapshot.active.get(index) else {
+                return Ok(());
+            };
+            // Letting go below the pack's own place counts the pack itself too.
+            let target = if place > index { place - 1 } else { place };
+            let target = target.min(snapshot.active.len().saturating_sub(1));
+            library.move_pack(pack.id, target)?;
+            clear_indexed(snapshot);
+            snapshot.selected = Some((true, target));
+        }
+        (false, None) => {}
+    }
+    Ok(())
+}
+
 fn clear_indexed(snapshot: &mut Snapshot) {
+    snapshot.base_selected = false;
     snapshot.delete_pending = None;
     snapshot.selected = None;
     snapshot.details_expanded = None;
@@ -421,14 +469,31 @@ fn act(
             | Action::ToggleActive
             | Action::AskDelete(_)
             | Action::CancelDelete
+            | Action::SelectBase
             | Action::Search
             | Action::ClearSearch
     ) {
         snapshot.message.clear();
     }
     match action {
-        Action::SelectAvailable(index) => snapshot.selected = Some((false, index)),
-        Action::SelectActive(index) => snapshot.selected = Some((true, index)),
+        Action::SelectAvailable(index) => {
+            snapshot.selected = Some((false, index));
+            snapshot.base_selected = false;
+        }
+        Action::SelectActive(index) => {
+            snapshot.selected = Some((true, index));
+            snapshot.base_selected = false;
+        }
+        Action::SelectBase => {
+            snapshot.selected = None;
+            snapshot.delete_pending = None;
+            snapshot.base_selected = true;
+        }
+        Action::Drop {
+            from_active,
+            index,
+            to,
+        } => drop_pack(library, snapshot, from_active, index, to)?,
         Action::ReadMore(active, index) => {
             let next = Some((active, index));
             snapshot.details_expanded = if snapshot.details_expanded == next {
