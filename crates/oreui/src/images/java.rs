@@ -141,9 +141,11 @@ pub(super) fn resolve(layers: &Layers<'_>) -> Option<Resolved> {
             tracing::warn!("Java menu sprite {file} is unreadable");
             continue;
         };
-        // The borders come from the layer that supplied the texture, as in the game.
-        if let Some(border) = layers
-            .read_at(layer, &mcmeta(&path))
+        // The borders come from the layer that supplied the texture. A texture that declares none
+        // takes the next layer down's, scaled to its size: Java would stretch it whole, which
+        // distorts a pack's button on any narrow or square control.
+        if let Some(border) = (layer..layers.count())
+            .find_map(|below| layers.read_at(below, &mcmeta(&path)))
             .and_then(|meta| parse_border(&meta, [width, height]))
         {
             borders.insert(key(file), border);

@@ -140,15 +140,13 @@ fn borders_come_from_the_layer_that_supplied_the_texture() {
         plain.active.borders.get(&key("sprites/widget/button.png")),
         Some(&[1; 4])
     );
-    // A pack texture without its own `.mcmeta` is stretched whole: the game's borders are not its.
+    // A pack texture without its own `.mcmeta` takes the game's borders, scaled to its size, so a
+    // narrow or square control does not stretch the pack's edges.
     let bare = pack_of(vec![(path.as_str(), solid(8, 8))]);
     let resolved = resolve_with(&[&bare], cache.path()).unwrap();
-    assert!(
-        resolved
-            .active
-            .borders
-            .get(&key("sprites/widget/button.png"))
-            .is_none()
+    assert_eq!(
+        resolved.active.borders.get(&key("sprites/widget/button.png")),
+        Some(&[4; 4])
     );
     // A pack's own borders are written for the nominal size and scale up with the texture.
     let meta_path = mcmeta(&path);
