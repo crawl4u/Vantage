@@ -272,11 +272,11 @@ fn the_java_pause_menu_offers_every_pause_action_inside_the_window() {
             MenuAction::Navigate(MenuScreen::Profile),
             MenuAction::Navigate(MenuScreen::Friends),
             MenuAction::Navigate(MenuScreen::Inbox),
-            MenuAction::StartSignIn,
+            section(SettingSection::Account),
             section(SettingSection::Mods),
             section(SettingSection::Discord),
             section(SettingSection::Updates),
-            section(SettingSection::World),
+            section(SettingSection::Server),
             MenuAction::SettingsOption(toggle.0, toggle.1),
         ] {
             let bounds = hits

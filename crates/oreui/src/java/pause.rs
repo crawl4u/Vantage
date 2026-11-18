@@ -6,9 +6,7 @@
 //! wardrobe, which Java has no place for, sits in the left margin as on the title. The world shows
 //! dimmed behind it.
 
-use launcher::menu::{
-    MenuAction, MenuScreen, MenuView, auth::AuthState, settings_sections::SettingSection,
-};
+use launcher::menu::{MenuAction, MenuScreen, MenuView, settings_sections::SettingSection};
 use ui_engine::engine::screen::PaintError;
 
 use super::{button, home, unit};
@@ -101,25 +99,25 @@ pub(crate) fn draw(
     let go = MenuAction::Navigate;
     let section =
         |section: SettingSection| MenuAction::OpenSettingsSection(section.definition().index);
-    let (account, account_action) = match view.auth_state {
-        AuthState::SignedOut | AuthState::Failed(_) => ("Sign in", MenuAction::StartSignIn),
-        _ => ("Account", MenuAction::OpenAccounts),
+    // Accounts cannot be switched during a session, so the button opens the Account settings.
+    // The world's own settings exist for the world this client hosts; any other world has the
+    // connected server's.
+    let (world_label, world) = if view.settings_section_shown(SettingSection::Game) {
+        ("World Options...", SettingSection::Game)
+    } else {
+        ("Server Options...", SettingSection::Server)
     };
     for (rect, label, action) in [
         (layout.resume, "Back to Game", MenuAction::PauseResume),
         (layout.achievements, "Achievements", go(MenuScreen::Profile)),
         (layout.friends, "Friends", go(MenuScreen::Friends)),
         (layout.inbox, "Inbox", go(MenuScreen::Inbox)),
-        (layout.links[0], account, account_action),
+        (layout.links[0], "Account", section(SettingSection::Account)),
         (layout.links[1], "Mods", section(SettingSection::Mods)),
         (layout.links[2], "Discord", section(SettingSection::Discord)),
         (layout.links[3], "Updates", section(SettingSection::Updates)),
         (layout.options, "Options...", MenuAction::PauseSettings),
-        (
-            layout.world,
-            "World Options...",
-            section(SettingSection::World),
-        ),
+        (layout.world, world_label, section(world)),
         (
             layout.quit,
             "Save and Quit to Title",
