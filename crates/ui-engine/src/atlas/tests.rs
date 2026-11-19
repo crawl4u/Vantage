@@ -115,6 +115,15 @@ fn png(width: u32, height: u32) -> Vec<u8> {
     bytes
 }
 
+/// Encodes a PNG fixture whose red channel is `red`, so fixtures differ in content.
+fn png_filled(width: u32, height: u32, red: u8) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    image::RgbaImage::from_pixel(width, height, image::Rgba([red, 2, 3, 255]))
+        .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+        .unwrap();
+    bytes
+}
+
 /// Encodes a deterministic TGA fixture.
 fn tga(width: u32, height: u32) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -232,7 +241,8 @@ fn server_screen_keeps_every_reserved_image_resident_in_one_frame() {
         .collect();
     let files: Vec<_> = keys
         .iter()
-        .map(|key| (format!("{key}.png"), png(200, 200)))
+        .enumerate()
+        .map(|(index, key)| (format!("{key}.png"), png_filled(200, 200, index as u8)))
         .collect();
     let mut atlas = ServerAtlas::new(&files, None, crate::pages::SERVER_UI_PAGES)
         .with_image_work(ImageWork::inline());
@@ -247,7 +257,12 @@ fn server_screen_keeps_every_reserved_image_resident_in_one_frame() {
 #[test]
 fn a_full_atlas_evicts_the_least_recently_drawn_page() {
     let files: Vec<_> = (0..3)
-        .map(|index| (format!("textures/ui/t{index}.png"), png(200, 200)))
+        .map(|index| {
+            (
+                format!("textures/ui/t{index}.png"),
+                png_filled(200, 200, index as u8),
+            )
+        })
         .collect();
     let mut atlas = ServerAtlas::new(&files, None, 2);
     atlas.require(["textures/ui/t0"]);
@@ -269,13 +284,13 @@ fn a_full_atlas_evicts_the_least_recently_drawn_page() {
 #[test]
 fn server_ui_reservation_keeps_eight_page_sized_images_resident_together() {
     let side = PAGE_SIDE - GUTTER * 2;
-    let pixels = png(side, side);
     let keys: Vec<_> = (0..8)
         .map(|index| format!("textures/ui/page{index}"))
         .collect();
     let files: Vec<_> = keys
         .iter()
-        .map(|key| (format!("{key}.png"), pixels.clone()))
+        .enumerate()
+        .map(|(index, key)| (format!("{key}.png"), png_filled(side, side, index as u8)))
         .collect();
     let mut atlas = ServerAtlas::new(&files, None, crate::pages::SERVER_UI_PAGES)
         .with_image_work(crate::sources::ImageWork::inline());
@@ -521,4 +536,50 @@ fn a_host_without_workers_completes_large_images_inline() {
         atlas.placement(local).is_some(),
         "a large encoding decodes inline"
     );
+}
+
+#[test]
+fn identical_textures_share_one_placement_so_nine_hotbar_slots_fit_in_one_page() {
+    // Nine slot images of an HD hotbar are the same picture; each is too large for a page to
+    // hold two, so without sharing they would need nine pages.
+    let keys: Vec<_> = (0..9)
+        .map(|slot| format!("textures/ui/hotbar_{slot}"))
+        .collect();
+    let slot = png(160, 176);
+    let files: Vec<_> = keys
+        .iter()
+        .map(|key| (format!("{key}.png"), slot.clone()))
+        .collect();
+    let mut atlas = ServerAtlas::new(&files, None, 2).with_image_work(ImageWork::inline());
+    atlas.require(keys.iter().map(String::as_str));
+    let first = atlas
+        .placement(&keys[0])
+        .expect("the first slot is resident");
+    for key in &keys {
+        let placement = atlas.placement(key).expect("every slot is resident");
+        assert_eq!(
+            placement.rect, first.rect,
+            "{key} shares the first slot's place"
+        );
+        assert_eq!(placement.page, first.page);
+    }
+}
+
+#[test]
+fn textures_that_differ_by_one_pixel_keep_their_own_placements() {
+    let mut other = image::RgbaImage::from_pixel(160, 176, image::Rgba([1, 2, 3, 255]));
+    other.put_pixel(80, 88, image::Rgba([9, 9, 9, 255]));
+    let mut other_bytes = Cursor::new(Vec::new());
+    other
+        .write_to(&mut other_bytes, image::ImageFormat::Png)
+        .unwrap();
+    let files = vec![
+        ("textures/ui/a.png".to_owned(), png(160, 176)),
+        ("textures/ui/b.png".to_owned(), other_bytes.into_inner()),
+    ];
+    let mut atlas = ServerAtlas::new(&files, None, 4).with_image_work(ImageWork::inline());
+    atlas.require(["textures/ui/a", "textures/ui/b"]);
+    let a = atlas.placement("textures/ui/a").unwrap();
+    let b = atlas.placement("textures/ui/b").unwrap();
+    assert_ne!((a.page, a.rect), (b.page, b.rect));
 }

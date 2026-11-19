@@ -298,6 +298,9 @@ pub struct ServerAtlas {
     builtin: BuiltinImages,
     remote: Option<Arc<dyn RemoteSource>>,
     resident: BTreeMap<String, ServerTexture>,
+    /// The first texture packed with each size and pixel hash, so identical images share one
+    /// placement (a pack's nine hotbar slots are usually the same picture).
+    content: BTreeMap<(u32, u32, u64), String>,
     pages: Vec<Page>,
     images: Vec<UiTexturePage>,
     max_pages: usize,
@@ -811,6 +814,8 @@ impl ServerAtlas {
     /// Pack `key`'s decoded pixels, returning the page it landed on; `None`
     /// while its decode is still on a worker or waits for a later frame.
     fn place(&mut self, key: &str, within_budget: bool) -> Option<usize> {
+        // A client raster is rewritten in place when it changes, so it never shares its place.
+        let raster = self.client_rasters.contains_key(key);
         let (size, rgba, fitted) = if let Some(image) = self.client_rasters.get(key) {
             (image.dimensions(), Arc::new(image.pixels().to_vec()), None)
         } else {
@@ -827,6 +832,18 @@ impl ServerAtlas {
             let rgba = self.decodes.get(key, &source, decode_on)?;
             (size, rgba, fitted)
         };
+        let content = (size[0], size[1], content_hash(&rgba));
+        if fitted.is_none()
+            && !raster
+            && let Some(texture) = self.shared(content, size, &rgba)
+        {
+            let page = &mut self.pages[usize::from(texture.page)];
+            page.keys.push(key.to_owned());
+            page.used = self.clock;
+            self.resident.insert(key.to_owned(), texture);
+            self.revision.bump();
+            return Some(usize::from(texture.page));
+        }
         let (index, origin) = self.slot(size)?;
         if let Some(bytes) = fitted {
             self.oversized.fitted(key, &bytes);
@@ -841,6 +858,7 @@ impl ServerAtlas {
         }
         page.keys.push(key.to_owned());
         page.used = self.clock;
+        self.content.insert(content, key.to_owned());
         let rect = [origin[0], origin[1], size[0], size[1]].map(|value| value as u16);
         self.revision.bump();
         self.resident.insert(
@@ -851,6 +869,26 @@ impl ServerAtlas {
             },
         );
         Some(index)
+    }
+
+    /// The resident placement that already holds exactly `rgba` at `size`, when one does: the
+    /// first texture packed with the same content, checked against its pixels on the page.
+    fn shared(
+        &self,
+        content: (u32, u32, u64),
+        size: [u32; 2],
+        rgba: &[u8],
+    ) -> Option<ServerTexture> {
+        let texture = *self.resident.get(self.content.get(&content)?)?;
+        let page = self.pages.get(usize::from(texture.page))?;
+        let row_bytes = PAGE_SIDE as usize * 4;
+        let width = size[0] as usize * 4;
+        let [x, y, ..] = texture.rect;
+        let same = (0..size[1] as usize).all(|row| {
+            let start = (usize::from(y) + row) * row_bytes + usize::from(x) * 4;
+            page.pixels.get(start..start + width) == rgba.get(row * width..(row + 1) * width)
+        });
+        same.then_some(texture)
     }
 
     /// Room for `size`: an existing page, a new page, or the least recently
@@ -889,6 +927,14 @@ impl ServerAtlas {
         page.cursor = [0; 3];
         Some((index, page.allocate(size)?))
     }
+}
+
+/// A hash of an image's pixels, to find identical images cheaply.
+fn content_hash(rgba: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    rgba.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// A decodable image as a source.
