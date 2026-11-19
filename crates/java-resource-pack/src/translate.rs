@@ -391,6 +391,12 @@ pub(crate) fn translate_within(
     {
         out.insert(path, Output::Image(image));
     }
+    if let Some(panel) = inventory
+        .as_ref()
+        .and_then(|atlas| container::panel(atlas, budget))
+    {
+        out.insert(container::PANEL.into(), Output::Image(panel));
+    }
     if let Some(highlight) = selection
         .as_ref()
         .and_then(|selection| hud::square_selection(selection, budget))
@@ -463,7 +469,16 @@ pub(crate) fn translate_within(
     if survived(hud::XP_BAR_TEXTURES[0]) {
         companions.push((hud::XP_NUB.to_owned(), encode(&RgbaImage::new(1, 1))));
     }
-    for cell in container::CELL_TEXTURES.into_iter().filter(|cell| survived(cell)) {
+    if survived(container::PANEL) {
+        companions.push((
+            container::PANEL.replace(".png", ".json"),
+            container::PANEL_SIDECAR.to_vec(),
+        ));
+    }
+    for cell in container::CELL_TEXTURES
+        .into_iter()
+        .filter(|cell| survived(cell))
+    {
         let stem = cell.trim_end_matches(".png");
         companions.push((format!("{stem}.json"), container::CELL_SIDECAR.to_vec()));
     }

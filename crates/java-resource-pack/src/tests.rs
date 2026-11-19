@@ -939,3 +939,39 @@ fn the_hotbar_selection_also_highlights_the_selected_inventory_slot() {
         ((24, 24), YELLOW)
     );
 }
+
+#[test]
+fn the_inventory_frame_becomes_the_bedrock_panel_with_a_sidecar() {
+    let files = pack(vec![(
+        "assets/minecraft/textures/gui/container/inventory.png",
+        marked_atlas(
+            256,
+            &[(
+                Rect {
+                    x: 0,
+                    y: 0,
+                    w: 176,
+                    h: 2,
+                },
+                GREEN,
+            )],
+        ),
+    )]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    // The frame row is kept and everything else is the opaque grey, so the panel stays readable.
+    assert_eq!(
+        pixel(&out, "textures/ui/dialog_background_opaque.png", 10, 0),
+        ((176, 166), GREEN)
+    );
+    assert_eq!(
+        pixel(&out, "textures/ui/dialog_background_opaque.png", 88, 83).1,
+        [198, 198, 198, 255]
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(out["textures/ui/dialog_background_opaque.json"]).unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({"nineslice_size": 4, "base_size": [176, 166]})
+    );
+}
