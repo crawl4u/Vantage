@@ -844,7 +844,17 @@ impl ServerAtlas {
             self.revision.bump();
             return Some(usize::from(texture.page));
         }
-        let (index, origin) = self.slot(size)?;
+        // When every page is in use this frame, a texture is halved until it fits rather than
+        // left out, so a late piece of an HD set still draws from the pack, a little softer.
+        let (mut size, mut rgba) = (size, rgba);
+        let mut slot = self.slot(size);
+        let mut shrunk = false;
+        while slot.is_none() && !raster && size[0] > MIN_SHRUNK_SIDE && size[1] > MIN_SHRUNK_SIDE {
+            (rgba, size) = halved(&rgba, size);
+            shrunk = true;
+            slot = self.slot(size);
+        }
+        let (index, origin) = slot?;
         if let Some(bytes) = fitted {
             self.oversized.fitted(key, &bytes);
         }
@@ -858,7 +868,9 @@ impl ServerAtlas {
         }
         page.keys.push(key.to_owned());
         page.used = self.clock;
-        self.content.insert(content, key.to_owned());
+        if !shrunk {
+            self.content.insert(content, key.to_owned());
+        }
         let rect = [origin[0], origin[1], size[0], size[1]].map(|value| value as u16);
         self.revision.bump();
         self.resident.insert(
@@ -927,6 +939,35 @@ impl ServerAtlas {
         page.cursor = [0; 3];
         Some((index, page.allocate(size)?))
     }
+}
+
+/// The smallest side a texture is halved to when the pages are full.
+const MIN_SHRUNK_SIDE: u32 = 16;
+
+/// An RGBA image at half its width and height, each new pixel the average of the up to four it
+/// covers, with the size it has.
+fn halved(rgba: &[u8], size: [u32; 2]) -> (Arc<Vec<u8>>, [u32; 2]) {
+    let [width, height] = size;
+    let (new_width, new_height) = (width.div_ceil(2), height.div_ceil(2));
+    let mut out = Vec::with_capacity(new_width as usize * new_height as usize * 4);
+    for y in 0..new_height {
+        for x in 0..new_width {
+            let mut sum = [0u32; 4];
+            let mut count = 0u32;
+            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                let (sx, sy) = (x * 2 + dx, y * 2 + dy);
+                if sx < width && sy < height {
+                    let at = (sy * width + sx) as usize * 4;
+                    for channel in 0..4 {
+                        sum[channel] += u32::from(rgba[at + channel]);
+                    }
+                    count += 1;
+                }
+            }
+            out.extend(sum.map(|channel| (channel / count) as u8));
+        }
+    }
+    (Arc::new(out), [new_width, new_height])
 }
 
 /// A hash of an image's pixels, to find identical images cheaply.

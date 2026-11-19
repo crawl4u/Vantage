@@ -260,7 +260,7 @@ fn a_full_atlas_evicts_the_least_recently_drawn_page() {
         .map(|index| {
             (
                 format!("textures/ui/t{index}.png"),
-                png_filled(200, 200, index as u8),
+                png_filled(PAGE_SIDE - GUTTER * 2, PAGE_SIDE - GUTTER * 2, index as u8),
             )
         })
         .collect();
@@ -582,4 +582,42 @@ fn textures_that_differ_by_one_pixel_keep_their_own_placements() {
     let a = atlas.placement("textures/ui/a").unwrap();
     let b = atlas.placement("textures/ui/b").unwrap();
     assert_ne!((a.page, a.rect), (b.page, b.rect));
+}
+
+#[test]
+fn a_texture_with_no_room_is_halved_instead_of_left_out() {
+    // Two pages, each taken whole by a different picture drawn this frame, and a third picture
+    // with no page to evict: it draws from a quarter of its pixels rather than not at all.
+    let page = PAGE_SIDE - GUTTER * 2;
+    let files = vec![
+        ("textures/ui/a.png".to_owned(), png_filled(page, page, 1)),
+        ("textures/ui/b.png".to_owned(), png_filled(page, page, 2)),
+        ("textures/ui/c.png".to_owned(), png_filled(160, 176, 3)),
+    ];
+    let mut atlas = ServerAtlas::new(&files, None, 2).with_image_work(ImageWork::inline());
+    atlas.require(["textures/ui/a", "textures/ui/b", "textures/ui/c"]);
+    // Whatever the order they packed in, none is left out, and one had to be shrunk.
+    let rects: Vec<_> = ["a", "b", "c"]
+        .iter()
+        .map(|name| {
+            atlas
+                .placement(&format!("textures/ui/{name}"))
+                .unwrap_or_else(|| panic!("{name} is resident"))
+                .rect
+        })
+        .collect();
+    assert!(
+        u32::from(rects[0][2]) < page || u32::from(rects[1][2]) < page || rects[2][2] < 160,
+        "a picture that cannot fit whole is shrunk: {rects:?}"
+    );
+}
+
+#[test]
+fn halving_averages_each_two_by_two_block_and_rounds_odd_sides_up() {
+    let rgba: Vec<u8> = [[0u8; 4], [100; 4], [200; 4], [40; 4]].concat();
+    let (half, size) = halved(&rgba, [2, 2]);
+    assert_eq!(size, [1, 1]);
+    assert_eq!(&half[..], &[85, 85, 85, 85]);
+    let (_, odd) = halved(&vec![0u8; 3 * 5 * 4], [3, 5]);
+    assert_eq!(odd, [2, 3]);
 }
