@@ -289,6 +289,14 @@ pub(crate) fn translate_within(
         })
         .collect();
 
+    let tabs: Vec<(&str, Vec<u8>)> = container::TAB_SPRITES
+        .iter()
+        .filter_map(|(java, bedrock)| {
+            let bytes = optional(&format!("{TEXTURES}gui/sprites/{java}.png"))?;
+            dimensions(&bytes).is_some().then_some((*bedrock, bytes))
+        })
+        .flat_map(|(bedrock, bytes)| bedrock.iter().map(move |path| (*path, bytes.clone())))
+        .collect();
     let layout = detect_layout(paths.iter().map(String::as_str), meta.format);
     let (block_folder, item_folder) = layout.folders();
     let stem_key = |path: &str| stem(path).to_owned();
@@ -374,6 +382,11 @@ pub(crate) fn translate_within(
         out.insert("textures/particle/particles.png".into(), Output::Raw(bytes));
     }
     out.extend(block_outputs);
+    let mut tab_sidecars = Vec::new();
+    for (bedrock, bytes) in tabs {
+        tab_sidecars.push((format!("{bedrock}.json"), container::TAB_SIDECAR.to_vec()));
+        out.insert(format!("{bedrock}.png"), Output::Raw(bytes));
+    }
     for (bedrock, bytes) in progress {
         out.insert(format!("{bedrock}.png"), Output::Raw(bytes));
     }
@@ -535,6 +548,7 @@ pub(crate) fn translate_within(
             .filter(|(sidecar, _)| survived(&sidecar.replace(".json", ".png"))),
     );
     files.extend(companions);
+    files.extend(tab_sidecars);
     // Checked after size filtering, so a pack whose every texture was dropped is not installed. A
     // pack that only restyles the Java menus is still a pack.
     let has_menu_files = !menu.is_empty();

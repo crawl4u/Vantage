@@ -49,6 +49,53 @@ pub(crate) const PROGRESS_SPRITES: [(&str, &str); 6] = [
     ("container/anvil/error", "textures/ui/crossout"),
 ];
 
+/// Java's creative category tabs (relative to `textures/gui/sprites/`) and the Bedrock tab
+/// textures each one draws: Java's first tab is the left-most, its last the right-most, and the
+/// ones between are all the same. Java has no hover picture, so a hovered tab is the plain one.
+pub(crate) const TAB_SPRITES: [(&str, &[&str]); 6] = [
+    (
+        "container/creative_inventory/tab_top_selected_1",
+        &[
+            "textures/ui/TabTopFrontLeftMost",
+            "textures/ui/TabTopFrontLeftMostHover",
+        ],
+    ),
+    (
+        "container/creative_inventory/tab_top_selected_2",
+        &["textures/ui/TabTopFront", "textures/ui/TabTopFrontHover"],
+    ),
+    (
+        "container/creative_inventory/tab_top_selected_7",
+        &[
+            "textures/ui/TabTopFrontRightMost",
+            "textures/ui/TabTopFrontRightMostHover",
+        ],
+    ),
+    (
+        "container/creative_inventory/tab_top_unselected_1",
+        &[
+            "textures/ui/TabTopBackLeftMost",
+            "textures/ui/TabTopBackLeftMostHover",
+        ],
+    ),
+    (
+        "container/creative_inventory/tab_top_unselected_2",
+        &["textures/ui/TabTopBack", "textures/ui/TabTopBackHover"],
+    ),
+    (
+        "container/creative_inventory/tab_top_unselected_7",
+        &[
+            "textures/ui/TabTopBackRightMost",
+            "textures/ui/TabTopBackRightMostHover",
+            "textures/ui/TabTopBackRightMostDark",
+            "textures/ui/TabTopBackRightMostDarkHover",
+        ],
+    ),
+];
+
+/// The sidecar of a tab texture: a four-pixel border round a 26 by 32 Java tab.
+pub(crate) const TAB_SIDECAR: &[u8] = br#"{"nineslice_size":4,"base_size":[26,32]}"#;
+
 /// Bedrock's panel, which every container screen and dialog draws behind its controls.
 pub(crate) const PANEL: &str = "textures/ui/dialog_background_opaque.png";
 
@@ -437,6 +484,23 @@ mod tests {
         for (java, to) in PROGRESS_SPRITES {
             assert!(java.starts_with("container/") && to.starts_with("textures/ui/"));
         }
+    }
+
+    #[test]
+    fn every_tab_texture_is_drawn_by_one_sprite() {
+        let mut paths: Vec<&str> = TAB_SPRITES
+            .iter()
+            .flat_map(|(_, to)| to.iter().copied())
+            .collect();
+        let count = paths.len();
+        paths.sort_unstable();
+        paths.dedup();
+        assert_eq!(paths.len(), count);
+        assert!(
+            paths
+                .iter()
+                .all(|path| path.starts_with("textures/ui/TabTop"))
+        );
     }
 
     #[test]

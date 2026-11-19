@@ -1118,3 +1118,39 @@ fn container_progress_sprites_replace_their_bedrock_textures_untouched() {
     );
     assert!(!out.contains_key("textures/ui/arrow_active.png"));
 }
+
+#[test]
+fn creative_tab_sprites_become_every_bedrock_tab_with_a_sidecar() {
+    let sprites = "assets/minecraft/textures/gui/sprites/container/creative_inventory/";
+    let files = pack(vec![
+        (
+            &format!("{sprites}tab_top_selected_2.png"),
+            solid(26, 32, RED),
+        ),
+        (
+            &format!("{sprites}tab_top_unselected_7.png"),
+            solid(26, 32, GREEN),
+        ),
+    ]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    for tab in ["TabTopFront", "TabTopFrontHover"] {
+        assert_eq!(
+            pixel(&out, &format!("textures/ui/{tab}.png"), 0, 0),
+            ((26, 32), RED)
+        );
+    }
+    for tab in ["TabTopBackRightMost", "TabTopBackRightMostDarkHover"] {
+        assert_eq!(
+            pixel(&out, &format!("textures/ui/{tab}.png"), 0, 0),
+            ((26, 32), GREEN)
+        );
+    }
+    let sidecar: serde_json::Value =
+        serde_json::from_slice(out["textures/ui/TabTopFront.json"]).unwrap();
+    assert_eq!(
+        sidecar,
+        serde_json::json!({"nineslice_size": 4, "base_size": [26, 32]})
+    );
+    assert!(!out.contains_key("textures/ui/TabTopBack.png"));
+}
