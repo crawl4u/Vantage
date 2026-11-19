@@ -36,6 +36,22 @@ pub(super) struct SpriteAtlas {
     pub(super) placements: Vec<Option<Placement>>,
 }
 
+/// The order sprites are shelved in.
+#[derive(Clone, Copy)]
+enum Order {
+    TallestFirst,
+    SmallestFirst,
+}
+
+/// Whether `sprite` has pixels that match its size under the device's texture policy.
+fn sprite_is_valid(sprite: &IconSprite) -> bool {
+    let policy = assets::texture::policy::device_policy();
+    sprite.width != 0
+        && sprite.height != 0
+        && policy.source_bytes(u32::from(sprite.width), u32::from(sprite.height), false)
+            == Some(sprite.rgba8.len())
+}
+
 struct Layer {
     side: u16,
     rgba8: Vec<u8>,
@@ -75,25 +91,47 @@ impl Layer {
 }
 
 impl SpriteAtlas {
-    /// Shelf-packs every valid sprite, tallest first.
+    /// Shelf-packs every valid sprite, tallest first. When the page budget cannot hold them all,
+    /// the sprites are packed again smallest first and the packing that places more is kept, so
+    /// a few large sprites never crowd out the many ordinary ones.
     pub(super) fn pack(sprites: &[IconSprite]) -> Self {
+        let tallest_first = Self::pack_ordered(sprites, Order::TallestFirst);
+        let valid = sprites
+            .iter()
+            .filter(|sprite| sprite_is_valid(sprite))
+            .count();
+        let placed = tallest_first.placements.iter().flatten().count();
+        if placed >= valid {
+            return tallest_first;
+        }
+        let smallest_first = Self::pack_ordered(sprites, Order::SmallestFirst);
+        if smallest_first.placements.iter().flatten().count() >= placed {
+            smallest_first
+        } else {
+            tallest_first
+        }
+    }
+
+    /// Shelf-packs every valid sprite in `how`'s order.
+    fn pack_ordered(sprites: &[IconSprite], how: Order) -> Self {
         let policy = assets::texture::policy::device_policy();
-        let valid = |sprite: &IconSprite| {
-            sprite.width != 0
-                && sprite.height != 0
-                && policy.source_bytes(u32::from(sprite.width), u32::from(sprite.height), false)
-                    == Some(sprite.rgba8.len())
-        };
         let mut order = (0..sprites.len())
-            .filter(|index| valid(&sprites[*index]))
+            .filter(|index| sprite_is_valid(&sprites[*index]))
             .collect::<Vec<_>>();
         order.sort_by_key(|index| {
             let sprite = &sprites[*index];
-            (
-                std::cmp::Reverse(sprite.height),
-                std::cmp::Reverse(sprite.width),
-                *index,
-            )
+            match how {
+                Order::TallestFirst => (
+                    u64::from(u16::MAX - sprite.height),
+                    u64::from(u16::MAX - sprite.width),
+                    *index,
+                ),
+                Order::SmallestFirst => (
+                    u64::from(sprite.width) * u64::from(sprite.height),
+                    0,
+                    *index,
+                ),
+            }
         });
         let side = order
             .iter()
@@ -241,13 +279,49 @@ mod tests {
             rgba8: vec![255; 16 * 16 * 4].into(),
         });
         let atlas = SpriteAtlas::pack(&sprites);
+        // The budget holds four layers, so one sprite goes unplaced; every placed one keeps its
+        // layer and its pixels.
         assert_eq!(atlas.layers.len(), 4);
-        assert!(atlas.placements[4].is_none());
-        for (sprite, placement) in sprites.iter().zip(&atlas.placements).take(4) {
-            let placement = placement.expect("admitted sprite keeps its layer");
+        assert_eq!(atlas.placements.iter().flatten().count(), 4);
+        for (sprite, placement) in sprites.iter().zip(&atlas.placements) {
+            let Some(placement) = placement else {
+                continue;
+            };
             let layer = &atlas.layers[placement.layer];
-            assert_eq!(&layer.rgba8[..sprite.rgba8.len()], &*sprite.rgba8);
+            let offset = (usize::from(placement.y) * usize::from(layer.width)
+                + usize::from(placement.x))
+                * 4;
+            assert_eq!(
+                &layer.rgba8[offset..offset + 4],
+                &sprite.rgba8[..4],
+                "a placed sprite keeps its pixels"
+            );
         }
+    }
+
+    #[test]
+    fn a_full_budget_keeps_the_small_sprites_rather_than_the_large_ones() {
+        // Enough large sprites to fill every layer the budget allows, then one small sprite that
+        // tallest-first packing would leave out.
+        let policy = assets::texture::policy::device_policy();
+        let layer_bytes = policy
+            .page_bytes(u32::from(ATLAS_SIDE), u32::from(ATLAS_SIDE))
+            .unwrap();
+        let layers = assets::texture::policy::MAX_SUBSCRIBER_BYTES / layer_bytes;
+        let mut sprites = (0..layers)
+            .map(|index| IconSprite {
+                width: ATLAS_SIDE,
+                height: ATLAS_SIDE,
+                rgba8: vec![index as u8; usize::from(ATLAS_SIDE).pow(2) * 4].into(),
+            })
+            .collect::<Vec<_>>();
+        sprites.push(sprite(16, 7));
+        let atlas = SpriteAtlas::pack(&sprites);
+        assert!(
+            atlas.placements.last().copied().flatten().is_some(),
+            "the small sprite is placed"
+        );
+        assert!(atlas.placements.iter().flatten().count() >= layers);
     }
 
     #[test]
