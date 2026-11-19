@@ -99,6 +99,27 @@ mod tests {
     }
 
     #[test]
+    fn mobs_whose_java_and_bedrock_names_differ_still_map() {
+        assert_eq!(
+            bedrock_path("entity/horse/mule", 128, 128),
+            Some("entity/horse2/mule")
+        );
+        assert_eq!(
+            bedrock_path("entity/wither/wither", 64, 64),
+            Some("entity/wither_boss/wither")
+        );
+        // Banner and shield patterns, skins and professions are laid out differently in Bedrock.
+        for java in [
+            "entity/banner/base",
+            "entity/shield/base",
+            "entity/player/wide/steve",
+            "entity/villager/profession/farmer",
+        ] {
+            assert!(!is_listed(java), "{java}");
+        }
+    }
+
+    #[test]
     fn the_table_matches_the_pinned_sample_pack() {
         let Some(pack) = crate::test_support::sample_pack() else {
             return;

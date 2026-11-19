@@ -9,8 +9,13 @@ to textures/) they become, with the vanilla size of each. A Java texture maps wh
   1. a Bedrock sample has exactly its pixels (the same artwork, wherever Bedrock keeps it), or
   2. a Bedrock sample sits at the same path with the same size.
 
+  3. an entity texture of the same size has the same file name as exactly one Bedrock entity
+     texture no other Java texture claims, in a folder this script does not know to differ
+     (banners and shields share names with patterns of another layout, skins are the player's own,
+     and profession overlays are not Bedrock's villager skins).
+
 A pixel match wins; an ambiguous pixel match (one Java texture equal to several Bedrock ones) is
-left to the same-path rule. Run: derive_extras.py <client.jar> <bedrock-samples resource_pack>
+left to the same-path rule, then the file-name rule. Run: derive_extras.py <client.jar> <bedrock-samples resource_pack>
 <out.tsv>.
 """
 
@@ -20,6 +25,9 @@ import struct
 import sys
 import zipfile
 import zlib
+
+# Entity paths the file-name rule never matches: their layouts differ from Bedrock's namesakes.
+RENAME_EXCLUDED = ("entity/banner/", "entity/shield/", "entity/player/", "/profession/")
 
 FOLDERS = ("entity", "painting", "environment", "misc", "map", "colormap", "particle", "trims")
 
@@ -121,7 +129,17 @@ def main(jar_path, bedrock_root, out_path):
     by_pixels = {}
     for path, image in bedrock.items():
         by_pixels.setdefault(digest(image), []).append(path)
+    stems = {}
+    for path in bedrock:
+        if path.startswith("entity/"):
+            stems.setdefault(os.path.basename(path), []).append(path)
     rows, taken = [], {}
+    claimed = {}
+    for path in java:
+        if path.startswith("entity/") and not any(part in path for part in RENAME_EXCLUDED):
+            for candidate in stems.get(os.path.basename(path), []):
+                if bedrock[candidate][:2] == java[path][:2]:
+                    claimed.setdefault(candidate, []).append(path)
     for path in sorted(java):
         image = java[path]
         matches = by_pixels.get(digest(image), [])
@@ -130,6 +148,14 @@ def main(jar_path, bedrock_root, out_path):
             target = matches[0]
         elif path in bedrock and bedrock[path][:2] == image[:2]:
             target = path
+        else:
+            named = [
+                candidate
+                for candidate in stems.get(os.path.basename(path), [])
+                if claimed.get(candidate) == [path]
+            ]
+            if path.startswith("entity/") and len(named) == 1:
+                target = named[0]
         if target:
             rows.append((path, target, image[0], image[1]))
             taken.setdefault(target, []).append(path)
