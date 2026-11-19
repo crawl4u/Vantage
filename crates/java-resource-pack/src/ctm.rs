@@ -2,8 +2,10 @@
 //!
 //! A `random` rule lists several textures for a block texture and OptiFine chooses one per block
 //! position, with optional weights. Bedrock's terrain atlas does the same for a tile whose
-//! `terrain_texture.json` entry lists weighted textures, so such a rule is written there. Rules
-//! that depend on neighbours, biome, height or block state are not translated.
+//! `terrain_texture.json` entry lists weighted textures, so such a rule is written there. A
+//! `repeat` rule lays a width-by-height pattern of textures over the block grid, which the entry
+//! declares through the Cinnabar `cinnabar_repeat` extension. Rules that depend on neighbours,
+//! biome, height or block state are not translated.
 
 use std::collections::BTreeMap;
 
@@ -16,12 +18,14 @@ pub(crate) enum Choice {
     File(String),
 }
 
-/// A `random` rule for one block texture.
+/// A `random` or `repeat` rule for one block texture.
 #[derive(Debug, PartialEq)]
-pub(crate) struct RandomRule {
+pub(crate) struct Rule {
     /// The block texture name the rule matches (`dirt`, not `block/dirt`).
     pub(crate) texture: String,
     pub(crate) choices: Vec<(Choice, f32)>,
+    /// The pattern's width and height for a `repeat` rule, whose choices fill it in row order.
+    pub(crate) repeat: Option<(u8, u8)>,
 }
 
 /// Properties that make a rule depend on more than the block position.
@@ -83,15 +87,22 @@ fn tile_path(folder: &str, token: &str) -> String {
     }
 }
 
-/// The `random` rule `text` declares for a rule file in `folder`, or `None` when it is another
-/// method, depends on more than position, or lists nothing.
-pub(crate) fn parse_random(folder: &str, text: &str) -> Option<RandomRule> {
+/// The `random` or `repeat` rule `text` declares for a rule file in `folder`, or `None` when it
+/// is another method, depends on more than position, or lists nothing a pattern can fill.
+pub(crate) fn parse(folder: &str, text: &str) -> Option<Rule> {
     let props = properties(text);
-    if props.get("method").map(String::as_str) != Some("random")
+    let method = props.get("method").map(String::as_str)?;
+    if !matches!(method, "random" | "repeat")
         || CONDITIONS.iter().any(|key| props.contains_key(*key))
     {
         return None;
     }
+    let side = |name: &str| props.get(name)?.parse::<u8>().ok().filter(|side| *side > 0);
+    let repeat = if method == "repeat" {
+        Some((side("width")?, side("height")?))
+    } else {
+        None
+    };
     let texture = props
         .get("matchTiles")?
         .split_whitespace()
@@ -124,12 +135,19 @@ pub(crate) fn parse_random(folder: &str, text: &str) -> Option<RandomRule> {
             let weight = weights
                 .get(index)
                 .copied()
-                .filter(|w| *w > 0.0)
+                .filter(|w| *w > 0.0 && repeat.is_none())
                 .unwrap_or(1.0);
             (choice, weight)
         })
         .collect();
-    (!choices.is_empty()).then_some(RandomRule { texture, choices })
+    let fits = repeat.is_none_or(|(width, height)| {
+        choices.len() == usize::from(width) * usize::from(height) && choices.len() > 1
+    });
+    (!choices.is_empty() && fits).then_some(Rule {
+        texture,
+        choices,
+        repeat,
+    })
 }
 
 #[cfg(test)]
@@ -141,7 +159,7 @@ mod tests {
     #[test]
     fn a_random_rule_lists_default_ranges_and_names_with_weights() {
         let text = "method=random\nmatchTiles=bee_nest_side\ntiles=<default> 2-4 extra\nweights=5 1 1 1 2\n";
-        let rule = parse_random(FOLDER, text).unwrap();
+        let rule = parse(FOLDER, text).unwrap();
         assert_eq!(rule.texture, "bee_nest_side");
         let files: Vec<_> = rule
             .choices
@@ -157,8 +175,22 @@ mod tests {
     }
 
     #[test]
+    fn a_repeat_rule_needs_a_pattern_its_tiles_fill_exactly() {
+        let text =
+            "method=repeat\nmatchTiles=oak_planks\nwidth=2\nheight=2\ntiles=1-4\nweights=9 9 9 9\n";
+        let rule = parse(FOLDER, text).unwrap();
+        assert_eq!(rule.repeat, Some((2, 2)));
+        assert_eq!(rule.choices.len(), 4);
+        assert!(rule.choices.iter().all(|(_, weight)| *weight == 1.0));
+        let short = "method=repeat\nmatchTiles=oak_planks\nwidth=2\nheight=2\ntiles=1-3\n";
+        assert!(parse(FOLDER, short).is_none());
+        let no_size = "method=repeat\nmatchTiles=oak_planks\ntiles=1-4\n";
+        assert!(parse(FOLDER, no_size).is_none());
+    }
+
+    #[test]
     fn missing_weights_are_one_each() {
-        let rule = parse_random(FOLDER, "method=random\nmatchTiles=dirt\ntiles=1-3").unwrap();
+        let rule = parse(FOLDER, "method=random\nmatchTiles=dirt\ntiles=1-3").unwrap();
         assert!(rule.choices.iter().all(|(_, weight)| *weight == 1.0));
         assert_eq!(rule.choices.len(), 3);
     }
@@ -185,10 +217,10 @@ mod tests {
             "connect=block",
         ] {
             let text = format!("method=random\nmatchTiles=dirt\ntiles=1-2\n{extra}\n");
-            assert!(parse_random(FOLDER, &text).is_none(), "{extra}");
+            assert!(parse(FOLDER, &text).is_none(), "{extra}");
         }
-        assert!(parse_random(FOLDER, "method=repeat\nmatchTiles=dirt\ntiles=1-2").is_none());
-        assert!(parse_random(FOLDER, "method=random\nmatchBlocks=dirt\ntiles=1-2").is_none());
-        assert!(parse_random(FOLDER, "method=random\nmatchTiles=dirt").is_none());
+        assert!(parse(FOLDER, "method=ctm\nmatchTiles=dirt\ntiles=1-2").is_none());
+        assert!(parse(FOLDER, "method=random\nmatchBlocks=dirt\ntiles=1-2").is_none());
+        assert!(parse(FOLDER, "method=random\nmatchTiles=dirt").is_none());
     }
 }

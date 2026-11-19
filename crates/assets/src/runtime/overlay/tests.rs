@@ -176,6 +176,7 @@ fn material_overrides_repoint_base_materials() {
         texture: TextureRef::new(1, 0).unwrap(),
         animation: NO_ANIMATION,
         variation: Some((0, 0)),
+        repeat: None,
     }];
     assert!(base.with_block_overlay(1, &overlay).is_err());
 }
@@ -231,6 +232,7 @@ fn replacing_a_sheet_moves_only_its_models_to_their_whole_sheet_templates() {
         texture: TextureRef::new(1, 0).unwrap(),
         animation: NO_ANIMATION,
         variation: None,
+        repeat: None,
     });
     let replaced = base.with_block_overlay(3, &overlay).unwrap();
     assert_eq!(template(&replaced, 1), Some(1));
@@ -265,6 +267,7 @@ fn raster_only_leaf_replacement_preserves_the_base_weighted_selector() {
         texture: TextureRef::new(1, 0).unwrap(),
         animation: NO_ANIMATION,
         variation: None,
+        repeat: None,
     });
     let runtime = base.with_block_overlay(1, &overlay).unwrap();
     assert_eq!(runtime.material(1), base.material(1));
@@ -313,6 +316,7 @@ fn only_base_visuals_whose_face_art_changed_are_retextured() {
         texture: TextureRef::new(1, 0).unwrap(),
         animation: NO_ANIMATION,
         variation: None,
+        repeat: None,
     });
     let runtime = base.with_block_overlay(3, &overlay).unwrap();
     let retextured = (0..4)
@@ -332,6 +336,7 @@ fn weighted_override_ranges_are_checked_before_offsetting() {
             texture: TextureRef::new(1, 0).unwrap(),
             animation: NO_ANIMATION,
             variation,
+            repeat: None,
         }];
         assert!(base.with_block_overlay(1, &overlay).is_err());
     }
@@ -365,6 +370,7 @@ fn replacing_a_selector_uses_the_server_texture_without_changing_leaf_weights() 
         texture: TextureRef::new(1, 0).unwrap(),
         animation: NO_ANIMATION,
         variation: None,
+        repeat: None,
     }];
     let session = base.with_block_overlay(1, &overlay).unwrap();
     assert_eq!(session.materials[1].variation_start, 2);
@@ -601,6 +607,49 @@ fn overlay_overrides_reject_the_base_page() {
         texture: TextureRef::new(0, 0).unwrap(),
         animation: NO_ANIMATION,
         variation: None,
+        repeat: None,
     }];
     assert!(base.with_block_overlay(1, &overlay).is_err());
+}
+
+#[test]
+fn a_repeat_override_tags_the_selector_with_its_pattern_and_must_fill_its_range() {
+    let mut base = RuntimeAssets::diagnostic();
+    base.materials = vec![Material::unvaried(), Material::unvaried()].into();
+    let leaf = || Material {
+        texture: TextureRef::new(1, 0).unwrap(),
+        animation: NO_ANIMATION,
+        variation_weight: 0.25_f32.to_bits(),
+        ..Material::unvaried()
+    };
+    let overlay_with = |repeat| {
+        let mut overlay = cube_overlay(page(16));
+        overlay.materials = (0..4).map(|_| leaf()).collect();
+        overlay.material_overrides.push(MaterialOverride {
+            material: 1,
+            texture: TextureRef::new(1, 0).unwrap(),
+            animation: NO_ANIMATION,
+            variation: Some((0, 4)),
+            repeat,
+        });
+        overlay
+    };
+    let runtime = base
+        .with_block_overlay(1, &overlay_with(Some((2, 2))))
+        .unwrap();
+    assert_eq!(runtime.material(1).variation_count, 4);
+    assert_eq!(
+        runtime.material(1).mask_strength,
+        crate::compiled::repeat_mask_strength(2, 2)
+    );
+    assert!(f32::from_bits(runtime.material(1).mask_strength).is_finite());
+    for wrong in [(3, 2), (0, 4), (1, 3)] {
+        assert!(
+            base.with_block_overlay(1, &overlay_with(Some(wrong)))
+                .is_err(),
+            "{wrong:?}"
+        );
+    }
+    let plain = base.with_block_overlay(1, &overlay_with(None)).unwrap();
+    assert_eq!(plain.material(1).mask_strength, 0);
 }

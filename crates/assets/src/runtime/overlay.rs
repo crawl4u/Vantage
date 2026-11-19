@@ -21,6 +21,11 @@ pub struct MaterialOverride {
     pub animation: u32,
     /// Overlay-local positional range; `None` preserves the base selector and weight.
     pub variation: Option<(u32, u32)>,
+    /// A pattern width and height when the range is a tile pattern repeated over the block grid,
+    /// as OptiFine's `repeat` rule describes, instead of a weighted positional choice. The
+    /// range must hold exactly width times height materials, in row order.
+    #[serde(default)]
+    pub repeat: Option<(u8, u8)>,
 }
 
 /// Server block visuals whose indices are local to the overlay: face and quad
@@ -382,7 +387,18 @@ impl RuntimeAssets {
                     ));
                 }
             }
+            let mask_strength = match replacement.repeat {
+                None => materials[replacement.material as usize].mask_strength,
+                Some((width, height)) => {
+                    let count = replacement.variation.map_or(0, |(_, count)| count);
+                    if width == 0 || height == 0 || u32::from(width) * u32::from(height) != count {
+                        return Err(invalid("overlay repeat pattern does not fill its range"));
+                    }
+                    crate::compiled::repeat_mask_strength(width, height)
+                }
+            };
             materials[replacement.material as usize] = Material {
+                mask_strength,
                 texture: page_ref(replacement.texture)?,
                 variation_start: match replacement.variation {
                     Some((_, 0)) => 0,

@@ -74,6 +74,7 @@ fn multi_page_base_keeps_overrides_visuals_and_source_metadata_addressed() {
         texture,
         animation: NO_ANIMATION,
         variation: None,
+        repeat: None,
     })
     .collect();
     overlay.texture_source_sizes = vec![[8; 2], [16; 2], [8; 2]];

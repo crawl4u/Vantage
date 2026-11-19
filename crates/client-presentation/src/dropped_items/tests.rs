@@ -511,6 +511,7 @@ fn carried_actor_blocks_use_world_art_once_a_pack_retextures_them() {
                             .unwrap(),
                         animation: assets::NO_ANIMATION,
                         variation: None,
+                        repeat: None,
                     })
                     .collect(),
                 ..assets::BlockOverlay::default()
@@ -608,6 +609,7 @@ fn retextured_carried_cubes_without_a_world_model_keep_their_startup_faces() {
                         .unwrap(),
                     animation: assets::NO_ANIMATION,
                     variation: None,
+                    repeat: None,
                 }],
                 ..assets::BlockOverlay::default()
             },
@@ -810,6 +812,7 @@ fn weighted_replacement_updates_dropped_pixels_and_keeps_the_variation_range() {
                 texture: assets::TextureRef::new(1, 0).unwrap(),
                 animation: assets::NO_ANIMATION,
                 variation: None,
+                repeat: None,
             })
             .collect(),
         ..assets::BlockOverlay::default()

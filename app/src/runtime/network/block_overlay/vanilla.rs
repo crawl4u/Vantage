@@ -47,6 +47,9 @@ impl Builder<'_> {
                         texture: replacement.texture,
                         animation: replacement.animation,
                         variation: Some((replacement.variation_start, replacement.variation_count)),
+                        repeat: self.catalog.repeat(key).filter(|&(width, height)| {
+                            u32::from(width) * u32::from(height) == replacement.variation_count
+                        }),
                     });
                 }
             } else {
@@ -70,6 +73,7 @@ impl Builder<'_> {
                         texture: TextureRef::new(slot.page, slot.layer).expect("bounded layer"),
                         animation: slot.animation,
                         variation: None,
+                        repeat: None,
                     });
                 }
             }

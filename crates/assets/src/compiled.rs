@@ -268,6 +268,18 @@ pub struct Material {
 /// A material texture-reference slot that names no mask.
 pub const NO_MASK: u32 = u32::MAX;
 
+/// The top sixteen bits `mask_strength` carries on a selector whose positional range is a tile
+/// pattern repeated over the block grid; the width and height follow in its low two bytes. A
+/// selector draws no mask itself, so the field is free, and the value stays a finite float.
+/// `render/src/material.wesl` reads the same tag.
+pub const REPEAT_TAG: u32 = 0x4000;
+
+/// The `mask_strength` of a selector whose range is a `width` by `height` pattern.
+#[must_use]
+pub const fn repeat_mask_strength(width: u8, height: u8) -> u32 {
+    (REPEAT_TAG << 16) | ((width as u32) << 8) | height as u32
+}
+
 impl Material {
     /// Returns an ordinary diagnostic material with no positional alternatives.
     pub const fn unvaried() -> Self {

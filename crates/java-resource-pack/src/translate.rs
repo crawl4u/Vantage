@@ -448,7 +448,7 @@ pub(crate) fn translate_within(
             }
         }
     }
-    // OptiFine `random` rules become weighted texture lists on the block texture's atlas tile.
+    // OptiFine `random` and `repeat` rules become weighted or repeated texture lists on the block texture's atlas tile.
     let mut random_files: Vec<(String, Vec<u8>)> = Vec::new();
     let mut random_tiles = serde_json::Map::new();
     for rule_path in paths.iter().filter(|path| {
@@ -462,7 +462,7 @@ pub(crate) fn translate_within(
         let folder = &rule_path[..=rule_path.rfind('/').unwrap_or(0)];
         let Some(rule) = source
             .load(rule_path)
-            .and_then(|text| ctm::parse_random(folder, &String::from_utf8_lossy(&text)))
+            .and_then(|text| ctm::parse(folder, &String::from_utf8_lossy(&text)))
         else {
             continue;
         };
@@ -498,12 +498,17 @@ pub(crate) fn translate_within(
             entries.push(serde_json::json!({ "path": file, "weight": weight }));
             random_files.push((format!("{file}.png"), bytes));
         }
-        if entries.len() >= 2 {
+        // A pattern needs every one of its tiles; a weighted list keeps whichever it found.
+        let complete = rule.repeat.is_none_or(|(width, height)| {
+            entries.len() == usize::from(width) * usize::from(height)
+        });
+        if entries.len() >= 2 && complete {
+            let mut entry = serde_json::json!({ "textures": [{ "variations": entries }] });
+            if let Some((width, height)) = rule.repeat {
+                entry["cinnabar_repeat"] = serde_json::json!({ "width": width, "height": height });
+            }
             for tile in tiles {
-                random_tiles.insert(
-                    tile.to_owned(),
-                    serde_json::json!({ "textures": [{ "variations": entries }] }),
-                );
+                random_tiles.insert(tile.to_owned(), entry.clone());
             }
         } else {
             random_files.retain(|(file, _)| !file.contains(&format!("{stem}_random")));

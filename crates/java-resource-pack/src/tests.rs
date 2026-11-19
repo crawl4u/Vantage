@@ -1422,3 +1422,61 @@ fn an_optifine_random_rule_becomes_a_weighted_texture_list_for_the_blocks_tile()
         BLUE
     );
 }
+
+#[test]
+fn an_optifine_repeat_rule_becomes_a_declared_tile_pattern() {
+    let root = "assets/minecraft/";
+    let mut files = vec![
+        (
+            format!("{root}textures/block/stone.png"),
+            solid(16, 16, WHITE),
+        ),
+        (
+            format!("{root}optifine/ctm/stone/stone.properties"),
+            b"method=repeat\nmatchTiles=stone\nwidth=2\nheight=2\ntiles=1-4\n".to_vec(),
+        ),
+        // A pattern with a tile missing is left alone.
+        (
+            format!("{root}textures/block/sand.png"),
+            solid(16, 16, WHITE),
+        ),
+        (
+            format!("{root}optifine/ctm/sand/sand.properties"),
+            b"method=repeat\nmatchTiles=sand\nwidth=2\nheight=2\ntiles=1-4\n".to_vec(),
+        ),
+    ];
+    for (index, color) in [RED, GREEN, BLUE, YELLOW].into_iter().enumerate() {
+        files.push((
+            format!("{root}optifine/ctm/stone/{}.png", index + 1),
+            solid(16, 16, color),
+        ));
+    }
+    files.push((format!("{root}optifine/ctm/sand/1.png"), solid(16, 16, RED)));
+    let files = files
+        .iter()
+        .map(|(path, bytes)| (path.as_str(), bytes.clone()))
+        .collect();
+    let translation = run(&pack(files), "Pack").unwrap();
+    let out = output(&translation);
+    let atlas: serde_json::Value =
+        serde_json::from_slice(out["textures/terrain_texture.json"]).unwrap();
+    let data = atlas["texture_data"].as_object().unwrap();
+    let tile = data
+        .values()
+        .find(|tile| tile.get("cinnabar_repeat").is_some())
+        .expect("the stone pattern");
+    assert_eq!(
+        tile["cinnabar_repeat"],
+        serde_json::json!({"width": 2, "height": 2})
+    );
+    let choices = tile["textures"][0]["variations"].as_array().unwrap();
+    assert_eq!(choices.len(), 4);
+    for (index, color) in [RED, GREEN, BLUE, YELLOW].into_iter().enumerate() {
+        let path = choices[index]["path"].as_str().unwrap();
+        assert_eq!(pixel(&out, &format!("{path}.png"), 0, 0).1, color, "{path}");
+    }
+    assert!(
+        data.keys().all(|key| !key.contains("sand")),
+        "the incomplete pattern writes nothing"
+    );
+}

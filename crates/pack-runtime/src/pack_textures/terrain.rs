@@ -23,6 +23,10 @@ pub struct Choice {
 pub struct Entry {
     variants: Vec<Vec<Choice>>,
     pub grid: u8,
+    /// A Cinnabar extension: the choices of a single-variant entry are a tile pattern this wide
+    /// and high, repeated over the block grid in row order (OptiFine's `repeat` rule), rather
+    /// than a weighted choice by position.
+    pub repeat: Option<(u8, u8)>,
 }
 
 impl Entry {
@@ -102,9 +106,24 @@ pub fn parse_entry(value: &Value) -> Option<Entry> {
             Some(choices)
         })
         .collect::<Option<Vec<_>>>()?;
+    let repeat = value.get("cinnabar_repeat").and_then(|repeat| {
+        let side = |name: &str| {
+            repeat
+                .get(name)?
+                .as_u64()
+                .and_then(|side| u8::try_from(side).ok())
+                .filter(|side| *side > 0)
+        };
+        let pattern = (side("width")?, side("height")?);
+        // The pattern must fill the one variant's choices exactly.
+        (variants.len() == 1
+            && variants[0].len() == usize::from(pattern.0) * usize::from(pattern.1))
+        .then_some(pattern)
+    });
     Some(Entry {
         variants,
         grid: (value["quad"].as_u64().unwrap_or(0) as u32 & assets::TERRAIN_QUAD_SHIFT_MASK) as u8,
+        repeat,
     })
 }
 

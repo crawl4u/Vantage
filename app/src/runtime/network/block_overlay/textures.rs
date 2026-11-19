@@ -195,6 +195,11 @@ impl<'a> TextureCatalog<'a> {
         self.entry(key).map_or(0, |entry| entry.grid)
     }
 
+    /// The tile pattern the winning entry for `key` repeats over the block grid, if it declares one.
+    pub(super) fn repeat(&self, key: &str) -> Option<(u8, u8)> {
+        self.data.terrain.get(key)?.repeat
+    }
+
     /// Whether the winning state choices or UV grid differ from the immutable base catalog.
     pub(super) fn redefined(&self, key: &str, variant: u32) -> bool {
         self.data.terrain.get(key).is_some_and(|entry| {

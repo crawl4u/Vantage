@@ -105,6 +105,35 @@ fn positional_material_id(id: u32, position: vec3<i32>) -> u32 {
     return id;
 }
 
+// A selector tagged by `assets::REPEAT_TAG` holds a width-by-height tile pattern in row order.
+// Each face picks its tile from the block's place on that face as OptiFine's repeat rule does:
+// top and bottom use x and z; sides use the horizontal axis along the face and negated y, with
+// north and east counting from the far end. Faces are numbered -X, +X, -Y, +Y, -Z, +Z.
+fn positional_material_id_face(id: u32, position: vec3<i32>, face: u32) -> u32 {
+    let base = materials(id);
+    if (base.variation_count > 1u && (base.mask_strength >> 16u) == 0x4000u) {
+        let width = (base.mask_strength >> 8u) & 0xffu;
+        let height = base.mask_strength & 0xffu;
+        if (width * height == base.variation_count) {
+            var along = position.x;
+            var down = -position.y;
+            switch face {
+                case 0u: { along = position.z; }
+                case 1u: { along = -position.z - 1; }
+                case 2u, 3u: { down = position.z; }
+                case 4u: { along = -position.x - 1; }
+                default: {}
+            }
+            let w = i32(width);
+            let h = i32(height);
+            let column = ((along % w) + w) % w;
+            let row = ((down % h) + h) % h;
+            return base.variation_start + u32(row * w + column);
+        }
+    }
+    return positional_material_id(id, position);
+}
+
 // Layers use the same field as the carrier, below GPU-only dimension metadata.
 fn texture_layer(reference: u32) -> i32 {
     return i32(reference & TEXTURE_LAYER_MASK);

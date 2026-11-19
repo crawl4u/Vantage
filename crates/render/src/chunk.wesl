@@ -1,6 +1,6 @@
 import render::chunk_records::{chunk_origins, animations, animation_frames, clock};
 
-import render::material::{MaterialGpu, materials, positional_material_id, texture_layer, texture_page, texture_cube_uv, texture_gradient_scale, material_face_is_visible, material_uses_native_leaf_colour, material_uses_overlay_mask, material_uv_flags, material_ao_shade, material_mask_varyings, material_mask_reference};
+import render::material::{MaterialGpu, materials, positional_material_id, positional_material_id_face, texture_layer, texture_page, texture_cube_uv, texture_gradient_scale, material_face_is_visible, material_uses_native_leaf_colour, material_uses_overlay_mask, material_uv_flags, material_ao_shade, material_mask_varyings, material_mask_reference};
 @if(ENHANCED_SHADOW)
 import render::enhanced::caster::caster_clip;
 import bevy_render::view::View;
@@ -366,7 +366,11 @@ fn cube_quad(instance_index: u32, metadata_index: u32) -> CubeQuad {
         chunk_origin.value,
         chunk_origin.stream_bases.y + local_quad_index,
         quad.material_id,
-        positional_material_id(quad.material_id, chunk_origin.value.xyz + vec3<i32>(local_origin)),
+        positional_material_id_face(
+            quad.material_id,
+            chunk_origin.value.xyz + vec3<i32>(local_origin),
+            (geometry >> 15u) & 0x7u,
+        ),
     );
 }
 

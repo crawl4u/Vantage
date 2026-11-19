@@ -279,6 +279,7 @@ fn held_terrain_reload_matches_fresh_pack_sheets() {
                     texture: assets::TextureRef::new(1, 0).unwrap(),
                     animation: assets::NO_ANIMATION,
                     variation: None,
+                    repeat: None,
                 }],
                 ..Default::default()
             };
