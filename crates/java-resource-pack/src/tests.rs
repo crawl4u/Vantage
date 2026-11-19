@@ -1040,3 +1040,60 @@ fn mob_skins_and_colour_maps_reach_their_bedrock_paths_at_any_whole_multiple_of_
     );
     assert!(!out.contains_key("textures/entity/creeper/creeper_armor.png"));
 }
+
+#[test]
+fn a_see_through_pack_gets_see_through_recipe_list_item_and_player_box_copies_for_containers() {
+    let slot = Rect {
+        x: 7,
+        y: 83,
+        w: 18,
+        h: 18,
+    };
+    let player = Rect {
+        x: 25,
+        y: 7,
+        w: 54,
+        h: 1,
+    };
+    let frame = Rect {
+        x: 0,
+        y: 0,
+        w: 176,
+        h: 1,
+    };
+    let files = pack(vec![(
+        "assets/minecraft/textures/gui/container/inventory.png",
+        marked_atlas(256, &[(slot, GREEN), (player, YELLOW), (frame, GREEN)]),
+    )]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    // The recipe list's backdrop and the player's background are clear, as the pack's panel is.
+    assert_eq!(
+        pixel(&out, "textures/ui/recipe_book_pane_bg_container.png", 0, 0),
+        ((1, 1), [0; 4])
+    );
+    assert_eq!(
+        pixel(&out, "textures/ui/black_container.png", 0, 0),
+        ((1, 1), [0; 4])
+    );
+    // The recipe item cell is the pack's slot, the player frame the pack's frame.
+    assert_eq!(
+        pixel(&out, "textures/ui/recipe_book_item_bg_container.png", 0, 0),
+        ((18, 18), GREEN)
+    );
+    assert_eq!(
+        pixel(
+            &out,
+            "textures/ui/player_preview_border_container.png",
+            0,
+            0
+        ),
+        ((54, 72), YELLOW)
+    );
+    for sidecar in [
+        "textures/ui/recipe_book_item_bg_container.json",
+        "textures/ui/player_preview_border_container.json",
+    ] {
+        assert!(out.contains_key(sidecar), "{sidecar}");
+    }
+}

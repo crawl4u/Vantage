@@ -246,11 +246,13 @@ impl<'a> Textures<'a> {
     /// `path` without an image extension, the key every source uses.
     pub fn canonical<'p>(&self, path: &'p str) -> Cow<'p, str> {
         let key = texture_key(path);
-        if key == resource_pack::SHARED_PANEL_KEY
-            && self.set.container_panel.load(Ordering::Relaxed)
-            && self.atlas.has_image(resource_pack::CONTAINER_PANEL_KEY)
+        if self.set.container_panel.load(Ordering::Relaxed)
+            && let Some((_, container)) = resource_pack::CONTAINER_SWAPS
+                .iter()
+                .find(|(shared, _)| *shared == key)
+            && self.atlas.has_image(container)
         {
-            return Cow::Borrowed(resource_pack::CONTAINER_PANEL_KEY);
+            return Cow::Borrowed(container);
         }
         Cow::Borrowed(key)
     }
@@ -549,8 +551,7 @@ mod container_panel_tests {
 
     #[test]
     fn container_screens_draw_the_pack_s_container_panel_and_nothing_else_does() {
-        let shared = resource_pack::SHARED_PANEL_KEY;
-        let container = resource_pack::CONTAINER_PANEL_KEY;
+        let (shared, container) = resource_pack::CONTAINER_SWAPS[0];
         let assets = test_carrier();
         let set = TextureSet::new(0, Arc::new(NoDownloads), ImageWork::inline());
         let files = [
@@ -577,7 +578,7 @@ mod container_panel_tests {
 
     #[test]
     fn a_pack_without_a_container_panel_draws_the_shared_one_in_containers_too() {
-        let shared = resource_pack::SHARED_PANEL_KEY;
+        let (shared, _) = resource_pack::CONTAINER_SWAPS[0];
         let assets = test_carrier();
         let set = TextureSet::new(0, Arc::new(NoDownloads), ImageWork::inline());
         let atlas = ServerAtlas::new(&[(format!("{shared}.png"), png(16, 1))], None, 1)

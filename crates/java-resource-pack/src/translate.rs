@@ -416,12 +416,19 @@ pub(crate) fn translate_within(
     {
         out.insert(path, Output::Image(image));
     }
+    let mut swap_sidecars: Vec<(String, Vec<u8>)> = Vec::new();
     if let Some(atlas) = &inventory {
         if let Some(panel) = container::panel(atlas, budget, true) {
             out.insert(container::PANEL.into(), Output::Image(panel));
         }
         if let Some(panel) = container::panel(atlas, budget, false) {
             out.insert(container::CONTAINER_PANEL.into(), Output::Image(panel));
+        }
+        for (path, image, sidecar) in container::container_swaps(atlas, budget) {
+            if let Some(sidecar) = sidecar {
+                swap_sidecars.push((path.replace(".png", ".json"), sidecar.to_vec()));
+            }
+            out.insert(path, Output::Image(image));
         }
     }
     if let Some(highlight) = selection
@@ -512,6 +519,11 @@ pub(crate) fn translate_within(
         let stem = cell.trim_end_matches(".png");
         companions.push((format!("{stem}.json"), container::CELL_SIDECAR.to_vec()));
     }
+    companions.extend(
+        swap_sidecars
+            .into_iter()
+            .filter(|(sidecar, _)| survived(&sidecar.replace(".json", ".png"))),
+    );
     files.extend(companions);
     // Checked after size filtering, so a pack whose every texture was dropped is not installed. A
     // pack that only restyles the Java menus is still a pack.

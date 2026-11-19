@@ -25,12 +25,31 @@ pub(crate) const SLOT_HIGHLIGHT: &str = "textures/ui/pocket_ui_highlight_selecte
 /// Bedrock's panel, which every container screen and dialog draws behind its controls.
 pub(crate) const PANEL: &str = "textures/ui/dialog_background_opaque.png";
 
-/// The texture keys (paths without the extension) of the shared panel and of the one only
-/// container screens draw, which keeps a see-through pack's frame see-through.
-pub const SHARED_PANEL_KEY: &str = "textures/ui/dialog_background_opaque";
-pub const CONTAINER_PANEL_KEY: &str = "textures/ui/dialog_background_container";
+/// Textures every screen shares, each with the copy only container screens draw instead. The
+/// copies keep a see-through pack's frames, cells and player box see-through where the shared
+/// ones would make every dialog hard to read. Keys have no extension.
+pub const CONTAINER_SWAPS: [(&str, &str); 5] = [
+    (
+        "textures/ui/dialog_background_opaque",
+        "textures/ui/dialog_background_container",
+    ),
+    (
+        "textures/ui/recipe_book_pane_bg",
+        "textures/ui/recipe_book_pane_bg_container",
+    ),
+    (
+        "textures/ui/recipe_book_item_bg",
+        "textures/ui/recipe_book_item_bg_container",
+    ),
+    ("textures/ui/Black", "textures/ui/black_container"),
+    (
+        "textures/ui/player_preview_border",
+        "textures/ui/player_preview_border_container",
+    ),
+];
 
-/// The container-only panel's file.
+/// The container-only panel's key and file.
+const CONTAINER_PANEL_KEY: &str = CONTAINER_SWAPS[0].1;
 pub(crate) const CONTAINER_PANEL: &str = "textures/ui/dialog_background_container.png";
 
 /// The panel's sidecar: a four-pixel frame round a flat middle, over the Java panel's own 176 by
@@ -114,6 +133,55 @@ pub(crate) fn panel(atlas: &RgbaImage, budget: &Budget, filled: bool) -> Option<
     }
     over(&panel, &ring, budget)
 }
+
+/// The container-only copies a Java container atlas yields, each with its path and, for the nine-slice
+/// ones, the sidecar describing it. They follow the container panel: where the pack's is see-through
+/// so are the recipe list's backdrop and the player's box, and the recipe list's item cell is the
+/// pack's own slot cell.
+pub(crate) fn container_swaps(
+    atlas: &RgbaImage,
+    budget: &Budget,
+) -> Vec<(String, RgbaImage, Option<&'static [u8]>)> {
+    let scale = (atlas.width() / 256).max(1);
+    let mut found = Vec::new();
+    let paths = |index: usize| format!("{}.png", CONTAINER_SWAPS[index].1);
+    if let Some(panel) = panel(atlas, budget, false) {
+        let middle = *panel.get_pixel(panel.width() / 2, panel.height() / 2);
+        if let Some(mut pane) = canvas(1, 1, budget) {
+            pane.put_pixel(0, 0, middle);
+            found.push((paths(1), pane, None));
+        }
+    }
+    if let Some(cell) = slot_cell(atlas, budget) {
+        found.push((paths(2), cell, Some(CELL_SIDECAR)));
+    }
+    // The box the player stands in: its middle decides what Black becomes, its edge is the frame.
+    let [box_x, box_y, box_width, box_height] = PLAYER_BOX.map(|value| value * scale);
+    if let Some(player) = crop(atlas, box_x, box_y, box_width, box_height, budget) {
+        let middle = *player.get_pixel(box_width / 2, box_height / 2);
+        if let Some(mut black) = canvas(1, 1, budget) {
+            black.put_pixel(
+                0,
+                0,
+                if middle.0[3] >= 250 {
+                    middle
+                } else {
+                    image::Rgba([0; 4])
+                },
+            );
+            found.push((paths(3), black, None));
+        }
+        if !is_empty(&player) {
+            found.push((paths(4), player, Some(PLAYER_BOX_SIDECAR)));
+        }
+    }
+    found
+}
+
+/// The player's box in a 256-pixel container atlas: its left, top, width and height, and the
+/// sidecar of its frame.
+const PLAYER_BOX: [u32; 4] = [25, 7, 54, 72];
+const PLAYER_BOX_SIDECAR: &[u8] = br#"{"nineslice_size":1,"base_size":[54,72]}"#;
 
 /// Rewrites the colour of every opaque pixel with `map`, keeping alpha.
 fn recolour(

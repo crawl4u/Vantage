@@ -14,7 +14,7 @@
 
 mod container;
 mod extras;
-pub use container::{CONTAINER_PANEL_KEY, SHARED_PANEL_KEY};
+pub use container::CONTAINER_SWAPS;
 mod hud;
 mod items;
 mod manifest;
