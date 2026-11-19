@@ -358,6 +358,11 @@ impl Screen for OreUiScreen {
                     }
                     focus = Some(focus_actions(&canvas));
                 }
+                MenuScreen::Profile if java::selected(view, &canvas) => {
+                    canvas.capture_focus = true;
+                    java::profile::draw(&mut canvas, view, size, portrait, artwork)?;
+                    focus = Some(focus_actions(&canvas));
+                }
                 MenuScreen::Profile => profile::draw(&mut canvas, view, size, portrait, artwork)?,
                 MenuScreen::Inbox => {
                     canvas.capture_focus = true;

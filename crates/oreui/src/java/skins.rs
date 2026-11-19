@@ -407,7 +407,11 @@ fn entry(
 }
 
 /// `icon` fitted inside `bounds` whole, centred.
-fn contain(canvas: &mut Canvas<'_>, icon: ui::IconRef, bounds: Bounds) -> Result<(), PaintError> {
+pub(super) fn contain(
+    canvas: &mut Canvas<'_>,
+    icon: ui::IconRef,
+    bounds: Bounds,
+) -> Result<(), PaintError> {
     let width = f32::from(icon.uv[2] - icon.uv[0]);
     let height = f32::from(icon.uv[3] - icon.uv[1]);
     if width <= 0.0 || height <= 0.0 {

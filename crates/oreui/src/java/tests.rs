@@ -400,7 +400,11 @@ fn the_skin_presets_list_offers_every_look_and_the_footer_buttons() {
     let area = area.unwrap();
     assert!(area.visible_skins.contains(&0));
     // The equipped character has room beside the list in a wide window.
-    assert!(area.control[2] - area.control[0] > 100.0, "{:?}", area.control);
+    assert!(
+        area.control[2] - area.control[0] > 100.0,
+        "{:?}",
+        area.control
+    );
 
     Arc::make_mut(&mut view.dressing_room).section = DressingRoomSection::Capes;
     let (hits, _) = paint(true, size, |canvas| {
@@ -446,4 +450,52 @@ fn editing_a_skin_offers_its_name_removal_and_done() {
     let has = |action: MenuAction| hits.iter().any(|(candidate, _)| *candidate == action);
     assert!(has(MenuAction::DressingRoom(Action::ConfirmDelete)));
     assert!(!has(MenuAction::EditSkinName));
+}
+
+#[test]
+fn the_profile_offers_its_tabs_the_wardrobe_and_leaving_when_loaded() {
+    let mut view = java_view();
+    view.screen = MenuScreen::Profile;
+    view.auth_state = launcher::menu::auth::AuthState::Authenticated;
+    view.feeds.profile.loaded = true;
+    view.feeds.profile.friends = Some(2);
+    let size = [1280.0, 720.0];
+    let (hits, _) = paint(true, size, |canvas| {
+        profile::draw(canvas, &view, size, None, &HashMap::new()).unwrap();
+    });
+    let has = |action: MenuAction| hits.iter().any(|(candidate, _)| *candidate == action);
+    for tab in [
+        launcher::menu::ProfileTab::Overview,
+        launcher::menu::ProfileTab::Stats,
+    ] {
+        assert!(has(MenuAction::SelectProfileTab(tab)));
+    }
+    assert!(has(MenuAction::Navigate(MenuScreen::DressingRoom)));
+    assert!(has(MenuAction::RefreshProfile));
+    assert!(has(MenuAction::AddBack));
+    // A friend count above nothing leads to the friends list.
+    assert!(has(MenuAction::Navigate(MenuScreen::Friends)));
+}
+
+#[test]
+fn a_signed_out_profile_offers_signing_in_and_an_unavailable_one_offers_a_retry() {
+    let mut view = java_view();
+    view.screen = MenuScreen::Profile;
+    let size = [1280.0, 720.0];
+    let (hits, _) = paint(true, size, |canvas| {
+        profile::draw(canvas, &view, size, None, &HashMap::new()).unwrap();
+    });
+    assert!(
+        hits.iter()
+            .any(|(action, _)| *action == MenuAction::StartSignIn)
+    );
+    view.auth_state = launcher::menu::auth::AuthState::Authenticated;
+    view.feeds.profile.unavailable = true;
+    let (hits, _) = paint(true, size, |canvas| {
+        profile::draw(canvas, &view, size, None, &HashMap::new()).unwrap();
+    });
+    assert!(
+        hits.iter()
+            .any(|(action, _)| *action == MenuAction::RefreshProfile)
+    );
 }

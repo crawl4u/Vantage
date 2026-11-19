@@ -95,6 +95,12 @@ pub(super) const STATES: &[State] = &[
         fixture: java_language,
     },
     State {
+        name: "java-profile",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_profile,
+    },
+    State {
         name: "java-skins",
         size: SIZE,
         gui_scale: GUI_SCALE,
@@ -259,6 +265,54 @@ fn java_loading() -> Fixture {
         stage: launcher::local_worlds::Stage::Connecting,
         fraction: Some(0.4),
         detail: "My World".to_owned(),
+    });
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    Fixture::Menu(Box::new(view))
+}
+
+/// The profile's overview with the totals and a few achievements.
+fn java_profile() -> Fixture {
+    let mut view = MenuView::new(true, "ExamplePlayer".into());
+    view.screen = MenuScreen::Profile;
+    view.auth_state = AuthState::Authenticated;
+    let profile = &mut view.feeds.profile;
+    profile.loaded = true;
+    profile.avatar_loaded = true;
+    profile.featured_screenshot_loaded = true;
+    profile.achievements_loaded = true;
+    profile.gamertag = "ExamplePlayer".into();
+    profile.presence = "Online".into();
+    profile.friends = Some(12);
+    profile.followers = Some(3);
+    let entry = |name: &str, about: &str, locked: bool| bridge::ProfileAchievement {
+        id: name.to_owned(),
+        name: name.to_owned(),
+        description: about.to_owned(),
+        gamerscore: Some(20),
+        locked,
+        date_unlocked: if locked {
+            String::new()
+        } else {
+            "2026-11-01".to_owned()
+        },
+        suggested_order: locked.then_some(1),
+        ..Default::default()
+    };
+    profile.achievements = Some(bridge::ProfileAchievements {
+        unlocked: 21,
+        total: 62,
+        current_gamerscore: Some(420),
+        max_gamerscore: Some(1240),
+        entries: vec![
+            entry("Taking Inventory", "Open your inventory.", false),
+            entry(
+                "Getting Wood",
+                "Punch a tree until a block of wood pops out.",
+                false,
+            ),
+            entry("Benchmarking", "Craft a workbench with four planks.", true),
+        ],
     });
     let options = Arc::make_mut(&mut view.settings_options);
     assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));

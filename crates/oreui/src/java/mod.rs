@@ -18,6 +18,7 @@ pub(crate) mod progress;
 pub(crate) use packs::folder_icon;
 pub(super) mod pause;
 pub(super) mod servers;
+pub(super) mod profile;
 mod shaders;
 pub(super) mod skins;
 mod splash;
