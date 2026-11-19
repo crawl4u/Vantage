@@ -21,8 +21,9 @@ use launcher::local_worlds::world::THUMBNAIL_SIZE;
 
 use super::screenshot::{FrameCapture, FrameCaptureSet};
 
-/// The first capture waits for the terrain around the player to load.
-const FIRST_CAPTURE: Duration = Duration::from_secs(10);
+/// The first capture waits a few seconds for the terrain around the player to load, so a world
+/// the player leaves quickly still gets an icon.
+const FIRST_CAPTURE: Duration = Duration::from_secs(4);
 /// Later captures follow the player around the world at this pace.
 const RECAPTURE: Duration = Duration::from_secs(60);
 /// The share of each frame dimension the thumbnail keeps around its centre, leaving out the
