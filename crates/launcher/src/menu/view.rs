@@ -476,6 +476,8 @@ pub struct MenuView {
     pub touch_editor_open: bool,
     pub server_tab: MenuServerTab,
     pub profile_tab: super::ProfileTab,
+    /// Whether the Java skin presets show as large cards rather than a list.
+    pub skin_gallery: bool,
     pub dialog: Option<MenuDialog>,
     pub field: Option<MenuField>,
     /// The focused field's caret.
@@ -780,6 +782,7 @@ impl MenuView {
             touch_editor_open: false,
             server_tab: MenuServerTab::Featured,
             profile_tab: super::ProfileTab::default(),
+            skin_gallery: false,
             dialog: None,
             friend_query: String::new(),
             settings_query: String::new(),

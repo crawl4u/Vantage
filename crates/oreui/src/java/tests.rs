@@ -499,3 +499,35 @@ fn a_signed_out_profile_offers_signing_in_and_an_unavailable_one_offers_a_retry(
             .any(|(action, _)| *action == MenuAction::RefreshProfile)
     );
 }
+
+#[test]
+fn the_gallery_shows_each_look_as_a_card_with_a_new_card_and_a_way_back_to_the_list() {
+    use launcher::dressing_room::Action;
+    let mut view = skins_view();
+    let size = [1280.0, 720.0];
+    let (hits, _) = paint(true, size, |canvas| {
+        skins::draw(canvas, &view, size).unwrap();
+    });
+    // The list offers the gallery.
+    assert!(
+        hits.iter()
+            .any(|(action, _)| *action == MenuAction::SetSkinGallery(true))
+    );
+
+    view.skin_gallery = true;
+    let imported = launcher::dressing_room::STARTER_SKIN_NAMES.len();
+    let mut area = None;
+    let (hits, _) = paint(true, size, |canvas| {
+        area = Some(skins::draw(canvas, &view, size).unwrap());
+    });
+    let has = |action: MenuAction| hits.iter().any(|(candidate, _)| *candidate == action);
+    for index in 0..=imported {
+        assert!(has(MenuAction::DressingRoom(Action::Select(index))));
+    }
+    assert!(has(MenuAction::DressingRoom(Action::BeginRename(imported))));
+    // The last card adds a skin, and the footer offers the list again.
+    assert!(has(MenuAction::DressingRoom(Action::Import)));
+    assert!(has(MenuAction::SetSkinGallery(false)));
+    // Every card's picture is asked for.
+    assert_eq!(area.unwrap().visible_skins.len(), imported + 1);
+}

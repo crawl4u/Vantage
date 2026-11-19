@@ -204,7 +204,18 @@ pub(crate) fn draw(
         }
     };
     let busy = room.busy;
-    let first = [Btn::new(import, import_action.filter(|_| !busy))];
+    let gallery = view.skin_gallery;
+    let first = [
+        Btn::new(import, import_action.filter(|_| !busy)),
+        Btn::new(
+            if gallery {
+                "View: Gallery"
+            } else {
+                "View: List"
+            },
+            Some(MenuAction::SetSkinGallery(!gallery)),
+        ),
+    ];
     let second = [Btn::new("Done", Some(MenuAction::AddBack))];
     let spec = Spec {
         title: "Skin Presets",
@@ -223,6 +234,13 @@ pub(crate) fn draw(
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
         tabs(canvas, view, frame.centre, frame.unit)?;
+        if gallery {
+            // Cards carry the looks' pictures themselves, so no character stands beside them.
+            let new = import_action
+                .filter(|_| !busy && room.section != DressingRoomSection::Cosmetics)
+                .map(|action| (import, action));
+            return cards(canvas, view, frame, &rows, new, &mut preview);
+        }
         entries(canvas, view, frame, &rows, &mut preview)?;
         let unit = frame.unit;
         let left = frame.centre + (ENTRY_WIDTH / 2.0).floor() + STAGE_GAP;
@@ -310,6 +328,214 @@ fn entries(
             Ok(())
         },
     )
+}
+
+/// The cards' sizes in Java pixels: the card, the gap between cards, and the picture's height and
+/// the height of the button at the card's foot.
+const CARD_WIDTH: f32 = 76.0;
+const CARD_HEIGHT: f32 = 112.0;
+const CARD_GAP: f32 = 6.0;
+const CARD_PICTURE: f32 = 62.0;
+const CARD_BUTTON: f32 = 16.0;
+const CARD_EDGE: [u8; 4] = [64, 64, 64, 255];
+const CARD_LIT: [u8; 4] = [24, 24, 24, 255];
+
+/// The looks as large cards, side by side in as many columns as fit, with a card at the end that
+/// adds a new one.
+fn cards(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    frame: &Frame,
+    rows: &[Row],
+    new: Option<(&str, MenuAction)>,
+    preview: &mut PreviewArea,
+) -> Result<(), PaintError> {
+    let unit = frame.unit;
+    let width = (frame.viewport[2] - frame.viewport[0]) / unit - 2.0 * (PADDING + 8.0);
+    let columns = (((width + CARD_GAP) / (CARD_WIDTH + CARD_GAP)).floor() as usize).max(1);
+    let total = rows.len() + usize::from(new.is_some());
+    let lines = total.div_ceil(columns).max(1);
+    let used = columns as f32 * CARD_WIDTH + (columns as f32 - 1.0) * CARD_GAP;
+    let left = (frame.centre - used / 2.0).floor();
+    let content = (PADDING * 2.0 + lines as f32 * (CARD_HEIGHT + CARD_GAP)) * unit;
+    let key = format!("java_skin_cards_{:?}", view.dressing_room.section);
+    frame::scrolled(
+        canvas,
+        &key,
+        frame.viewport,
+        content,
+        (frame.centre + used / 2.0 + 4.0) * unit,
+        unit,
+        |canvas, offset| {
+            let top = frame.viewport[1] - offset + PADDING * unit;
+            for place in 0..total {
+                let x = left + (place % columns) as f32 * (CARD_WIDTH + CARD_GAP);
+                let y = (place / columns) as f32 * (CARD_HEIGHT + CARD_GAP);
+                let bounds = [
+                    x * unit,
+                    top + y * unit,
+                    (x + CARD_WIDTH) * unit,
+                    top + (y + CARD_HEIGHT) * unit,
+                ];
+                if bounds[3] < frame.viewport[1] || bounds[1] > frame.viewport[3] {
+                    continue;
+                }
+                match rows.get(place) {
+                    Some(row) => {
+                        match row.kind {
+                            Kind::Skin(index) => preview.visible_skins.push(index),
+                            Kind::Cape(Some(index)) => preview.visible_capes.push(index),
+                            Kind::Cape(None) => {}
+                            Kind::Cosmetic(index) => preview.visible_cosmetics.push(index),
+                        }
+                        card(canvas, view, row, bounds, unit)?;
+                    }
+                    None => {
+                        if let Some((label, action)) = new {
+                            new_card(canvas, view, label, action, bounds, unit)?;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        },
+    )
+}
+
+/// A card's frame: an edge with the dark face inside it, lit while `lit`.
+fn card_face(
+    canvas: &mut Canvas<'_>,
+    bounds: Bounds,
+    edge: [u8; 4],
+    lit: bool,
+    unit: f32,
+) -> Result<(), PaintError> {
+    canvas.fill(bounds, edge)?;
+    canvas.fill(
+        [
+            bounds[0] + unit,
+            bounds[1] + unit,
+            bounds[2] - unit,
+            bounds[3] - unit,
+        ],
+        if lit { CARD_LIT } else { BLACK },
+    )
+}
+
+/// `text` centred across `bounds`, `y` Java pixels down.
+fn centred(
+    canvas: &mut Canvas<'_>,
+    bounds: Bounds,
+    text: &str,
+    y: f32,
+    colour: [u8; 4],
+    unit: f32,
+) -> Result<(), PaintError> {
+    let room = bounds[2] - bounds[0] - 8.0 * unit;
+    let width = super::text_width(text).map_or(room, |width| (width * unit).min(room));
+    put(
+        canvas,
+        text,
+        [(bounds[0] + bounds[2] - width) / 2.0, bounds[1] + y * unit],
+        unit,
+        colour,
+        room,
+    )
+}
+
+/// One look's card: its name over a large picture, what it is, and Edit when it can be edited.
+/// Boxed in grey while equipped, lit under the pointer.
+fn card(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    row: &Row,
+    bounds: Bounds,
+    unit: f32,
+) -> Result<(), PaintError> {
+    let state = canvas.interaction(view, row.select);
+    let edge = if row.equipped { GREY } else { CARD_EDGE };
+    card_face(canvas, bounds, edge, state.hovered || state.focused, unit)?;
+    centred(canvas, bounds, &row.title, 4.0, TEXT, unit)?;
+    let picture = [
+        bounds[0] + 4.0 * unit,
+        bounds[1] + 15.0 * unit,
+        bounds[2] - 4.0 * unit,
+        bounds[1] + (15.0 + CARD_PICTURE) * unit,
+    ];
+    canvas.fill(picture, ICON_FILL)?;
+    if let Some(art) = row
+        .picture
+        .as_ref()
+        .and_then(|key| canvas.artwork?.get(key))
+        .copied()
+    {
+        contain(canvas, art, picture)?;
+    }
+    let (status, colour) = if row.equipped {
+        ("Equipped", GREEN)
+    } else {
+        (row.about.as_str(), GREY)
+    };
+    centred(
+        canvas,
+        bounds,
+        status,
+        15.0 + CARD_PICTURE + 4.0,
+        colour,
+        unit,
+    )?;
+    if let Some(select) = row.select {
+        canvas.hit(select, bounds)?;
+    }
+    if let Some(edit) = row.edit {
+        let top = bounds[3] - (CARD_BUTTON + 4.0) * unit;
+        button::draw(
+            canvas,
+            view,
+            [
+                bounds[0] + 4.0 * unit,
+                top,
+                bounds[2] - 4.0 * unit,
+                top + CARD_BUTTON * unit,
+            ],
+            "Edit",
+            Some(edit),
+            unit,
+        )?;
+    }
+    Ok(())
+}
+
+/// The card at the end that adds a look: a plus over its label.
+fn new_card(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    label: &str,
+    action: MenuAction,
+    bounds: Bounds,
+    unit: f32,
+) -> Result<(), PaintError> {
+    let state = canvas.interaction(view, Some(action));
+    let lit = state.hovered || state.focused;
+    card_face(canvas, bounds, CARD_EDGE, lit, unit)?;
+    let colour = if lit { TEXT } else { GREY };
+    let middle = [
+        (bounds[0] + bounds[2]) / 2.0,
+        (bounds[1] + bounds[3]) / 2.0 - 6.0 * unit,
+    ];
+    for bar in [[8.0, 1.0], [1.0, 8.0]] {
+        canvas.fill(
+            [
+                middle[0] - bar[0] * unit,
+                middle[1] - bar[1] * unit,
+                middle[0] + bar[0] * unit,
+                middle[1] + bar[1] * unit,
+            ],
+            colour,
+        )?;
+    }
+    centred(canvas, bounds, label, CARD_HEIGHT - 22.0, colour, unit)?;
+    canvas.hit(action, bounds)
 }
 
 /// One look's entry: boxed while equipped, lit under the pointer.

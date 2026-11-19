@@ -108,6 +108,7 @@ impl MenuRuntime {
             touch_editor_open: false,
             server_tab: initial.server_tab,
             profile_tab: initial.profile_tab,
+            skin_gallery: initial.skin_gallery,
             dialog: initial.dialog,
             field: initial.field,
             caret_revision: 0,

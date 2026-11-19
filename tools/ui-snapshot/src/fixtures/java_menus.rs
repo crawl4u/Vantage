@@ -101,6 +101,12 @@ pub(super) const STATES: &[State] = &[
         fixture: java_profile,
     },
     State {
+        name: "java-skins-gallery",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_skins_gallery,
+    },
+    State {
         name: "java-skins",
         size: SIZE,
         gui_scale: GUI_SCALE,
@@ -317,6 +323,15 @@ fn java_profile() -> Fixture {
     let options = Arc::make_mut(&mut view.settings_options);
     assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
     Fixture::Menu(Box::new(view))
+}
+
+/// The Skin Presets as large cards.
+fn java_skins_gallery() -> Fixture {
+    let Fixture::Menu(mut view) = java_skins() else {
+        unreachable!("the skins fixture is a menu");
+    };
+    view.skin_gallery = true;
+    Fixture::Menu(view)
 }
 
 /// The Skin Presets list with the starter skins and one of the player's own.

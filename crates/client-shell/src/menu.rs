@@ -108,6 +108,7 @@ pub struct MenuRuntime {
     touch_editor_open: bool,
     server_tab: MenuServerTab,
     profile_tab: launcher::menu::ProfileTab,
+    skin_gallery: bool,
     dialog: Option<MenuDialog>,
     field: Option<MenuField>,
     /// Bumped by every field edit and caret move, restarting the caret blink.
@@ -545,6 +546,7 @@ impl MenuRuntime {
         match action {
             MenuAction::MinecraftImport(action) => self.activate_minecraft_import(action),
             MenuAction::SelectProfileTab(tab) => self.profile_tab = tab,
+            MenuAction::SetSkinGallery(gallery) => self.skin_gallery = gallery,
             MenuAction::RefreshProfile => {
                 self.feeds.profile.loaded = false;
                 self.feeds.profile.unavailable = false;

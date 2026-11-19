@@ -38,6 +38,7 @@ impl MenuRuntime {
             touch_editor_open: self.touch_editor_active(),
             server_tab: self.server_tab,
             profile_tab: self.profile_tab,
+            skin_gallery: self.skin_gallery,
             dialog: self.dialog,
             field: self.field,
             friend_query: self.friend_query.as_str().to_owned(),

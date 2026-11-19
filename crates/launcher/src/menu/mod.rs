@@ -151,6 +151,8 @@ pub enum MenuAction {
     SelectServerTab(MenuServerTab),
     ServerList(server_list::ServerListAction),
     SelectProfileTab(ProfileTab),
+    /// Shows the Java skin presets as large cards (true) or as a list (false).
+    SetSkinGallery(bool),
     RefreshProfile,
     RefreshCatalog,
     StartSignIn,
