@@ -1181,3 +1181,37 @@ fn effect_backgrounds_replace_the_hud_and_list_pictures() {
         assert!(out.contains_key(format!("textures/ui/{list}.json").as_str()));
     }
 }
+
+#[test]
+fn particle_sprites_become_an_atlas_overlay_unless_the_pack_has_its_own_atlas() {
+    let sprite = "assets/minecraft/textures/particle/flame.png";
+    let files = pack(vec![(sprite, solid(8, 8, RED))]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(&out, "textures/particle/particles.png", 0, 3 * 8),
+        ((128, 128), RED)
+    );
+    assert_eq!(
+        pixel(&out, "textures/particle/particles.png", 0, 0).1,
+        [0; 4]
+    );
+    let marker: serde_json::Value =
+        serde_json::from_slice(out["textures/particle/particles.overlay.json"]).unwrap();
+    assert_eq!(marker, serde_json::json!({"cells": [[0, 3]]}));
+
+    let own = pack(vec![
+        (sprite, solid(8, 8, RED)),
+        (
+            "assets/minecraft/textures/particle/particles.png",
+            solid(128, 128, GREEN),
+        ),
+    ]);
+    let translation = run(&own, "Pack").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(&out, "textures/particle/particles.png", 0, 3 * 8).1,
+        GREEN
+    );
+    assert!(!out.contains_key("textures/particle/particles.overlay.json"));
+}

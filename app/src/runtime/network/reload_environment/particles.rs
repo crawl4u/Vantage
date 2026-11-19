@@ -68,12 +68,27 @@ pub(super) fn prepare_particles(
         effect_bytes,
         texture_bytes,
         |path| {
-            pack_runtime::pack_textures::decode_pack_texture_with_policy(
+            let mut texture = pack_runtime::pack_textures::decode_pack_texture_with_policy(
                 view,
                 path,
                 assets::texture::policy::device_policy(),
                 true,
-            )
+            )?;
+            // A translated Java pack supplies only some atlas cells; the rest stay the base's.
+            if path == resource_pack::particle_atlas::ATLAS
+                && let Some(marker) = view.read(resource_pack::particle_atlas::MARKER)
+                && let Some(base) = base.and_then(|base| base.texture(path))
+                && let Some((width, height, rgba8)) = resource_pack::particle_atlas::overlay(
+                    (base.width, base.height, &base.rgba8),
+                    (texture.width, texture.height, &texture.rgba8),
+                    &marker,
+                )
+            {
+                texture.width = width;
+                texture.height = height;
+                texture.rgba8 = rgba8.into();
+            }
+            Some(texture)
         },
     );
     let textures: Vec<_> = textures.into_values().collect();
@@ -280,6 +295,50 @@ mod tests {
         }
         let restored = prepare_particles(&super::super::tests::view(&[]), Some(&base));
         assert_eq!(restored.atlas().placement(path).unwrap().width, 16);
+    }
+
+    #[test]
+    fn a_pack_atlas_with_an_overlay_marker_replaces_only_its_cells() {
+        let path = "textures/particle/particles";
+        let effect: Arc<[u8]> = Arc::from(br#"{"particle_effect":{"description":{"identifier":"test:particle","basic_render_parameters":{"texture":"textures/particle/particles"}}}}"#.as_slice());
+        let base = RuntimeParticleAssets::decode(
+            &assets::encode_particle_catalog(
+                [1; 32],
+                &[ParticleTexture {
+                    path: path.into(),
+                    width: 128,
+                    height: 128,
+                    rgba8: vec![7; 128 * 128 * 4].into(),
+                }],
+                &[ParticleEffectFile {
+                    identifier: "test:particle".into(),
+                    bytes: effect,
+                }],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let image = image::RgbaImage::from_pixel(256, 256, image::Rgba([91, 73, 57, 255]));
+        let mut png = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut png, image::ImageFormat::Png).unwrap();
+        let view = super::super::tests::view(&[
+            ("textures/particle/particles.png", png.get_ref()),
+            (
+                "textures/particle/particles.overlay.json",
+                br#"{"cells":[[1,1]]}"#,
+            ),
+        ]);
+        let system = prepare_particles(&view, Some(&base));
+        let placement = system.atlas().placement(path).unwrap();
+        assert_eq!([placement.width, placement.height], [256, 256]);
+        let at = |x: u32, y: u32| {
+            let offset =
+                (((placement.y + y) * system.atlas().side() + placement.x + x) * 4) as usize;
+            system.atlas().pixels()[offset..offset + 4].to_vec()
+        };
+        assert_eq!(at(16, 16), [91, 73, 57, 255]);
+        assert_eq!(at(0, 0), [7; 4]);
+        assert_eq!(at(32, 16), [7; 4]);
     }
 
     #[test]

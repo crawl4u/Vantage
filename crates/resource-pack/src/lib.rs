@@ -30,7 +30,7 @@ mod view;
 pub use added::{AddedPack, compose_added_packs};
 pub use dependencies::{PackDependencies, PackDependency};
 pub use fingerprint::StackFingerprint;
-pub use java_resource_pack::CONTAINER_SWAPS;
+pub use java_resource_pack::{CONTAINER_SWAPS, particle_atlas};
 pub use import::{
     CachedPackMetadata, GlobalSelectionEntry, PACK_IMPORT_EXTENSIONS, ParsedGlobalSelection,
     PreparedImport, cached_pack_metadata, is_pack_import_path, merge_global_selection,

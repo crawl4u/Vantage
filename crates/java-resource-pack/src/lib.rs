@@ -21,6 +21,7 @@ mod manifest;
 pub mod menu_files;
 mod meta;
 mod names;
+pub mod particle_atlas;
 mod sky;
 mod texture;
 mod tga;

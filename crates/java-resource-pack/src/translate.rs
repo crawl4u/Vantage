@@ -4,7 +4,7 @@ use crate::menu_files;
 use crate::{
     Layout, TranslateError, Translation, container, extras, hud, items, manifest,
     meta::{TEXTURES, detect_layout, read_meta},
-    names, sky,
+    names, particle_atlas, sky,
     texture::{Budget, crop, decode, dimensions, duplicate, encode, strip_frame},
     tga::{self, TgaKind},
 };
@@ -298,6 +298,18 @@ pub(crate) fn translate_within(
         })
         .flat_map(|(bedrock, bytes)| bedrock.iter().map(move |path| (*path, bytes.clone())))
         .collect();
+    let particle_sprites: Vec<(String, Vec<u8>)> = if particles.is_none() {
+        particle_atlas::sprite_names()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .filter_map(|name| {
+                let bytes = optional(&format!("{TEXTURES}particle/{name}.png"))?;
+                Some((name.to_owned(), bytes))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let layout = detect_layout(paths.iter().map(String::as_str), meta.format);
     let (block_folder, item_folder) = layout.folders();
     let stem_key = |path: &str| stem(path).to_owned();
@@ -362,6 +374,19 @@ pub(crate) fn translate_within(
     let widgets = widgets.and_then(|bytes| decode(&bytes, budget));
 
     let mut out: BTreeMap<String, Output> = BTreeMap::new();
+    // Java 1.20+ keeps a file per particle frame; the cells they fill are laid over the client's
+    // own atlas. A pack with its own atlas replaces it whole, as Bedrock does.
+    let particle_sprites: HashMap<String, RgbaImage> = particle_sprites
+        .into_iter()
+        .filter_map(|(name, bytes)| Some((name, decode(&bytes, budget)?)))
+        .collect();
+    if let Some((atlas, marker)) = particle_atlas::compose(&particle_sprites, budget) {
+        out.insert(
+            format!("{}.png", particle_atlas::ATLAS),
+            Output::Image(atlas),
+        );
+        out.insert(particle_atlas::MARKER.into(), Output::Raw(marker));
+    }
     if let Some(bytes) = pack_icon.filter(|bytes| dimensions(bytes).is_some()) {
         out.insert("pack_icon.png".into(), Output::Raw(bytes));
     }
