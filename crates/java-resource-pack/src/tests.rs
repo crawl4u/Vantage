@@ -1005,3 +1005,38 @@ fn the_container_panel_keeps_a_see_through_pack_see_through_beside_the_filled_on
     );
     assert!(out.contains_key("textures/ui/dialog_background_container.json"));
 }
+
+#[test]
+fn mob_skins_and_colour_maps_reach_their_bedrock_paths_at_any_whole_multiple_of_their_size() {
+    let textures = "assets/minecraft/textures/";
+    let files = pack(vec![
+        (
+            "pack.mcmeta",
+            br#"{"pack":{"pack_format":34,"description":"x"}}"#.to_vec(),
+        ),
+        (
+            &format!("{textures}entity/creeper/creeper.png"),
+            solid(256, 128, GREEN),
+        ),
+        (
+            &format!("{textures}colormap/grass.png"),
+            solid(256, 256, YELLOW),
+        ),
+        // Not the vanilla proportions: left out rather than mapped wrongly.
+        (
+            &format!("{textures}entity/creeper/creeper_armor.png"),
+            solid(100, 32, GREEN),
+        ),
+    ]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(&out, "textures/entity/creeper/creeper.png", 0, 0),
+        ((256, 128), GREEN)
+    );
+    assert_eq!(
+        pixel(&out, "textures/colormap/grass.png", 0, 0),
+        ((256, 256), YELLOW)
+    );
+    assert!(!out.contains_key("textures/entity/creeper/creeper_armor.png"));
+}

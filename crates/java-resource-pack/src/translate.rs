@@ -2,7 +2,7 @@
 
 use crate::menu_files;
 use crate::{
-    Layout, TranslateError, Translation, container, hud, items, manifest,
+    Layout, TranslateError, Translation, container, extras, hud, items, manifest,
     meta::{TEXTURES, detect_layout, read_meta},
     names, sky,
     texture::{Budget, crop, decode, dimensions, duplicate, encode, strip_frame},
@@ -312,6 +312,23 @@ pub(crate) fn translate_within(
         path[sprite_folder.len()..path.len() - ".png".len()].to_owned()
     }));
     let sky_image = read_sky(&paths, &mut source, budget);
+    // Mobs, paintings, maps and the rest the table covers; only flattened packs name them as it does.
+    let extra_files = if layout == Layout::Flattened {
+        let listed = paths
+            .iter()
+            .filter_map(|path| {
+                let relative = path.strip_prefix(TEXTURES)?.strip_suffix(".png")?;
+                (extras::FOLDERS
+                    .iter()
+                    .any(|folder| relative.starts_with(folder))
+                    && extras::is_listed(relative))
+                .then(|| (relative.to_owned(), path.as_str()))
+            })
+            .collect::<Vec<_>>();
+        source.load_all(listed)
+    } else {
+        Vec::new()
+    };
 
     let masks = tint_mask_outputs(layout, &blocks, budget);
     let sources = blocks.len() + item_files.len();
@@ -350,6 +367,14 @@ pub(crate) fn translate_within(
         out.insert("textures/particle/particles.png".into(), Output::Raw(bytes));
     }
     out.extend(block_outputs);
+    for (java, bytes) in extra_files {
+        let Some((width, height)) = dimensions(&bytes) else {
+            continue;
+        };
+        if let Some(bedrock) = extras::bedrock_path(&java, width, height) {
+            out.insert(format!("textures/{bedrock}.png"), Output::Raw(bytes));
+        }
+    }
     let mut composed = HashMap::new();
     for (output, image) in item_outputs {
         out.extend(output);

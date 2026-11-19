@@ -13,6 +13,7 @@
 //! derived by matching Java Edition textures against Mojang/bedrock-samples.
 
 mod container;
+mod extras;
 pub use container::{CONTAINER_PANEL_KEY, SHARED_PANEL_KEY};
 mod hud;
 mod items;
