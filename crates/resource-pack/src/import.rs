@@ -5,7 +5,7 @@ use pack_json::parse_jsonc;
 
 use crate::{
     AdmissionError, MAX_ARCHIVE_BYTES, MAX_DECLARED_BYTES_PER_PACK, MAX_FILE_BYTES,
-    MAX_MANIFEST_BYTES, MAX_PACKS,
+    MAX_JAVA_ARCHIVE_BYTES, MAX_MANIFEST_BYTES, MAX_PACKS,
     library::{ImportReport, InstalledPack, LibraryError},
     manifest::{Version, manifest_identity, read_manifest},
     parser::{
@@ -63,7 +63,7 @@ pub fn prepare_import(path: &Path) -> Result<PreparedImport, LibraryError> {
         directory::archive(path)?
     } else if metadata.is_file() && !metadata.file_type().is_symlink() && is_pack_import_path(path)
     {
-        crate::library::read_bounded(path, MAX_ARCHIVE_BYTES)?
+        crate::library::read_bounded(path, MAX_JAVA_ARCHIVE_BYTES)?
     } else {
         return Err(LibraryError::UnsupportedExtension);
     };
@@ -117,7 +117,15 @@ fn read_bundle(
     report: &mut ImportReport,
     imported: &mut ImportedArchives,
 ) -> Result<(), LibraryError> {
-    if bytes.len() > MAX_ARCHIVE_BYTES {
+    // The outermost archive may be a large Java pack; whatever it turns out to be, a Bedrock pack
+    // or a nested archive is held to the Bedrock limit below.
+    let length = bytes.len();
+    let limit = if depth == 0 {
+        MAX_JAVA_ARCHIVE_BYTES
+    } else {
+        MAX_ARCHIVE_BYTES
+    };
+    if length > limit {
         return Err(AdmissionError::ArchiveTooLarge.into());
     }
     prepare_zip_bytes(&mut bytes)?;
@@ -137,6 +145,9 @@ fn read_bundle(
         .collect::<HashSet<_>>();
     // A Java pack is one more candidate: its outcome never hides nested sibling archives.
     let java_root = roots.is_empty().then(|| java::root(&paths)).flatten();
+    if length > MAX_ARCHIVE_BYTES && java_root.is_none() {
+        return Err(AdmissionError::ArchiveTooLarge.into());
+    }
     if let Some(root) = &java_root {
         let result = java::translate(&mut archive, &paths, root, source)
             .and_then(|translated| read_bundle(translated, source, depth + 1, report, imported));

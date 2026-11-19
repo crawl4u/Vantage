@@ -30,15 +30,15 @@ mod view;
 pub use added::{AddedPack, compose_added_packs};
 pub use dependencies::{PackDependencies, PackDependency};
 pub use fingerprint::StackFingerprint;
-pub use java_resource_pack::{CONTAINER_SWAPS, particle_atlas};
 pub use import::{
     CachedPackMetadata, GlobalSelectionEntry, PACK_IMPORT_EXTENSIONS, ParsedGlobalSelection,
     PreparedImport, cached_pack_metadata, is_pack_import_path, merge_global_selection,
     parse_global_selection, prepare_import,
 };
+pub use java_resource_pack::{CONTAINER_SWAPS, particle_atlas};
 pub use library::{
-    ActivePack, GlobalPackLibrary, ImportReport, InstalledPack, LibraryError, MAX_FOLDER_NAME_CHARS,
-    PackSort, Subpack, folder_name, folder_parent,
+    ActivePack, GlobalPackLibrary, ImportReport, InstalledPack, LibraryError,
+    MAX_FOLDER_NAME_CHARS, PackSort, Subpack, folder_name, folder_parent,
 };
 pub use merge::{MAX_MERGED_ENTRIES, MAX_WINNING_BYTES, MAX_WINNING_FILES};
 pub use pack::{PackRejection, ValidatedPack, ValidatedPackStack};
@@ -52,6 +52,10 @@ pub const MAX_PACK_TEXTURE_BYTES: u64 = 4 * 1024 * 1024;
 pub const MAX_PACKS: usize = 32;
 /// Maximum compressed archive bytes accepted by local import readers.
 pub const MAX_ARCHIVE_BYTES: usize = 64 * 1024 * 1024;
+/// The most a Java Edition pack archive may hold when imported. It is only the source of a
+/// translation, whose Bedrock output is held to [`MAX_ARCHIVE_BYTES`]; HD packs commonly exceed
+/// the Bedrock limit while translating to far less.
+pub const MAX_JAVA_ARCHIVE_BYTES: usize = 512 * 1024 * 1024;
 /// Maximum compressed archive bytes accepted in one local import.
 pub const MAX_STACK_ARCHIVE_BYTES: usize = 128 * 1024 * 1024;
 /// Maximum encoded pack thumbnail bytes retained for optional presentation.

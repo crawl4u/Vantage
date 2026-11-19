@@ -324,8 +324,10 @@ fn clean_folder_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
         .filter(|character| {
-            !matches!(*character, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*')
-                && !character.is_control()
+            !matches!(
+                *character,
+                '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*'
+            ) && !character.is_control()
         })
         .collect::<String>()
         .trim()
@@ -576,15 +578,18 @@ impl GlobalPackLibrary {
         if lost.is_empty() {
             // Folders that vanished from disk, or packs found in another, are changes too.
             if self.catalog.folders.len() != folders {
-                self.catalog.placement.retain(|_, folder| {
-                    self.catalog.folders.contains(folder)
-                });
+                self.catalog
+                    .placement
+                    .retain(|_, folder| self.catalog.folders.contains(folder));
             }
             return lost;
         }
-        let installed: Vec<uuid::Uuid> = self.catalog.available.iter().map(|pack| pack.id).collect();
+        let installed: Vec<uuid::Uuid> =
+            self.catalog.available.iter().map(|pack| pack.id).collect();
         self.active.retain(|active| installed.contains(&active.id));
-        self.catalog.placement.retain(|id, _| installed.contains(id));
+        self.catalog
+            .placement
+            .retain(|id, _| installed.contains(id));
         lost
     }
 

@@ -285,7 +285,7 @@ impl GlobalPackLibrary {
         if !crate::is_pack_import_path(path) {
             return Err(LibraryError::UnsupportedExtension);
         }
-        let bytes = read_bounded(path, MAX_ARCHIVE_BYTES)?;
+        let bytes = read_bounded(path, crate::MAX_JAVA_ARCHIVE_BYTES)?;
         let (report, archives) = crate::import::read_import(bytes, path)?;
         self.import_prepared(crate::PreparedImport { report, archives })
     }
@@ -321,7 +321,10 @@ impl GlobalPackLibrary {
         }
         let catalog_bytes = encode_catalog(&candidate)?;
         for (metadata, bytes) in accepted {
-            atomic_write(&storage::archive_in(&self.root, &candidate, &metadata), &bytes)?;
+            atomic_write(
+                &storage::archive_in(&self.root, &candidate, &metadata),
+                &bytes,
+            )?;
             report.imported.push(metadata);
         }
         atomic_write(&self.root.join(CATALOG_FILE), &catalog_bytes)?;

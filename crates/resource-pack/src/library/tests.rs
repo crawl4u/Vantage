@@ -1238,3 +1238,50 @@ fn a_library_that_kept_every_archive_in_one_folder_moves_them_into_their_folders
     assert_eq!(reopened.folder_of(Uuid::from_u128(41)), "Old");
     assert_eq!(archive_folders(&root), ["Old"]);
 }
+
+/// Incompressible filler, so an archive really is as large as its entries.
+fn filler(length: usize, seed: u64) -> Vec<u8> {
+    let mut state = seed | 1;
+    (0..length)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state >> 24) as u8
+        })
+        .collect()
+}
+
+#[test]
+fn a_java_pack_may_exceed_the_bedrock_archive_limit_but_a_bedrock_pack_may_not() {
+    let half = MAX_ARCHIVE_BYTES / 2 + 1024 * 1024;
+    let (first, second) = (filler(half, 1), filler(half, 2));
+    let manifest = br#"{"format_version":2,"header":{"name":"Big","uuid":"00000000-0000-0000-0000-000000000b16","version":[1,0,0]},"modules":[{"type":"resources","uuid":"00000000-0000-0000-0000-000000000b17","version":[1,0,0]}]}"#;
+    let planks = png([0, 255, 0, 255]);
+    let java = zip(&[
+        ("pack.mcmeta", br#"{"pack":{"pack_format":15}}"#),
+        ("assets/minecraft/textures/block/oak_planks.png", &planks),
+        ("assets/minecraft/sounds/a.ogg", &first),
+        ("assets/minecraft/sounds/b.ogg", &second),
+    ]);
+    assert!(java.len() > MAX_ARCHIVE_BYTES, "{}", java.len());
+    let fixture = Fixture::new();
+    let mut library = fixture.library();
+    let report = library
+        .import(&fixture.write("big-java.zip", &java))
+        .unwrap();
+    assert_eq!(report.imported.len(), 1, "{:?}", report.rejected);
+
+    let bedrock = zip(&[
+        ("manifest.json", manifest),
+        ("textures/blocks/stone.png", &planks),
+        ("sounds/a.ogg", &first),
+        ("sounds/b.ogg", &second),
+    ]);
+    assert!(bedrock.len() > MAX_ARCHIVE_BYTES);
+    assert!(
+        library
+            .import(&fixture.write("big-bedrock.zip", &bedrock))
+            .is_err()
+    );
+}
