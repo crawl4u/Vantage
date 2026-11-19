@@ -82,6 +82,10 @@ pub struct Transitions {
     pub(super) mods: resources::Mods,
     pub(super) server_list: super::play_servers::drag::DragState,
     pub(super) pack_drag: super::java::pack_drag::PackDrag,
+    /// A control drew text that scrolls this frame, and whether one did in the last, so the menu
+    /// keeps repainting while it moves.
+    pub(super) marquee_drawn: bool,
+    marquee: bool,
 }
 
 struct Switch {
@@ -140,6 +144,7 @@ impl Transitions {
                 .is_some_and(|(_, start)| seconds - start < ICON_HIGHLIGHT_DURATION)
             || self.server_list.captured()
             || self.pack_drag.captured()
+            || self.marquee
     }
 
     pub fn configure_motion(&mut self, enabled: bool) {
@@ -391,6 +396,7 @@ impl Transitions {
         self.mods.end_frame();
         self.server_list.end_frame();
         self.pack_drag.end_frame();
+        self.marquee = std::mem::take(&mut self.marquee_drawn);
         if !std::mem::take(&mut self.play_drawn) {
             self.play_icon = None;
         }

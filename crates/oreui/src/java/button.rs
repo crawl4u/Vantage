@@ -46,6 +46,55 @@ pub(super) fn fitted(label: &str, max: f32) -> String {
     "...".to_owned()
 }
 
+/// How far, in Java pixels, a label wider than its button by `overflow` has scrolled `seconds`
+/// into the animation: Java's own curve, which eases from the start of the text to its end and
+/// back, spending a moment at each end.
+fn scroll_offset(overflow: f32, seconds: f64) -> f32 {
+    let period = f64::from(overflow * 0.5).max(3.0);
+    let wave = (std::f64::consts::FRAC_PI_2 * (std::f64::consts::TAU * seconds / period).cos())
+        .sin()
+        / 2.0
+        + 0.5;
+    (wave * f64::from(overflow)) as f32
+}
+
+/// Draws a label too wide for its button as Java does: the text starts at the left of the button
+/// and slides to the right to show the rest, then back, instead of being cut short. Returns false,
+/// drawing nothing, for a label that fits or that Java's font cannot draw.
+fn scrolling_label(
+    canvas: &mut Canvas<'_>,
+    label: &str,
+    bounds: Bounds,
+    unit: f32,
+    color: [u8; 4],
+) -> Result<bool, PaintError> {
+    // Java keeps two pixels clear at each side of a button's text.
+    let room = (bounds[2] - bounds[0]) / unit - 4.0;
+    let Some(width) = crate::java::text_width(label).filter(|width| *width > room) else {
+        return Ok(false);
+    };
+    let offset = scroll_offset(width - room, canvas.seconds).round();
+    let top = (bounds[1] + ((bounds[3] - bounds[1]) - 8.0 * unit) * 0.5).round();
+    let clip = canvas.begin_clip([
+        bounds[0] + 2.0 * unit,
+        bounds[1],
+        bounds[2] - 2.0 * unit,
+        bounds[3],
+    ])?;
+    let drawn = crate::java::draw_text(
+        canvas,
+        label,
+        [bounds[0] + (2.0 - offset) * unit, top],
+        unit,
+        color,
+    )?;
+    canvas.end_clip(clip);
+    if drawn && let Some(transitions) = canvas.transitions.as_deref_mut() {
+        transitions.marquee_drawn = true;
+    }
+    Ok(drawn)
+}
+
 /// Draws `label` centred in `bounds` in Java's font, or in the client's own font when Java's
 /// cannot draw all of it (a character its sheets lack, or no Java font installed).
 pub(super) fn label_centred(
@@ -55,6 +104,9 @@ pub(super) fn label_centred(
     unit: f32,
     color: [u8; 4],
 ) -> Result<(), PaintError> {
+    if scrolling_label(canvas, label, bounds, unit, color)? {
+        return Ok(());
+    }
     let label = fitted(label, (bounds[2] - bounds[0]) / unit - 4.0);
     let label = label.as_str();
     if super::font::centred(canvas, label, bounds, unit, color, true)? {
@@ -147,4 +199,24 @@ pub(super) fn icon(
         canvas.hit(action, bounds)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod scroll_tests {
+    use super::*;
+
+    #[test]
+    fn a_long_label_sweeps_between_its_start_and_its_end_and_never_past_them() {
+        let overflow = 20.0;
+        let period = 10.0;
+        assert!((scroll_offset(overflow, 0.0) - overflow).abs() < 0.01);
+        assert!(scroll_offset(overflow, period / 2.0).abs() < 0.01);
+        for step in 0..200 {
+            let offset = scroll_offset(overflow, f64::from(step) * 0.173);
+            assert!((0.0..=overflow).contains(&offset), "{offset}");
+        }
+        // A barely long label still takes its three seconds to sweep.
+        assert!((scroll_offset(1.0, 0.0) - 1.0).abs() < 0.01);
+        assert!(scroll_offset(1.0, 1.5).abs() < 0.01);
+    }
 }
