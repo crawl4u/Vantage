@@ -2,7 +2,7 @@
 
 use crate::menu_files;
 use crate::{
-    Layout, TranslateError, Translation, container, extras, hud, items, manifest,
+    Layout, TranslateError, Translation, animation, container, extras, hud, items, manifest,
     meta::{TEXTURES, detect_layout, read_meta},
     names, particle_atlas, sky,
     texture::{Budget, crop, decode, dimensions, duplicate, encode, strip_frame},
@@ -92,15 +92,22 @@ fn first_frame(image: RgbaImage, budget: &Budget) -> Option<RgbaImage> {
     }
 }
 
-/// Translates a block texture: Bedrock-animated textures keep their strip, others their first
-/// frame. Returns `None` for invalid PNGs.
-fn block(layout: Layout, name: &str, bytes: Vec<u8>, budget: &Budget) -> Option<(String, Output)> {
+/// Translates a block texture: Bedrock-animated textures and textures the pack animates keep their
+/// strip, others their first frame. Returns `None` for invalid PNGs.
+fn block(
+    layout: Layout,
+    name: &str,
+    bytes: Vec<u8>,
+    animated: bool,
+    budget: &Budget,
+) -> Option<(String, Output)> {
     let bedrock = names::block_path(layout, name);
     let (width, height) = dimensions(&bytes)?;
-    let output = match strip_frame(width, height).filter(|_| !names::is_flipbook(&bedrock)) {
-        Some(side) => Output::Image(crop(&decode(&bytes, budget)?, 0, 0, side, side, budget)?),
-        None => Output::Raw(bytes),
-    };
+    let output =
+        match strip_frame(width, height).filter(|_| !animated && !names::is_flipbook(&bedrock)) {
+            Some(side) => Output::Image(crop(&decode(&bytes, budget)?, 0, 0, side, side, budget)?),
+            None => Output::Raw(bytes),
+        };
     Some((format!("textures/{bedrock}.png"), output))
 }
 
@@ -412,11 +419,38 @@ pub(crate) fn translate_within(
         source.load_all(listed)
     };
 
+    // Animated block textures keep their strip and play at the pack's own speed and order.
+    let known: std::collections::HashSet<&str> = paths.iter().map(String::as_str).collect();
+    let mut flipbooks: Vec<serde_json::Value> = Vec::new();
+    let mut animated: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (name, bytes) in &blocks {
+        let meta = format!("{TEXTURES}{block_folder}{name}.png.mcmeta");
+        if !known.contains(meta.as_str()) {
+            continue;
+        }
+        let Some(meta) = source.load(&meta) else {
+            continue;
+        };
+        let Some((width, height)) = dimensions(bytes) else {
+            continue;
+        };
+        if let Some(side) = strip_frame(width, height)
+            && let Some(animation) = animation::parse(&meta)
+            && let Some(entry) =
+                animation::patch(&names::block_path(layout, name), &animation, height / side)
+        {
+            flipbooks.push(entry);
+            animated.insert(name.clone());
+        }
+    }
     let masks = tint_mask_outputs(layout, &blocks, budget);
     let sources = blocks.len() + item_files.len();
     let block_outputs: Vec<_> = blocks
         .into_par_iter()
-        .filter_map(|(name, bytes)| block(layout, &name, bytes, budget))
+        .filter_map(|(name, bytes)| {
+            let keep = animated.contains(&name);
+            block(layout, &name, bytes, keep, budget)
+        })
         .collect();
     let item_outputs: Vec<_> = item_files
         .into_par_iter()
@@ -462,6 +496,11 @@ pub(crate) fn translate_within(
         out.insert("textures/particle/particles.png".into(), Output::Raw(bytes));
     }
     out.extend(block_outputs);
+    if !flipbooks.is_empty()
+        && let Ok(patch) = serde_json::to_vec(&flipbooks)
+    {
+        out.insert("textures/flipbook_textures.json".into(), Output::Raw(patch));
+    }
     let mut tab_sidecars: Vec<(String, Vec<u8>)> = Vec::new();
     for (bedrock, bytes) in tabs {
         tab_sidecars.push((format!("{bedrock}.json"), container::TAB_SIDECAR.to_vec()));

@@ -1315,3 +1315,49 @@ fn a_huge_hotbar_is_shrunk_so_every_slot_fits_the_clients_texture_pages() {
         assert_eq!(size, (20 * 8, 22 * 8), "slot {slot}");
     }
 }
+
+#[test]
+fn a_pack_animation_keeps_its_strip_and_becomes_a_flipbook_patch() {
+    let blocks = "assets/minecraft/textures/block/";
+    let files = pack(vec![
+        (&format!("{blocks}lava_still.png"), solid(16, 64, RED)),
+        (
+            &format!("{blocks}lava_still.png.mcmeta"),
+            br#"{"animation":{"frametime":3,"interpolate":true}}"#.to_vec(),
+        ),
+        (&format!("{blocks}diamond_ore.png"), solid(16, 48, GREEN)),
+        (
+            &format!("{blocks}diamond_ore.png.mcmeta"),
+            br#"{"animation":{"frames":[2,1,0]}}"#.to_vec(),
+        ),
+        (&format!("{blocks}stone.png"), solid(16, 32, WHITE)),
+    ]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    // The animated textures keep every frame; the unanimated strip keeps its first.
+    assert_eq!(
+        pixel(&out, "textures/blocks/lava_still.png", 0, 0).0,
+        (16, 64)
+    );
+    assert_eq!(
+        pixel(&out, "textures/blocks/diamond_ore.png", 0, 0).0,
+        (16, 48)
+    );
+    assert_eq!(pixel(&out, "textures/blocks/stone.png", 0, 0).0, (16, 16));
+    let patches: serde_json::Value =
+        serde_json::from_slice(out["textures/flipbook_textures.json"]).unwrap();
+    let patches = patches.as_array().unwrap();
+    assert_eq!(patches.len(), 2);
+    let lava = patches
+        .iter()
+        .find(|patch| patch["atlas_tile"] == "still_lava")
+        .unwrap();
+    assert_eq!(lava["ticks_per_frame"], 3);
+    assert_eq!(lava["blend_frames"], true);
+    assert_eq!(lava["frames"], serde_json::json!([0, 1, 2, 3]));
+    let ore = patches
+        .iter()
+        .find(|patch| patch["atlas_tile"] == "diamond_ore")
+        .unwrap();
+    assert_eq!(ore["frames"], serde_json::json!([2, 1, 0]));
+}

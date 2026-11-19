@@ -12,6 +12,7 @@
 //! The mappings follow portmypack (<https://github.com/RestartFU/portmypack>), whose tables were
 //! derived by matching Java Edition textures against Mojang/bedrock-samples.
 
+mod animation;
 mod container;
 mod extras;
 pub use container::CONTAINER_SWAPS;
