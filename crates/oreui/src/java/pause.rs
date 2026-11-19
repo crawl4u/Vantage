@@ -10,7 +10,7 @@ use launcher::menu::{MenuAction, MenuScreen, MenuView, settings_sections::Settin
 use ui_engine::engine::screen::PaintError;
 
 use super::{button, home, unit};
-use crate::{focus, paint::Canvas, theme::TEXT};
+use crate::{CharacterPreview, focus, paint::Canvas, theme::TEXT};
 
 /// Sizes in Java pixels.
 const FULL: f32 = 204.0;
@@ -42,7 +42,9 @@ struct Layout {
     links: [Rect; 4],
     options: Rect,
     quit: Rect,
+    /// The Skin Presets button under the character, and where the character stands.
     wardrobe: Rect,
+    character: Rect,
     toggle: Rect,
 }
 
@@ -62,7 +64,8 @@ impl Layout {
             )
         };
         let (friends, inbox) = pair(2.0);
-        let side = SIDE_WIDTH.min(left - 2.0 * EDGE);
+        let stage = centre + FULL / 2.0 + 8.0;
+        let stage_width = (width - EDGE - stage).clamp(0.0, SIDE_WIDTH);
         Self {
             title: [0.0, TITLE_TOP, width, TITLE_TOP + TEXT_HEIGHT],
             resume: rect(left, 0.0, FULL),
@@ -73,7 +76,8 @@ impl Layout {
                 .map(|k| rect(left + k * (QUARTER + FOUR_GAP), 3.0, QUARTER)),
             options: rect(left, 4.0, FULL),
             quit: rect(left, 5.0, FULL),
-            wardrobe: rect(EDGE, 1.0, side),
+            wardrobe: rect(stage, 4.0, stage_width),
+            character: [stage, top, stage + stage_width, top + STEP * 3.5],
             toggle: [width - 2.0 - 120.0, 2.0, width - 2.0, 2.0 + HEIGHT],
         }
     }
@@ -84,7 +88,7 @@ pub(crate) fn draw(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
     size: [f32; 2],
-) -> Result<(), PaintError> {
+) -> Result<Option<CharacterPreview>, PaintError> {
     let unit = unit(view, canvas, size);
     let layout = Layout::new((size[0] / unit).ceil(), (size[1] / unit).ceil());
     let px = |rect: Rect| rect.map(|value| value * unit);
@@ -112,11 +116,32 @@ pub(crate) fn draw(
             "Save and Quit to Title",
             MenuAction::PauseDisconnect,
         ),
-        (layout.wardrobe, "Wardrobe", go(MenuScreen::DressingRoom)),
     ] {
         button::draw(canvas, view, px(rect), label, Some(action), unit)?;
     }
+    let wardrobe = px(layout.wardrobe);
+    let label = home::fit(
+        &["Skin Presets".to_owned(), "Skins".to_owned()],
+        false,
+        layout.wardrobe[2] - layout.wardrobe[0] - 6.0,
+    );
+    if wardrobe[2] - wardrobe[0] > 8.0 * unit {
+        button::draw(
+            canvas,
+            view,
+            wardrobe,
+            &label,
+            Some(go(MenuScreen::DressingRoom)),
+            unit,
+        )?;
+    }
     home::button_toggle(canvas, view, px(layout.toggle), unit)?;
     canvas.end_focus_region(screen);
-    Ok(())
+    let stage = px(layout.character);
+    Ok(
+        (stage[2] - stage[0] > 8.0 * unit).then_some(CharacterPreview {
+            control: stage,
+            clip: stage,
+        }),
+    )
 }

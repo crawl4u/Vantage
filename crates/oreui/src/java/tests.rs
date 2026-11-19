@@ -120,7 +120,7 @@ fn the_java_title_offers_every_home_action_inside_the_window() {
     let toggle = view.settings_options.menu_style_switch();
     for size in [[1280.0, 720.0], [640.0, 360.0], [360.0, 240.0]] {
         let (hits, _) = paint(true, size, |canvas| {
-            home::draw(canvas, &view, size).unwrap()
+            home::draw(canvas, &view, size).unwrap();
         });
         for action in [
             MenuAction::Navigate(MenuScreen::Play),
@@ -158,7 +158,7 @@ fn a_hovered_button_draws_the_highlighted_sprite_and_the_rest_draw_at_rest() {
     view.hovered = Some(MenuAction::Navigate(MenuScreen::Play));
     let size = [1280.0, 720.0];
     let (_, nodes) = paint(true, size, |canvas| {
-        home::draw(canvas, &view, size).unwrap()
+        home::draw(canvas, &view, size).unwrap();
     });
     let pages: Vec<u16> = nodes
         .iter()
@@ -230,7 +230,7 @@ fn the_java_title_is_drawn_at_the_chosen_java_gui_scale() {
     let view = java_view();
     let size = [1280.0, 720.0];
     let (hits, _) = paint(true, size, |canvas| {
-        home::draw(canvas, &view, size).unwrap()
+        home::draw(canvas, &view, size).unwrap();
     });
     let play = hits
         .iter()
@@ -244,7 +244,7 @@ fn the_java_title_is_drawn_at_the_chosen_java_gui_scale() {
     let options = Arc::make_mut(&mut view.settings_options);
     assert!(options.set(SettingId::JavaGuiScale.index(), 2));
     let (hits, _) = paint(true, size, |canvas| {
-        home::draw(canvas, &view, size).unwrap()
+        home::draw(canvas, &view, size).unwrap();
     });
     let play = hits
         .iter()
@@ -262,7 +262,7 @@ fn the_java_pause_menu_offers_every_pause_action_inside_the_window() {
         |section: SettingSection| MenuAction::OpenSettingsSection(section.definition().index);
     for size in [[1280.0, 720.0], [640.0, 360.0], [360.0, 240.0]] {
         let (hits, _) = paint(true, size, |canvas| {
-            pause::draw(canvas, &view, size).unwrap()
+            pause::draw(canvas, &view, size).unwrap();
         });
         for action in [
             MenuAction::PauseResume,
@@ -299,7 +299,7 @@ fn the_java_pause_rows_sit_where_java_puts_them() {
     let view = java_view();
     let size = [1280.0, 720.0];
     let (hits, _) = paint(true, size, |canvas| {
-        pause::draw(canvas, &view, size).unwrap()
+        pause::draw(canvas, &view, size).unwrap();
     });
     let unit = unit_for(size, None, 1.0);
     let bounds = |action| hits.iter().find(|(found, _)| *found == action).unwrap().1;

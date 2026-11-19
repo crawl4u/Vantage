@@ -2,7 +2,7 @@
 //! Java pixels down, three 200-pixel buttons from a quarter of the height plus 48, a row of
 //! options and quit buttons with a language and an accessibility button beside them, and the
 //! version at the bottom left. Everything Bedrock's home offers stays reachable: play, servers,
-//! realms, settings, quit, wardrobe, account, friends and inbox. The Bedrock-only buttons sit in
+//! realms, mods, settings, quit, skin presets, account, friends and inbox. The Bedrock-only buttons sit in
 //! the margins beside the column, so the column itself keeps Java's exact places.
 
 use launcher::menu::{
@@ -12,7 +12,7 @@ use ui::IconRef;
 use ui_engine::engine::screen::PaintError;
 
 use super::{button, font, splash, unit};
-use crate::{focus, paint::Canvas, theme::TEXT};
+use crate::{CharacterPreview, focus, paint::Canvas, theme::TEXT};
 
 /// Sizes in Java pixels.
 const WIDE: f32 = 200.0;
@@ -33,13 +33,17 @@ type Rect = [f32; 4];
 /// window is at least 320 by 240 Java pixels.
 struct Layout {
     logo: Rect,
-    wide: [Rect; 3],
+    wide: [Rect; 4],
     options: Rect,
     quit: Rect,
     language: Rect,
     accessibility: Rect,
-    left: [Rect; 2],
-    right: [Rect; 2],
+    /// The Bedrock-only buttons stacked in the left margin.
+    left: [Rect; 3],
+    /// The Skin Presets button under the character.
+    skins: Rect,
+    /// Where the player's character stands, right of the column.
+    character: Rect,
     toggle: Rect,
     version: [f32; 2],
     /// The splash text's pivot: 123 right of the middle and 69 down.
@@ -54,17 +58,21 @@ impl Layout {
         let rect = |x: f32, y: f32, w: f32, h: f32| [x, y, x + w, y + h];
         let logo_width = LOGO_WIDTH.min((j - LOGO_TOP - 4.0) * logo_ratio);
         let logo_height = logo_width / logo_ratio;
-        let row = j + 84.0;
+        // The fourth button pushes the row below it down by one step, as Java with a mod's button.
+        let row = j + 96.0;
         let side = SIDE_WIDTH.min(centre - 100.0 - 2.0 * EDGE);
+        let stage = centre + 110.0;
+        let stage_width = (width - EDGE - stage).clamp(0.0, SIDE_WIDTH);
         Self {
             logo: rect(centre - logo_width / 2.0, LOGO_TOP, logo_width, logo_height),
-            wide: [0.0, 1.0, 2.0].map(|k| rect(centre - 100.0, j + STEP * k, WIDE, HEIGHT)),
+            wide: [0.0, 1.0, 2.0, 3.0].map(|k| rect(centre - 100.0, j + STEP * k, WIDE, HEIGHT)),
             options: rect(centre - 100.0, row, HALF, HEIGHT),
             quit: rect(centre + 2.0, row, HALF, HEIGHT),
             language: rect(centre - 124.0, row, HEIGHT, HEIGHT),
             accessibility: rect(centre + 104.0, row, HEIGHT, HEIGHT),
-            left: [0.0, 1.0].map(|k| rect(EDGE, j + STEP * k, side, HEIGHT)),
-            right: [0.0, 1.0].map(|k| rect(width - EDGE - side, j + STEP * k, side, HEIGHT)),
+            left: [0.0, 1.0, 2.0].map(|k| rect(EDGE, j + STEP * k, side, HEIGHT)),
+            skins: rect(stage, j + 70.0, stage_width, HEIGHT),
+            character: rect(stage, j - 4.0, stage_width, 70.0),
             toggle: rect(width - EDGE - 120.0, EDGE, 120.0, HEIGHT),
             version: [EDGE, height - 10.0],
             splash: [centre + 123.0, 69.0],
@@ -77,17 +85,23 @@ impl Layout {
     }
 }
 
-/// Draws the Java title with the update notice every home shows.
+/// Draws the Java title with the update notice every home shows, and returns where the player's
+/// character stands for the adapter to draw.
 pub(crate) fn draw(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
     size: [f32; 2],
-) -> Result<(), PaintError> {
-    draw_screen(canvas, view, size)?;
-    crate::updates::notice(canvas, view, size)
+) -> Result<Option<CharacterPreview>, PaintError> {
+    let preview = draw_screen(canvas, view, size)?;
+    crate::updates::notice(canvas, view, size)?;
+    Ok(preview)
 }
 
-fn draw_screen(canvas: &mut Canvas<'_>, view: &MenuView, size: [f32; 2]) -> Result<(), PaintError> {
+fn draw_screen(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    size: [f32; 2],
+) -> Result<Option<CharacterPreview>, PaintError> {
     let unit = unit(view, canvas, size);
     let ratio = canvas.title_artwork.map_or(4.0, icon_ratio);
     let layout = Layout::new((size[0] / unit).ceil(), (size[1] / unit).ceil(), ratio);
@@ -106,6 +120,13 @@ fn draw_screen(canvas: &mut Canvas<'_>, view: &MenuView, size: [f32; 2]) -> Resu
         (layout.wide[0], "Singleplayer", go(MenuScreen::Play)),
         (layout.wide[1], "Multiplayer", go(MenuScreen::Servers)),
         (layout.wide[2], "Realms", go(MenuScreen::Social)),
+        (
+            layout.wide[3],
+            "Mods",
+            Some(MenuAction::OpenSettingsSection(
+                SettingSection::Mods.definition().index,
+            )),
+        ),
         (layout.options, "Options", go(MenuScreen::Settings)),
         (layout.quit, "Quit Game", Some(MenuAction::OpenExitDialog)),
     ] {
@@ -138,11 +159,17 @@ fn draw_screen(canvas: &mut Canvas<'_>, view: &MenuView, size: [f32; 2]) -> Resu
     )?;
     button_toggle(canvas, view, px(layout.toggle), unit)?;
     canvas.end_focus_region(screen);
-    Ok(())
+    let stage = px(layout.character);
+    Ok(
+        (stage[2] - stage[0] > 8.0 * unit).then_some(CharacterPreview {
+            control: stage,
+            clip: stage,
+        }),
+    )
 }
 
-/// The Bedrock-only buttons in the margins: wardrobe and friends on the left, account and inbox
-/// on the right. A label with a count is used when it fits the button, else the bare label.
+/// The Bedrock-only buttons in the margins: friends, account and inbox on the left, and the skin
+/// presets under the character on the right. A label with a count is used when it fits the button, else the bare label.
 fn sides(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
@@ -177,14 +204,18 @@ fn sides(
     };
     let screen = |screen| Some(MenuAction::Navigate(screen));
     for (rect, label, action) in [
+        (layout.left[0], friends, screen(MenuScreen::Friends)),
+        (layout.left[1], account.to_owned(), Some(account_action)),
+        (layout.left[2], inbox, screen(MenuScreen::Inbox)),
         (
-            layout.left[0],
-            "Wardrobe".to_owned(),
+            layout.skins,
+            fit(
+                &["Skin Presets".to_owned(), "Skins".to_owned()],
+                false,
+                layout.skins[2] - layout.skins[0] - 6.0,
+            ),
             screen(MenuScreen::DressingRoom),
         ),
-        (layout.left[1], friends, screen(MenuScreen::Friends)),
-        (layout.right[0], account.to_owned(), Some(account_action)),
-        (layout.right[1], inbox, screen(MenuScreen::Inbox)),
     ] {
         button::draw(canvas, view, Layout::px(rect, unit), &label, action, unit)?;
     }
@@ -193,7 +224,7 @@ fn sides(
 
 /// The first label of `candidates` that is no wider than `max` Java pixels in Java's font; the
 /// last when none is, and the last at once when `bare` says the first adds nothing.
-fn fit(candidates: &[String], bare: bool, max: f32) -> String {
+pub(super) fn fit(candidates: &[String], bare: bool, max: f32) -> String {
     let last = candidates.last().cloned().unwrap_or_default();
     if bare {
         return last;
@@ -270,10 +301,11 @@ mod tests {
         assert_eq!(layout.wide[0], [60.0, 108.0, 260.0, 128.0]);
         assert_eq!(layout.wide[1], [60.0, 132.0, 260.0, 152.0]);
         assert_eq!(layout.wide[2], [60.0, 156.0, 260.0, 176.0]);
-        assert_eq!(layout.options, [60.0, 192.0, 158.0, 212.0]);
-        assert_eq!(layout.quit, [162.0, 192.0, 260.0, 212.0]);
-        assert_eq!(layout.language, [36.0, 192.0, 56.0, 212.0]);
-        assert_eq!(layout.accessibility, [264.0, 192.0, 284.0, 212.0]);
+        assert_eq!(layout.wide[3], [60.0, 180.0, 260.0, 200.0]);
+        assert_eq!(layout.options, [60.0, 204.0, 158.0, 224.0]);
+        assert_eq!(layout.quit, [162.0, 204.0, 260.0, 224.0]);
+        assert_eq!(layout.language, [36.0, 204.0, 56.0, 224.0]);
+        assert_eq!(layout.accessibility, [264.0, 204.0, 284.0, 224.0]);
         assert_eq!(layout.version, [2.0, 230.0]);
         assert_eq!(layout.splash, [283.0, 69.0]);
     }
@@ -308,9 +340,12 @@ mod tests {
     fn the_side_buttons_fit_in_the_margins_even_at_the_narrowest_window() {
         let layout = Layout::new(320.0, 240.0, 4.0);
         assert!(layout.left[0][2] <= layout.wide[0][0] - EDGE);
-        assert!(layout.right[0][0] >= layout.wide[0][2] + EDGE);
-        assert!(layout.left[0][0] >= 0.0 && layout.right[0][2] <= 320.0);
+        assert!(layout.character[0] >= layout.wide[0][2] + EDGE);
+        assert!(layout.left[0][0] >= 0.0 && layout.skins[2] <= 320.0);
+        assert!(layout.skins[0] >= layout.wide[0][2] + EDGE);
         // They stay clear of the language and accessibility buttons below them too.
-        assert!(layout.left[1][3] < layout.language[1]);
+        assert!(layout.left[2][3] < layout.language[1]);
+        // The character and its button stay above the accessibility button.
+        assert!(layout.skins[3] < layout.accessibility[1]);
     }
 }
