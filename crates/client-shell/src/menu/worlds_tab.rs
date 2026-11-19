@@ -348,6 +348,33 @@ impl MenuRuntime {
         double.then_some(MenuAction::JoinPlayWorld(index))
     }
 
+    /// The press Enter makes on the Java-style world list: playing the world the keyboard
+    /// focus is on, or else the chosen one when no control was moved to by keyboard or gamepad.
+    /// None on any other screen, or when something else owns the key.
+    pub fn enter_plays_world(&mut self) -> Option<MenuAction> {
+        use launcher::menu::settings_options::menu_style::MenuStyle;
+        if self.screen != MenuScreen::Play
+            || self.dialog.is_some()
+            || self.is_connecting()
+            || self.local_screen_open()
+            || self.field.is_some()
+            || self.settings_options.menu_style() != MenuStyle::Java
+        {
+            return None;
+        }
+        if self.input_mode.navigation() {
+            return match self.focused_action() {
+                Some(MenuAction::SelectPlayWorld(index)) => Some(MenuAction::JoinPlayWorld(index)),
+                _ => None,
+            };
+        }
+        let worlds = self.friends.len() + self.local_worlds.len();
+        self.feeds
+            .selected_play_world
+            .filter(|index| *index < worlds)
+            .map(MenuAction::JoinPlayWorld)
+    }
+
     /// The local-world presses waiting for the world service.
     #[cfg(test)]
     pub(super) fn queued_local_actions(&self) -> &[LocalWorldAction] {

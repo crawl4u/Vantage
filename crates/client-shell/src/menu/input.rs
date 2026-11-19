@@ -947,6 +947,12 @@ pub fn drive_menu_input(
                     launcher::global_resources::Action::CommitRename,
                 ));
             }
+            KeyCode::Enter | KeyCode::NumpadEnter if menu.enter_plays_world().is_some() => {
+                if let Some(play) = menu.enter_plays_world() {
+                    presentation.play_menu_press_sound(play);
+                    menu.activate(play);
+                }
+            }
             KeyCode::Enter | KeyCode::NumpadEnter => select_focused(&mut menu, &presentation),
             KeyCode::Space if native_settings && !menu.has_focused_field() => {
                 select_focused(&mut menu, &presentation)

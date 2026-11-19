@@ -196,6 +196,7 @@ fn run(
                         | Action::NewFolder
                         | Action::DeleteFolder
                         | Action::PutInFolder { .. }
+                        | Action::CycleFolder(_)
                         | Action::CycleSort,
                     ..
                 }
@@ -755,6 +756,18 @@ fn act(
                 None => Some(resource_pack::folder_parent(&snapshot.folder).to_owned()),
             };
             if let (Some(pack), Some(target)) = (snapshot.available.get(index), target) {
+                library.place_pack(pack.id, &target)?;
+                clear_indexed(snapshot);
+            }
+        }
+        Action::CycleFolder(index) => {
+            if let Some(pack) = snapshot.available.get(index) {
+                // The top level, then every folder in name order, round again.
+                let mut places = vec![String::new()];
+                places.extend(snapshot.folders.iter().cloned());
+                let current = library.folder_of(pack.id);
+                let at = places.iter().position(|place| place == current).unwrap_or(0);
+                let target = places[(at + 1) % places.len()].clone();
                 library.place_pack(pack.id, &target)?;
                 clear_indexed(snapshot);
             }

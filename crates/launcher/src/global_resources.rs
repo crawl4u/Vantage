@@ -56,6 +56,9 @@ pub enum Action {
         index: usize,
         folder: Option<usize>,
     },
+    /// Move the available pack at this index to the next folder, from the top level through
+    /// every folder and back.
+    CycleFolder(usize),
     /// Step the order the unselected packs are listed in.
     CycleSort,
     /// Focus the pack search field.
@@ -114,9 +117,10 @@ impl Snapshot {
     /// Whether the pack of `available` at `index` is in the open folder.
     #[must_use]
     pub fn in_open_folder(&self, index: usize) -> bool {
+        // A pack with no filing recorded is at the top level.
         self.available_folders
             .get(index)
-            .is_some_and(|folder| *folder == self.folder)
+            .map_or(self.folder.is_empty(), |folder| *folder == self.folder)
     }
 
     /// Whether the Apply changes action is enabled for the staged selection.

@@ -83,6 +83,7 @@ fn draw_sections(
         motion.expanded[1],
         snapshot.available_expanded,
         |content| {
+            folder_rows(content, snapshot)?;
             reveal(content, motion.empty_fraction, false, |content| {
                 empty(
                     content,
@@ -166,6 +167,13 @@ fn pack_cards(
         if !matches_query(&card.item, &content.view.pack_query) {
             return Ok(());
         }
+        // Without a search, the list of unused packs shows the open folder's packs.
+        if group == Group::Available
+            && content.view.pack_query.trim().is_empty()
+            && !snapshot.in_open_folder(card.index)
+        {
+            return Ok(());
+        }
         pack_card(
             content,
             snapshot,
@@ -200,7 +208,153 @@ fn toolbar(content: &mut Content<'_, '_>, snapshot: &Snapshot) -> Result<(), Pai
         ],
     )?;
     content.y += content.canvas.r(1.2);
+    folder_toolbar(content, snapshot)?;
     search(content)
+}
+
+/// The row of folder controls: make a folder and, inside one, rename or delete it. While a folder
+/// is being renamed the row is the name field with OK and Cancel.
+fn folder_toolbar(content: &mut Content<'_, '_>, snapshot: &Snapshot) -> Result<(), PaintError> {
+    let idle = !snapshot.busy;
+    let view = content.view;
+    if view.pack_renaming && !snapshot.folder.is_empty() {
+        let [left, right] = content.inset();
+        let gap = content.canvas.r(0.8);
+        let height = content.canvas.r(4.4);
+        let small = content.canvas.r(10.0);
+        let field = [
+            left,
+            content.y,
+            right - 2.0 * (small + gap),
+            content.y + height,
+        ];
+        widgets::text_field_on_panel(
+            content.canvas,
+            view,
+            field,
+            &view.pack_folder_name,
+            "Folder name",
+            view.field == Some(launcher::menu::MenuField::PackFolderName),
+            Some(command(Action::FolderName)),
+        )?;
+        let ok = [
+            field[2] + gap,
+            content.y,
+            field[2] + gap + small,
+            content.y + height,
+        ];
+        widgets::button(
+            content.canvas,
+            view,
+            ok,
+            Variant::Primary,
+            "OK",
+            Some(command(Action::CommitRename)),
+        )?;
+        widgets::button(
+            content.canvas,
+            view,
+            [ok[2] + gap, content.y, right, content.y + height],
+            Variant::Secondary,
+            "Cancel",
+            Some(command(Action::CancelRename)),
+        )?;
+        content.y += height + content.canvas.r(1.2);
+        return Ok(());
+    }
+    let mut buttons = vec![(
+        "New folder",
+        Variant::Secondary,
+        idle.then_some(command(Action::NewFolder)),
+    )];
+    if !snapshot.folder.is_empty() {
+        buttons.push((
+            "Rename folder",
+            Variant::Secondary,
+            idle.then_some(command(Action::RenameFolder)),
+        ));
+        buttons.push((
+            "Delete folder",
+            Variant::Neutral,
+            idle.then_some(command(Action::DeleteFolder)),
+        ));
+    }
+    actions(content, &buttons)?;
+    content.y += content.canvas.r(1.2);
+    Ok(())
+}
+
+/// The way up out of the open folder and a row for each folder in it, shown over the packs.
+/// Pressing a row goes there. Nothing shows while a search looks across every folder.
+fn folder_rows(content: &mut Content<'_, '_>, snapshot: &Snapshot) -> Result<(), PaintError> {
+    if !content.view.pack_query.trim().is_empty() {
+        return Ok(());
+    }
+    let mut rows: Vec<(String, String, bool, Action)> = Vec::new();
+    if !snapshot.folder.is_empty() {
+        let parent = resource_pack::folder_parent(&snapshot.folder);
+        let caption = if parent.is_empty() {
+            "Back to all packs".to_owned()
+        } else {
+            format!("Back to {}", resource_pack::folder_name(parent))
+        };
+        rows.push(("..".to_owned(), caption, true, Action::FolderUp));
+    }
+    for (index, path) in snapshot.subfolders().into_iter().enumerate() {
+        let folders = snapshot
+            .folders
+            .iter()
+            .filter(|other| resource_pack::folder_parent(other) == path)
+            .count();
+        let packs = snapshot
+            .available_folders
+            .iter()
+            .filter(|folder| folder.as_str() == path)
+            .count();
+        rows.push((
+            resource_pack::folder_name(path).to_owned(),
+            format!("Folders: {folders} / Packs: {packs}"),
+            false,
+            Action::OpenFolder(index),
+        ));
+    }
+    let view = content.view;
+    for (title, caption, up, action) in rows {
+        let [left, right] = content.inset();
+        let height = content.canvas.r(5.6);
+        let bounds = [left, content.y, right, content.y + height];
+        widgets::row(content.canvas, view, bounds, false, Some(command(action)))?;
+        let pad = content.canvas.r(1.0);
+        let side = height - 2.0 * pad;
+        crate::java::folder_icon(
+            content.canvas,
+            [
+                left + pad,
+                content.y + pad,
+                left + pad + side,
+                content.y + pad + side,
+            ],
+            up,
+        )?;
+        let text_left = left + side + 2.0 * pad;
+        let width = (right - text_left - pad).max(1.0);
+        content.canvas.text_line(
+            &title,
+            [text_left, content.y + content.canvas.r(0.8)],
+            width,
+            BODY,
+            TEXT,
+        )?;
+        content.canvas.text_line(
+            &caption,
+            [text_left, content.y + content.canvas.r(3.0)],
+            width,
+            CAPTION,
+            TEXT_DIMMER,
+        )?;
+        content.y += height + content.canvas.r(0.8);
+    }
+    Ok(())
 }
 
 /// The search field over both lists, with a button to empty it.
@@ -656,6 +810,19 @@ fn pack_card(
             content.y = bounds[3] + content.canvas.r(1.2);
         }
         let available = interactive && !snapshot.busy;
+        // The folder button names where the pack is now, and moves it to the next one.
+        let place = snapshot
+            .available_folders
+            .get(index)
+            .map_or("", String::as_str);
+        let folder_label = format!(
+            "Folder: {}",
+            if place.is_empty() {
+                "None"
+            } else {
+                resource_pack::folder_name(place)
+            }
+        );
         let mut buttons = Vec::new();
         if active {
             if index > 0 {
@@ -699,6 +866,13 @@ fn pack_card(
                 Variant::Neutral,
                 available.then_some(command(Action::AskDelete(index))),
             ));
+            if !snapshot.folders.is_empty() {
+                buttons.push((
+                    folder_label.as_str(),
+                    Variant::Neutral,
+                    available.then_some(command(Action::CycleFolder(index))),
+                ));
+            }
         }
         actions(content, &buttons)
     })

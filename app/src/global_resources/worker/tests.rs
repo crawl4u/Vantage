@@ -1311,3 +1311,27 @@ fn the_open_folder_is_renamed_on_disk_and_the_list_follows_it() {
     assert_eq!(snapshot.folders, ["Duels"]);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn a_pack_cycles_through_the_top_level_and_every_folder_and_back() {
+    let root = std::env::temp_dir().join(format!("cinnabar-pack-cycle-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let mut library = GlobalPackLibrary::open(root.join("library"), [9, 0, 0]).unwrap();
+    import_fixture(&mut library, &root, 1);
+    library.create_folder("", "Alpha").unwrap();
+    library.create_folder("", "Beta").unwrap();
+    let mut snapshot = Snapshot::default();
+    let (outgoing, _events) = crossbeam_channel::unbounded();
+    refresh(&library, &mut snapshot);
+    let mut folder_after = |library: &mut GlobalPackLibrary, snapshot: &mut Snapshot| {
+        act(library, snapshot, Action::CycleFolder(0), &outgoing).unwrap();
+        refresh(library, snapshot);
+        snapshot.available_folders[0].clone()
+    };
+    assert_eq!(folder_after(&mut library, &mut snapshot), "Alpha");
+    assert_eq!(folder_after(&mut library, &mut snapshot), "Beta");
+    assert_eq!(folder_after(&mut library, &mut snapshot), "");
+    assert_eq!(folder_after(&mut library, &mut snapshot), "Alpha");
+    std::fs::remove_dir_all(root).unwrap();
+}

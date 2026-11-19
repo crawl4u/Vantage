@@ -386,3 +386,33 @@ fn the_play_arrow_joins_a_friends_world_or_an_own_one_by_its_place() {
     menu.activate(MenuAction::JoinPlayWorld(0));
     assert_eq!(menu.local_world_requested, Some(0));
 }
+
+#[test]
+fn enter_plays_the_chosen_world_of_the_java_list_and_nothing_else() {
+    use launcher::menu::settings_options::{SettingId, menu_style::MenuStyle};
+
+    let mut menu = MenuRuntime::new(true, 2, "Player".into());
+    menu.local_worlds = vec![launcher::menu::LocalWorldCard {
+        name: "Home".to_owned(),
+        game_mode: String::new(),
+        world_type: String::new(),
+        server: String::new(),
+        date: String::new(),
+        size: String::new(),
+        thumbnail: None,
+    }]
+    .into();
+    menu.show_home();
+    menu.activate(MenuAction::Navigate(MenuScreen::Play));
+    menu.activate(MenuAction::SelectPlayWorld(0));
+    // The Bedrock style leaves Enter alone.
+    assert_eq!(menu.enter_plays_world(), None);
+    std::sync::Arc::make_mut(&mut menu.settings_options)
+        .set(SettingId::MenuStyle.index(), MenuStyle::Java.value());
+    assert_eq!(menu.enter_plays_world(), Some(MenuAction::JoinPlayWorld(0)));
+    // A chosen world that is gone is not played, and neither is none at all.
+    menu.activate(MenuAction::SelectPlayWorld(5));
+    assert_eq!(menu.enter_plays_world(), None);
+    menu.activate(MenuAction::SelectPlayWorld(5));
+    assert_eq!(menu.enter_plays_world(), None);
+}

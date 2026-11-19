@@ -476,7 +476,11 @@ fn folder_buttons(
 
 /// Draws a folder with squares: a tab on a body, its front lighter, and when `up` a green arrow.
 /// It is the client's own picture, so no game file is needed.
-fn folder_icon(canvas: &mut Canvas<'_>, icon: Bounds, up: bool) -> Result<(), PaintError> {
+pub(crate) fn folder_icon(
+    canvas: &mut Canvas<'_>,
+    icon: Bounds,
+    up: bool,
+) -> Result<(), PaintError> {
     let cell = (icon[2] - icon[0]) / 32.0;
     let at = |left: f32, top: f32, right: f32, bottom: f32| {
         [

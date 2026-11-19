@@ -538,3 +538,52 @@ fn the_pack_search_needs_every_term_in_the_name_or_description_in_any_case() {
     assert!(super::matches_query(&pack, "TEXTURES stone"));
     assert!(!super::matches_query(&pack, "stone wood"));
 }
+
+#[test]
+fn the_pack_page_shows_the_open_folders_packs_and_a_way_through_the_folders() {
+    let mut other = pack();
+    other.id = "22222222-2222-4222-8222-222222222222".parse().unwrap();
+    other.name = "Top Level Pack".into();
+    let mut snapshot = Snapshot {
+        available: vec![pack(), other],
+        folders: vec!["PVP".to_owned()],
+        available_folders: vec!["PVP".to_owned(), String::new()],
+        ..Snapshot::default()
+    };
+    let has = |hits: &[(MenuAction, ui::UiRect)], action: Action| {
+        hits.iter().any(|(hit, _)| *hit == command(action))
+    };
+    // At the top level the folder shows as a row and only the unfiled pack as a card.
+    let (hits, _) = render(&view(snapshot.clone()), 160.0);
+    assert!(has(&hits, Action::OpenFolder(0)));
+    assert!(has(&hits, Action::ReadMore(false, 1)) && !has(&hits, Action::ReadMore(false, 0)));
+    assert!(has(&hits, Action::NewFolder) && !has(&hits, Action::DeleteFolder));
+    // Inside it the way back shows, with the folder's own pack, and the folder can be renamed.
+    snapshot.folder = "PVP".to_owned();
+    let (hits, _) = render(&view(snapshot.clone()), 160.0);
+    assert!(has(&hits, Action::FolderUp));
+    assert!(has(&hits, Action::ReadMore(false, 0)) && !has(&hits, Action::ReadMore(false, 1)));
+    assert!(has(&hits, Action::RenameFolder) && has(&hits, Action::DeleteFolder));
+    // A pack moves on to the next folder from its card.
+    assert!(
+        hits.iter()
+            .any(|(hit, _)| matches!(hit, MenuAction::GlobalResources(Action::CycleFolder(_))))
+            || {
+                let mut open = view(snapshot.clone());
+                open.global_resources = Arc::new(Snapshot {
+                    details_expanded: Some((false, 0)),
+                    ..snapshot.clone()
+                });
+                render(&open, 160.0)
+                    .0
+                    .iter()
+                    .any(|(hit, _)| *hit == command(Action::CycleFolder(0)))
+            }
+    );
+    // Searching looks in every folder, so neither rows nor filing hide a match.
+    let mut searching = view(snapshot);
+    searching.pack_query = "pack".to_owned();
+    let (hits, _) = render(&searching, 160.0);
+    assert!(has(&hits, Action::ReadMore(false, 0)) && has(&hits, Action::ReadMore(false, 1)));
+    assert!(!has(&hits, Action::FolderUp));
+}

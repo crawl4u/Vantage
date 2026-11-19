@@ -14,6 +14,7 @@ mod mods;
 pub(super) mod options;
 pub(crate) mod pack_drag;
 mod packs;
+pub(crate) use packs::folder_icon;
 pub(super) mod pause;
 pub(super) mod servers;
 mod shaders;
