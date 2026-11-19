@@ -78,6 +78,7 @@ impl TextureSet {
             masks: Default::default(),
             atlas: Mutex::new(
                 ServerAtlas::new(&[], None, pages)
+                    .with_eviction_grace(crate::atlas::UI_EVICTION_GRACE)
                     .with_native_sheets(true)
                     .with_image_work(work.clone()),
             ),

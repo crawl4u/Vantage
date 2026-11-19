@@ -621,3 +621,33 @@ fn halving_averages_each_two_by_two_block_and_rounds_odd_sides_up() {
     let (_, odd) = halved(&[0u8; 3 * 5 * 4], [3, 5]);
     assert_eq!(odd, [2, 3]);
 }
+
+// One frame makes several requests, so a request must not take a page an earlier one just drew.
+#[test]
+fn a_page_drawn_a_request_ago_is_kept_when_the_atlas_has_an_eviction_grace() {
+    let side = PAGE_SIDE - GUTTER * 2;
+    let files: Vec<_> = (0..3)
+        .map(|index| {
+            (
+                format!("textures/ui/t{index}.png"),
+                png_filled(side, side, index as u8),
+            )
+        })
+        .collect();
+    let mut atlas = ServerAtlas::new(&files, None, 2).with_eviction_grace(2);
+    atlas.require(["textures/ui/t0"]);
+    atlas.require(["textures/ui/t1"]);
+    atlas.require(["textures/ui/t2"]);
+    let first = atlas.placement("textures/ui/t0").expect("t0 is kept");
+    assert!(atlas.placement("textures/ui/t1").is_some(), "t1 is kept");
+    // The third picture is shrunk into what is left, or left out; it never takes a kept page.
+    if let Some(third) = atlas.placement("textures/ui/t2") {
+        assert_ne!(third.page, first.page);
+    }
+    // Once nothing has drawn a page for longer than the grace, it can be taken.
+    for _ in 0..3 {
+        atlas.require(["textures/ui/t1"]);
+    }
+    atlas.require(["textures/ui/t1", "textures/ui/t2"]);
+    assert!(atlas.placement("textures/ui/t2").is_some());
+}

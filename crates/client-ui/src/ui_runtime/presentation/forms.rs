@@ -350,6 +350,7 @@ impl UiPresentationRuntime {
             pack.view.clone(),
             pages::SERVER_UI_PAGES,
         )
+        .with_eviction_grace(ui_engine::atlas::UI_EVICTION_GRACE)
         .with_preread(
             pack.catalog
                 .as_ref()

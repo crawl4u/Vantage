@@ -304,6 +304,8 @@ pub struct ServerAtlas {
     pages: Vec<Page>,
     images: Vec<UiTexturePage>,
     max_pages: usize,
+    /// Requests a page keeps after it was last drawn before another picture may take its place.
+    eviction_grace: u64,
     clock: u64,
     dirty: bool,
     metadata_revision: u64,
@@ -446,6 +448,13 @@ impl ServerAtlas {
             dirty: true,
             ..Self::default()
         }
+    }
+
+    /// Keeps a page for `requests` more requests after it was last drawn before evicting it, so
+    /// the surfaces of one frame never take each other's pages.
+    pub fn with_eviction_grace(mut self, requests: u64) -> Self {
+        self.eviction_grace = requests;
+        self
     }
 
     /// Also read vanilla images from `vanilla` and download remote ones.
@@ -921,7 +930,7 @@ impl ServerAtlas {
             .pages
             .iter()
             .enumerate()
-            .filter(|(_, page)| page.used < clock)
+            .filter(|(_, page)| clock - page.used > self.eviction_grace)
             .min_by_key(|(_, page)| page.used)?;
         let page = &mut self.pages[index];
         for key in page.keys.drain(..) {
@@ -940,6 +949,11 @@ impl ServerAtlas {
         Some((index, page.allocate(size)?))
     }
 }
+
+/// How many requests ago a page may have been drawn and still be kept, for the live UI. One frame
+/// is several requests (the HUD, a container screen, a tooltip), and a later one evicting what an
+/// earlier one drew would leave that surface painted from pages another picture now fills.
+pub const UI_EVICTION_GRACE: u64 = 3;
 
 /// The smallest side a texture is halved to when the pages are full.
 const MIN_SHRUNK_SIDE: u32 = 16;
