@@ -2,7 +2,7 @@
 
 use crate::menu_files;
 use crate::{
-    Layout, TranslateError, Translation, animation, container, extras, hud, items, manifest,
+    Layout, TranslateError, Translation, animation, container, ctm, extras, hud, items, manifest,
     meta::{TEXTURES, detect_layout, read_meta},
     names, particle_atlas, sky,
     texture::{Budget, crop, decode, dimensions, duplicate, encode, strip_frame},
@@ -57,6 +57,9 @@ impl<R: FnMut(&str) -> Option<Vec<u8>>> Source<R> {
             .collect()
     }
 }
+
+/// The most OptiFine `random` rules one pack may turn into texture lists.
+const MAX_RANDOM_RULES: usize = 1024;
 
 /// The base name of `path` without its `.png` extension.
 fn stem(path: &str) -> &str {
@@ -443,6 +446,62 @@ pub(crate) fn translate_within(
             animated.insert(name.clone());
         }
     }
+    // OptiFine `random` rules become weighted texture lists on the block texture's atlas tile.
+    let mut random_files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut random_tiles = serde_json::Map::new();
+    for rule_path in paths.iter().filter(|path| {
+        path.ends_with(".properties")
+            && (path.starts_with("assets/minecraft/optifine/ctm/")
+                || path.starts_with("assets/minecraft/mcpatcher/ctm/"))
+    }) {
+        if random_tiles.len() >= MAX_RANDOM_RULES {
+            break;
+        }
+        let folder = &rule_path[..=rule_path.rfind('/').unwrap_or(0)];
+        let Some(rule) = source
+            .load(rule_path)
+            .and_then(|text| ctm::parse_random(folder, &String::from_utf8_lossy(&text)))
+        else {
+            continue;
+        };
+        let bedrock = names::block_path(layout, &rule.texture);
+        let Some(tile) = animation::solo_tile(&bedrock) else {
+            continue;
+        };
+        if random_tiles.contains_key(tile) {
+            continue;
+        }
+        let stem = bedrock.trim_start_matches("blocks/");
+        let mut entries = Vec::new();
+        for (index, (choice, weight)) in rule.choices.iter().enumerate() {
+            let bytes = match choice {
+                ctm::Choice::Default => blocks
+                    .iter()
+                    .find(|(name, _)| *name == rule.texture)
+                    .map(|(_, bytes)| bytes.clone()),
+                ctm::Choice::File(path) if known.contains(path.as_str()) => source.load(path),
+                ctm::Choice::File(_) => None,
+            };
+            let Some(bytes) = bytes else {
+                continue;
+            };
+            // A tile that is itself an animation strip cannot stand in for one frame.
+            let Some((width, height)) = dimensions(&bytes) else {
+                continue;
+            };
+            if strip_frame(width, height).is_some() {
+                continue;
+            }
+            let file = format!("textures/blocks/{stem}_random{index}");
+            entries.push(serde_json::json!({ "path": file, "weight": weight }));
+            random_files.push((format!("{file}.png"), bytes));
+        }
+        if entries.len() >= 2 {
+            random_tiles.insert(tile.to_owned(), serde_json::json!({ "textures": entries }));
+        } else {
+            random_files.retain(|(file, _)| !file.contains(&format!("{stem}_random")));
+        }
+    }
     let masks = tint_mask_outputs(layout, &blocks, budget);
     let sources = blocks.len() + item_files.len();
     let block_outputs: Vec<_> = blocks
@@ -496,6 +555,19 @@ pub(crate) fn translate_within(
         out.insert("textures/particle/particles.png".into(), Output::Raw(bytes));
     }
     out.extend(block_outputs);
+    if !random_tiles.is_empty() {
+        let atlas = serde_json::json!({
+            "resource_pack_name": "java-translation",
+            "texture_name": "atlas.terrain",
+            "texture_data": random_tiles,
+        });
+        if let Ok(bytes) = serde_json::to_vec(&atlas) {
+            out.insert("textures/terrain_texture.json".into(), Output::Raw(bytes));
+            for (file, bytes) in random_files {
+                out.insert(file, Output::Raw(bytes));
+            }
+        }
+    }
     if !flipbooks.is_empty()
         && let Ok(patch) = serde_json::to_vec(&flipbooks)
     {

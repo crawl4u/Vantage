@@ -43,6 +43,16 @@ static TILES: LazyLock<HashMap<&'static str, Tile>> = LazyLock::new(|| {
         .collect()
 });
 
+/// The terrain atlas tile name of the block texture at `path` (relative to `textures/`, no
+/// extension) when it is the only texture of its tile, which is when a weighted list of textures
+/// can stand in for it.
+pub(crate) fn solo_tile(path: &str) -> Option<&'static str> {
+    TILES
+        .get(path)
+        .filter(|tile| tile.index == 0 && tile.variant.is_none())
+        .map(|tile| tile.name)
+}
+
 /// A Java animation: how long each frame shows by default, whether frames blend, and the frames
 /// to show in order, each with its own time when it has one.
 #[derive(Debug, PartialEq)]

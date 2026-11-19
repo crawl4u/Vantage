@@ -37,7 +37,10 @@ def main(root, out_path):
                 continue
             if not any(os.path.isfile(os.path.join(root, path + ext)) for ext in (".png", ".tga")):
                 continue
-            rows.setdefault(path, (tile, index, "-"))
+            # Several tiles can share a picture (dirt is also the grass block's bottom): the tile
+            # named after the file is the one the texture belongs to.
+            if path not in rows or tile == os.path.basename(path):
+                rows[path] = (tile, index, "-")
     for entry in flipbooks:
         path = entry["flipbook_texture"]
         if not any(os.path.isfile(os.path.join(root, path + ext)) for ext in (".png", ".tga")):

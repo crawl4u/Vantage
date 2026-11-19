@@ -1361,3 +1361,58 @@ fn a_pack_animation_keeps_its_strip_and_becomes_a_flipbook_patch() {
         .unwrap();
     assert_eq!(ore["frames"], serde_json::json!([2, 1, 0]));
 }
+
+#[test]
+fn an_optifine_random_rule_becomes_a_weighted_texture_list_for_the_blocks_tile() {
+    let root = "assets/minecraft/";
+    let files = pack(vec![
+        (
+            &format!("{root}textures/block/dirt.png"),
+            solid(16, 16, RED),
+        ),
+        (
+            &format!("{root}optifine/ctm/dirt/dirt.properties"),
+            b"method=random\nmatchTiles=dirt\ntiles=<default> 1-2\nweights=3 1 1\n".to_vec(),
+        ),
+        (
+            &format!("{root}optifine/ctm/dirt/1.png"),
+            solid(16, 16, GREEN),
+        ),
+        (
+            &format!("{root}optifine/ctm/dirt/2.png"),
+            solid(16, 16, BLUE),
+        ),
+        // Another rule that depends on the biome is left alone.
+        (
+            &format!("{root}optifine/ctm/stone/stone.properties"),
+            b"method=random\nmatchTiles=stone\ntiles=1-2\nbiomes=plains\n".to_vec(),
+        ),
+        (
+            &format!("{root}textures/block/stone.png"),
+            solid(16, 16, WHITE),
+        ),
+    ]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    let atlas: serde_json::Value =
+        serde_json::from_slice(out["textures/terrain_texture.json"]).unwrap();
+    let data = atlas["texture_data"].as_object().unwrap();
+    assert_eq!(data.len(), 1, "only the unconditional rule is translated");
+    let choices = data["dirt"]["textures"].as_array().unwrap();
+    assert_eq!(choices.len(), 3);
+    assert_eq!(choices[0]["weight"], 3.0);
+    assert_eq!(choices[2]["path"], "textures/blocks/dirt_random2");
+    assert_eq!(
+        pixel(&out, "textures/blocks/dirt_random0.png", 0, 0).1,
+        RED,
+        "the default choice is the block's own texture"
+    );
+    assert_eq!(
+        pixel(&out, "textures/blocks/dirt_random1.png", 0, 0).1,
+        GREEN
+    );
+    assert_eq!(
+        pixel(&out, "textures/blocks/dirt_random2.png", 0, 0).1,
+        BLUE
+    );
+}
