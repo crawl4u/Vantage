@@ -1312,6 +1312,6 @@ fn a_huge_hotbar_is_shrunk_so_every_slot_fits_the_clients_texture_pages() {
     let out = output(&translation);
     for slot in 0..9 {
         let (size, _) = pixel(&out, &format!("textures/ui/hotbar_{slot}.png"), 0, 0);
-        assert_eq!(size, (20 * 4, 22 * 4), "slot {slot}");
+        assert_eq!(size, (20 * 8, 22 * 8), "slot {slot}");
     }
 }

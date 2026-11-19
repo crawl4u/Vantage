@@ -291,7 +291,7 @@ pub(crate) fn legacy_sprites(icons: &RgbaImage, budget: &Budget) -> BTreeMap<Str
 
 /// The finest scale (texels per Java pixel) the HUD keeps: far past what a screen shows, while
 /// a 32x pack's HUD pictures at full size would not all fit the client's texture pages.
-const MAX_HUD_SCALE: u32 = 4;
+const MAX_HUD_SCALE: u32 = 8;
 
 /// `image` shrunk by `MAX_HUD_SCALE / scale`, `scale` being the pack's texels per Java pixel; an
 /// image that is already within the cap is copied as it is. `None` when it would shrink to
