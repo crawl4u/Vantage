@@ -28,12 +28,15 @@ const BAR_WIDTH: f32 = 100.0;
 const BAR_HEIGHT: f32 = 2.0;
 const BAR_GAP: f32 = 6.0;
 /// The tile under the text: the room for its cells, and the border and padding round them.
-const TILE_INNER: f32 = 33.0;
+/// The cells across, each cell's size and the gap between cells: whole Java pixels, so every cell
+/// is alike and the tile is the same size whatever it shows.
+const SIDE: usize = 11;
+const CELL: f32 = 2.0;
+const CELL_GAP: f32 = 1.0;
+const TILE_INNER: f32 = SIDE as f32 * (CELL + CELL_GAP) - CELL_GAP;
 const TILE_PAD: f32 = 3.0;
 const TILE_BORDER: f32 = 1.0;
 const TILE_GAP: f32 = 8.0;
-/// The cells across the tile shows before the chunks around the player are known.
-const PLACEHOLDER_CELLS: usize = 5;
 /// How far through the bar the menu's part of an opening takes it; the terrain does the rest.
 const MENU_PART: f32 = 0.5;
 const DIM: [u8; 4] = [0, 0, 0, 130];
@@ -139,17 +142,32 @@ enum Tile<'a> {
     Empty,
 }
 
-/// The cells of `tile`, row by row, as 0 (not needed), 1 (waiting) or 2 (arrived), and the side.
-fn cells(tile: &Tile<'_>) -> (usize, Vec<u8>) {
+/// The cells of `tile` on a square [`SIDE`] across, row by row, as 0 (not needed), 1 (waiting) or
+/// 2 (arrived). A smaller grid sits in the middle of it. With no grid known the square shows the
+/// round patch of chunks a view is made of, all waiting, so the tile looks the same before and
+/// after the chunks are known.
+fn cells(tile: &Tile<'_>) -> Vec<u8> {
+    let mut square = vec![0_u8; SIDE * SIDE];
     match tile {
-        Tile::Grid(grid) if grid.side > 0 && grid.cells.len() == grid.side * grid.side => {
-            (grid.side, grid.cells.clone())
+        Tile::Grid(grid)
+            if grid.side > 0 && grid.side <= SIDE && grid.cells.len() == grid.side * grid.side =>
+        {
+            let offset = (SIDE - grid.side) / 2;
+            for (place, state) in grid.cells.iter().enumerate() {
+                let (row, column) = (place / grid.side + offset, place % grid.side + offset);
+                square[row * SIDE + column] = *state;
+            }
         }
-        _ => (
-            PLACEHOLDER_CELLS,
-            vec![1; PLACEHOLDER_CELLS * PLACEHOLDER_CELLS],
-        ),
+        _ => {
+            let middle = (SIDE as f32 - 1.0) / 2.0;
+            for (place, state) in square.iter_mut().enumerate() {
+                let (row, column) = ((place / SIDE) as f32, (place % SIDE) as f32);
+                let distance = (row - middle).hypot(column - middle);
+                *state = u8::from(distance <= middle + 0.5);
+            }
+        }
     }
+    square
 }
 
 /// Draws the loading screen at `unit` logical pixels to a Java pixel over `size`, with the bar
@@ -229,9 +247,8 @@ fn paint(
         ],
         [0, 0, 0, 255],
     )?;
-    let (side, states) = cells(tile);
-    let pitch = TILE_INNER / side as f32;
-    let cell = (pitch - 1.0).max(1.0);
+    let states = cells(tile);
+    let (pitch, cell) = (CELL + CELL_GAP, CELL);
     let origin = [
         outer[0] + (TILE_BORDER + TILE_PAD) * unit,
         outer[1] + (TILE_BORDER + TILE_PAD) * unit,
@@ -243,8 +260,8 @@ fn paint(
             0 => continue,
             _ => EMPTY_CELL,
         };
-        let x = origin[0] + (place % side) as f32 * pitch * unit;
-        let top = origin[1] + (place / side) as f32 * pitch * unit;
+        let x = origin[0] + (place % SIDE) as f32 * pitch * unit;
+        let top = origin[1] + (place / SIDE) as f32 * pitch * unit;
         canvas.fill([x, top, x + cell * unit, top + cell * unit], colour)?;
     }
     y += tile_size;
@@ -375,15 +392,35 @@ mod tests {
             side: 3,
             cells: vec![0, 1, 2, 1, 2, 2, 0, 1, 2],
         };
-        assert_eq!(cells(&Tile::Grid(&grid)), (3, grid.cells.clone()));
-        let (side, waiting) = cells(&Tile::Empty);
-        assert_eq!(waiting.len(), side * side);
-        assert!(waiting.iter().all(|cell| *cell == 1));
+        // A small grid sits in the middle of the square, whose size never changes.
+        let square = cells(&Tile::Grid(&grid));
+        assert_eq!(square.len(), SIDE * SIDE);
+        let at = |row: usize, column: usize| square[(row + 4) * SIDE + column + 4];
+        assert_eq!((at(0, 0), at(0, 1), at(0, 2)), (0, 1, 2));
+        assert_eq!(at(2, 2), 2);
+        // Round it nothing is needed.
+        assert_eq!(square[0], 0);
+        // With no grid the square shows the same round patch, all of it waiting.
+        let waiting = cells(&Tile::Empty);
+        assert_eq!(waiting.len(), SIDE * SIDE);
+        assert!(waiting.iter().all(|cell| *cell <= 1));
+        assert_eq!(waiting[SIDE * SIDE / 2], 1, "the middle is in the patch");
+        assert_eq!(waiting[0], 0, "the corners are not");
+        // The patch is as even left to right and top to bottom as it is the other way.
+        for row in 0..SIDE {
+            for column in 0..SIDE {
+                assert_eq!(
+                    waiting[row * SIDE + column],
+                    waiting[(SIDE - 1 - row) * SIDE + (SIDE - 1 - column)]
+                );
+                assert_eq!(waiting[row * SIDE + column], waiting[column * SIDE + row]);
+            }
+        }
         // A grid whose cells do not fill its side is not trusted.
         let broken = LoadingGrid {
             side: 3,
             cells: vec![2; 4],
         };
-        assert_eq!(cells(&Tile::Grid(&broken)).0, PLACEHOLDER_CELLS);
+        assert_eq!(cells(&Tile::Grid(&broken)), waiting);
     }
 }
