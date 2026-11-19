@@ -311,7 +311,7 @@ fn entry(
     play_arrow(
         canvas,
         view,
-        row.play,
+        MenuAction::JoinPlayWorld(index),
         state.hovered || state.focused,
         icon,
         unit,

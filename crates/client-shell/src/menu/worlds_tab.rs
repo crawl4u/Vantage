@@ -331,6 +331,23 @@ impl MenuRuntime {
         self.local_ui.actions.push(action);
     }
 
+    /// How long between two presses of one world counts as a double press, in seconds.
+    const DOUBLE_PRESS_SECONDS: f64 = 0.4;
+
+    /// Notes a press of `action` at `now` seconds. A second press of the same world of the
+    /// Java-style list within [`Self::DOUBLE_PRESS_SECONDS`] returns the action that plays it.
+    pub fn world_double_press(&mut self, action: MenuAction, now: f64) -> Option<MenuAction> {
+        let MenuAction::SelectPlayWorld(index) = action else {
+            return None;
+        };
+        let double = self
+            .last_world_press
+            .is_some_and(|(last, at)| last == index && now - at <= Self::DOUBLE_PRESS_SECONDS);
+        // A double press is used up, so a third does not start another.
+        self.last_world_press = (!double).then_some((index, now));
+        double.then_some(MenuAction::JoinPlayWorld(index))
+    }
+
     /// The local-world presses waiting for the world service.
     #[cfg(test)]
     pub(super) fn queued_local_actions(&self) -> &[LocalWorldAction] {

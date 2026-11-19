@@ -129,6 +129,7 @@ impl MenuRuntime {
             storage_query: field_editor(MenuField::StorageQuery),
             pack_query: field_editor(MenuField::PackQuery),
             world_query: field_editor(MenuField::WorldQuery),
+            last_world_press: None,
             pack_folder_name: field_editor(MenuField::PackFolderName),
             pack_renaming: false,
             global_resource_renames: Vec::new(),

@@ -349,3 +349,40 @@ fn the_java_world_list_chooses_worlds_and_deleting_opens_the_world_then_asks() {
         [LocalWorldAction::Edit(0), LocalWorldAction::Delete]
     );
 }
+
+#[test]
+fn a_second_press_of_the_same_world_soon_after_plays_it() {
+    let mut menu = MenuRuntime::new(true, 2, "Player".into());
+    let press = |index| MenuAction::SelectPlayWorld(index);
+    // The first press only selects; a quick second one on the same world plays it.
+    assert_eq!(menu.world_double_press(press(1), 10.0), None);
+    assert_eq!(
+        menu.world_double_press(press(1), 10.2),
+        Some(MenuAction::JoinPlayWorld(1))
+    );
+    // A double press is used up, so a third does not play again.
+    assert_eq!(menu.world_double_press(press(1), 10.3), None);
+    // Too slow, or another world, is not a double press.
+    assert_eq!(menu.world_double_press(press(1), 11.0), None);
+    assert_eq!(menu.world_double_press(press(2), 11.1), None);
+    // Other actions are never double presses.
+    assert_eq!(menu.world_double_press(MenuAction::AddBack, 11.2), None);
+}
+
+#[test]
+fn the_play_arrow_joins_a_friends_world_or_an_own_one_by_its_place() {
+    let mut menu = MenuRuntime::new(true, 2, "Player".into());
+    menu.local_worlds = vec![launcher::menu::LocalWorldCard {
+        name: "Home".to_owned(),
+        game_mode: String::new(),
+        world_type: String::new(),
+        server: String::new(),
+        date: String::new(),
+        size: String::new(),
+        thumbnail: None,
+    }]
+    .into();
+    // With no friends, place 0 is the first own world.
+    menu.activate(MenuAction::JoinPlayWorld(0));
+    assert_eq!(menu.local_world_requested, Some(0));
+}

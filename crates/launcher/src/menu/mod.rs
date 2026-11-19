@@ -240,6 +240,9 @@ pub enum MenuAction {
     PlayLocalWorld(usize),
     /// Choose a world of the Java-style world list, counting friends' worlds first.
     SelectPlayWorld(usize),
+    /// Play the Java-style world list's world at this place, counting friends' worlds first.
+    /// Pressed on a world's play arrow, which is not the Play World button.
+    JoinPlayWorld(usize),
     /// Focus the Java-style world list's search field.
     SearchWorlds,
     /// Ask to delete the local world at this index, as its edit screen does.

@@ -725,6 +725,7 @@ pub fn drive_menu_input(
         if sound {
             presentation.play_menu_press_sound(action);
         }
+        let action = menu.world_double_press(action, now).unwrap_or(action);
         menu.activate_from_input(action);
     };
     update_slider(
