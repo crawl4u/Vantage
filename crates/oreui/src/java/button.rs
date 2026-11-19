@@ -191,7 +191,7 @@ pub(super) fn icon(
     };
     nine_slice(canvas, sprite, bounds, unit)?;
     let key = key(icon_name);
-    if let Some([width, height]) = canvas.sprite_size(&key) {
+    if let Some([width, height]) = canvas.java_sprite_size(&key) {
         let (width, height) = (width * unit, height * unit);
         let left = ((bounds[0] + bounds[2] - width) * 0.5).round();
         let top = ((bounds[1] + bounds[3] - height) * 0.5).round();

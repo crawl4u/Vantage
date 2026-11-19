@@ -56,6 +56,9 @@ impl Layers<'_> {
     }
 }
 
+/// Java's button width in pixels, which the pack's button picture is measured against.
+const NOMINAL_BUTTON_WIDTH: f32 = 200.0;
+
 /// What the menus read once resolved: the font, the sprites' nine-slice borders and the splashes.
 struct Active {
     font: Arc<JavaFont>,
@@ -63,6 +66,9 @@ struct Active {
     /// The same borders in Java pixels, the sprite's nominal size, which is what a drawn control
     /// keeps them at however fine the texture is.
     units: Arc<HashMap<String, [f32; 4]>>,
+    /// Texels per Java pixel of the pack's artwork, from its button's size against Java's 200
+    /// pixels, so a sprite drawn at its own size takes its Java size however fine the pack is.
+    scale: f32,
     splashes: Arc<Vec<String>>,
 }
 
@@ -90,6 +96,16 @@ pub fn border(key: &str) -> Option<[u16; 4]> {
 #[must_use]
 pub fn border_units(key: &str) -> Option<[f32; 4]> {
     ACTIVE.read().ok()?.as_ref()?.units.get(key).copied()
+}
+
+/// Texels per Java pixel of the active pack's menu artwork; 1 for a pack at Java's own size.
+#[must_use]
+pub fn scale() -> f32 {
+    ACTIVE
+        .read()
+        .ok()
+        .and_then(|active| active.as_ref().map(|active| active.scale))
+        .unwrap_or(1.0)
 }
 
 /// The title's splash lines: the packs' and the game's together, as Java combines them.
@@ -143,6 +159,7 @@ pub(super) fn resolve(layers: &Layers<'_>) -> Option<Resolved> {
     let mut art = Vec::new();
     let mut borders = HashMap::new();
     let mut units = HashMap::new();
+    let mut scale = 1.0_f32;
     for file in GUI_FILES {
         let path = gui_path(file);
         let Some((layer, bytes)) = layers.read(&path) else {
@@ -161,6 +178,9 @@ pub(super) fn resolve(layers: &Layers<'_>) -> Option<Resolved> {
         {
             borders.insert(key(file), border.0);
             units.insert(key(file), border.1);
+        }
+        if *file == "sprites/widget/button.png" {
+            scale = (width as f32 / NOMINAL_BUTTON_WIDTH).max(1.0);
         }
         art.push((key(file), Art::Still(width, height, pixels)));
     }
@@ -183,6 +203,7 @@ pub(super) fn resolve(layers: &Layers<'_>) -> Option<Resolved> {
             font: Arc::new(font),
             borders: Arc::new(borders),
             units: Arc::new(units),
+            scale,
             splashes: Arc::new(splashes),
         },
     })

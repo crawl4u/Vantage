@@ -408,7 +408,7 @@ fn separators(canvas: &mut Canvas<'_>, size: [f32; 2], unit: f32) -> Result<(), 
         ("footer_separator.png", size[1] - FOOTER * unit),
     ] {
         let key = crate::images::java::key(name);
-        let Some([width, _]) = canvas.sprite_size(&key) else {
+        let Some([width, _]) = canvas.java_sprite_size(&key) else {
             continue;
         };
         let tile = (width * unit).max(1.0);
@@ -750,9 +750,7 @@ fn slider(
     );
     button::nine_slice(canvas, SLIDER[lit], bounds, unit)?;
     let handle_key = crate::images::java::key(HANDLE[lit]);
-    let [handle_width, handle_height] = canvas
-        .sprite_size(&handle_key)
-        .unwrap_or(HANDLE_SIZE);
+    let [handle_width, handle_height] = canvas.java_sprite_size(&handle_key).unwrap_or(HANDLE_SIZE);
     let (handle_width, handle_height) = (handle_width * unit, handle_height * unit);
     let travel = (bounds[2] - bounds[0] - handle_width).max(0.0);
     let left = (bounds[0] + fraction * travel).round();

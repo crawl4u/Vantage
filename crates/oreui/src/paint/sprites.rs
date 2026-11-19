@@ -39,6 +39,14 @@ impl Canvas<'_> {
         Some([f32::from(right - left), f32::from(bottom - top)])
     }
 
+    /// The size in Java pixels of the Java menu artwork `key`: its texels over the pack's texels
+    /// per Java pixel, so an HD pack's icon keeps the size Java draws it at.
+    pub(in super::super) fn java_sprite_size(&self, key: &str) -> Option<[f32; 2]> {
+        let scale = crate::images::java::scale();
+        self.sprite_size(key)
+            .map(|[width, height]| [width / scale, height / scale])
+    }
+
     /// Whether the artwork `key` is installed.
     pub(in super::super) fn has_sprite(&self, key: &str) -> bool {
         self.native_sprite(key).is_some()

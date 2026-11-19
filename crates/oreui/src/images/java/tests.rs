@@ -162,6 +162,10 @@ fn borders_come_from_the_layer_that_supplied_the_texture() {
         ),
     ]);
     let resolved = resolve_with(&[&hd], cache.path()).unwrap();
+    // A button twice Java's 200 pixels puts the pack at two texels per Java pixel; the game's own
+    // tiny stand-in counts as Java's size.
+    assert_eq!(resolved.active.scale, 2.0);
+    assert_eq!(plain.active.scale, 1.0);
     assert_eq!(
         resolved
             .active

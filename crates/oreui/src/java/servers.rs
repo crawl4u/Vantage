@@ -334,7 +334,7 @@ fn separators(canvas: &mut Canvas<'_>, size: [f32; 2], unit: f32) -> Result<(), 
         ("footer_separator.png", size[1] - FOOTER * unit),
     ] {
         let key = crate::images::java::key(name);
-        let Some([width, _]) = canvas.sprite_size(&key) else {
+        let Some([width, _]) = canvas.java_sprite_size(&key) else {
             continue;
         };
         let tile = (width * unit).max(1.0);
