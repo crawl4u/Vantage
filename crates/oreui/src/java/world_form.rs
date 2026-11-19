@@ -19,9 +19,8 @@ use super::{
 use crate::paint::Canvas;
 
 /// Sizes in Java pixels.
-const HEADER: f32 = 50.0;
-const TABS_TOP: f32 = 24.0;
-const TAB_WIDTH: f32 = 74.0;
+const TABS_TOP: f32 = 6.0;
+const TAB_WIDTH: f32 = 100.0;
 const TAB_GAP: f32 = 4.0;
 const BUTTON_HEIGHT: f32 = 20.0;
 
@@ -61,6 +60,37 @@ fn name_field(name: &str) -> Entry {
     }
 }
 
+/// The tabs Java shows, with the model tab each opens: Game, World and More. Cheats and
+/// multiplayer settings share More.
+const JAVA_TABS: [(&str, Tab); 3] = [
+    ("Game", Tab::General),
+    ("World", Tab::Advanced),
+    ("More", Tab::Multiplayer),
+];
+
+/// Whether the Java tab that opens `tab` is the one showing, given the model tab that is open.
+fn tab_is_open(tab: Tab, open: Tab) -> bool {
+    tab == open || (tab == Tab::Multiplayer && open == Tab::Cheats)
+}
+
+/// Java's Allow Commands: the cheats switch, which lives in the Game tab.
+fn allow_commands(local_view: &WorldsView, editing: bool) -> Option<Entry> {
+    let options = local_view
+        .edit
+        .as_ref()
+        .filter(|_| editing)
+        .map_or(&local_view.create.options, |edit| &edit.options);
+    let id = WorldOption::ActivateCheats;
+    let value = options.get(id);
+    let text = format!("Allow Commands: {}", if value == 0 { "OFF" } else { "ON" });
+    let enabled = !local_view.busy && options.editable(id, editing);
+    Some(if enabled {
+        Entry::Link(text, local(A::Option(id, 1 - value)))
+    } else {
+        Entry::Label(text)
+    })
+}
+
 /// The settings the catalog puts in `tab`, as widgets: a toggle or choice is a button that steps
 /// it on, a number is a field, and one that cannot change now is a button that does nothing.
 fn catalog_entries(local_view: &WorldsView, tab: Tab, editing: bool) -> Vec<Entry> {
@@ -72,7 +102,11 @@ fn catalog_entries(local_view: &WorldsView, tab: Tab, editing: bool) -> Vec<Entr
     let mut entries = Vec::new();
     for &id in WorldOption::ALL {
         let definition = id.definition();
-        if definition.tab != tab || (editing && definition.creation_only) {
+        // Allow Commands has its own button in the Game tab.
+        if definition.tab != tab
+            || (editing && definition.creation_only)
+            || id == WorldOption::ActivateCheats
+        {
             continue;
         }
         let enabled = !local_view.busy && options.editable(id, editing);
@@ -150,6 +184,7 @@ fn entries(local_view: &WorldsView, route: Screen) -> Vec<Entry> {
                 difficulty_label(form.difficulty),
                 local(A::Difficulty(next(&DIFFICULTIES, form.difficulty))),
             ));
+            found.extend(allow_commands(local_view, false));
             found.push(Entry::Label("Hardcore: OFF".to_owned()));
         }
         (Tab::General, true) => {
@@ -181,6 +216,7 @@ fn entries(local_view: &WorldsView, route: Screen) -> Vec<Entry> {
                     launcher::menu::civil_date(world.last_played_unix.max(world.created_unix)),
                 )));
             }
+            found.extend(allow_commands(local_view, true));
             found.push(Entry::Link("Delete World".to_owned(), local(A::Delete)));
         }
         (Tab::Advanced, false) => {
@@ -209,6 +245,16 @@ fn entries(local_view: &WorldsView, route: Screen) -> Vec<Entry> {
                 )));
             }
             found.extend(catalog_entries(local_view, Tab::Advanced, true));
+        }
+        (Tab::Multiplayer | Tab::Cheats, _) if local_view.options_available() => {
+            found.extend(catalog_entries(local_view, Tab::Multiplayer, editing));
+            found.extend(catalog_entries(local_view, Tab::Cheats, editing));
+            if !editing {
+                found.push(Entry::Link(
+                    "Use a Template".to_owned(),
+                    local(A::OpenTemplates),
+                ));
+            }
         }
         (tab, _) if tab.supported() && local_view.options_available() => {
             found.extend(catalog_entries(local_view, tab, editing));
@@ -256,14 +302,15 @@ pub(crate) fn draw(
         _ => "Create New World",
     };
     let row = footer(local_view, route);
+    // The tabs take the title's place at the top of the create and edit screens, as in Java.
     let spec = Spec {
-        title,
-        subtitle: None,
-        header: if route == Screen::Templates {
-            frame::HEADER
+        title: if route == Screen::Templates {
+            title
         } else {
-            HEADER
+            ""
         },
+        subtitle: None,
+        header: frame::HEADER,
         rows: &[&row],
         more: None,
     };
@@ -318,22 +365,17 @@ fn tabs(
     centre: f32,
     unit: f32,
 ) -> Result<(), PaintError> {
-    let shown: Vec<Tab> = Tab::ALL
-        .iter()
-        .copied()
-        .filter(|tab| tab.supported())
-        .collect();
-    let total = shown.len() as f32 * TAB_WIDTH + (shown.len() as f32 - 1.0) * TAB_GAP;
-    for (place, tab) in shown.into_iter().enumerate() {
+    let total = JAVA_TABS.len() as f32 * TAB_WIDTH + (JAVA_TABS.len() as f32 - 1.0) * TAB_GAP;
+    for (place, (label, tab)) in JAVA_TABS.into_iter().enumerate() {
         let x = centre - total / 2.0 + place as f32 * (TAB_WIDTH + TAB_GAP);
         let bounds = [x, TABS_TOP, x + TAB_WIDTH, TABS_TOP + BUTTON_HEIGHT].map(|v| v * unit);
         button::draw_lit(
             canvas,
             view,
             bounds,
-            tab.label(),
+            label,
             Some(local(A::Tab(tab))),
-            tab == view.local.tab,
+            tab_is_open(tab, view.local.tab),
             unit,
         )?;
     }
@@ -375,7 +417,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(steps.len(), 2);
+        assert_eq!(steps.len(), 3);
         assert_eq!(
             steps[0],
             local(A::GameMode(next(

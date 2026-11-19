@@ -100,14 +100,10 @@ fn rows(view: &MenuView) -> Vec<Row> {
 fn footer(chosen: Option<&Row>) -> (Vec<Btn<'static>>, Vec<Btn<'static>>) {
     let local = chosen.and_then(|row| row.local);
     let first = vec![
-        Btn::new("Play World", chosen.map(|row| row.play)),
+        Btn::new("Play Selected World", chosen.map(|row| row.play)),
         Btn::new(
-            "New World",
+            "Create New World",
             Some(MenuAction::LocalWorld(LocalWorldAction::BeginCreate)),
-        ),
-        Btn::new(
-            "From Template",
-            Some(MenuAction::LocalWorld(LocalWorldAction::OpenTemplates)),
         ),
     ];
     let second = vec![
@@ -154,7 +150,7 @@ pub(crate) fn draw(
             view,
             [left, SEARCH_TOP, left + width, SEARCH_TOP + SEARCH_HEIGHT].map(|v| v * unit),
             &view.world_query,
-            "Search worlds",
+            "Search...",
             view.field == Some(MenuField::WorldQuery),
             Some(MenuAction::SearchWorlds),
             unit,
@@ -412,9 +408,9 @@ mod tests {
                 .find(|button| button.label == label)
                 .and_then(|button| button.action)
         };
-        assert!(labelled(&nothing, "Play World").is_none());
+        assert!(labelled(&nothing, "Play Selected World").is_none());
         assert!(labelled(&nothing, "Edit").is_none() && labelled(&nothing, "Delete").is_none());
-        assert!(labelled(&nothing, "New World").is_some());
+        assert!(labelled(&nothing, "Create New World").is_some());
         let owned = Row {
             title: "Home".into(),
             about: String::new(),
@@ -425,7 +421,7 @@ mod tests {
         };
         let chosen = footer(Some(&owned));
         assert_eq!(
-            labelled(&chosen, "Play World"),
+            labelled(&chosen, "Play Selected World"),
             Some(MenuAction::PlayLocalWorld(2))
         );
         assert_eq!(
@@ -440,7 +436,7 @@ mod tests {
         };
         let chosen = footer(Some(&friend));
         assert_eq!(
-            labelled(&chosen, "Play World"),
+            labelled(&chosen, "Play Selected World"),
             Some(MenuAction::PlayFriend(0))
         );
         assert!(labelled(&chosen, "Edit").is_none() && labelled(&chosen, "Delete").is_none());
