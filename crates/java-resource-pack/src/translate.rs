@@ -214,18 +214,60 @@ fn retarget_tga(out: &mut BTreeMap<String, Output>, budget: &Budget) {
         let image = match (kind, image) {
             // The dyed layer is the Java base and the fixed one its overlay: with no overlay
             // there is nothing to tell them apart, so vanilla's mask stays.
-            (TgaKind::DyeMask, Some(base)) => out
-                .get(&format!("{target}_overlay.png"))
-                .and_then(|overlay| match overlay {
-                    Output::Raw(bytes) => decode(bytes, budget),
-                    Output::Image(image) | Output::Tga(image) => duplicate(image, budget),
-                })
-                .and_then(|overlay| tga::dye_mask(&base, &overlay, budget)),
+            (TgaKind::DyeMask, Some(base)) => dye_mask_of(out, target, &base, budget),
             (_, image) => image,
         };
         if let Some(image) = image {
             out.insert(format!("{target}.tga"), Output::Tga(image));
         }
+    }
+    dye_item_icons(out, budget);
+}
+
+/// The dye mask of `base` with the overlay output beside it, if there is one.
+fn dye_mask_of(
+    out: &BTreeMap<String, Output>,
+    target: &str,
+    base: &RgbaImage,
+    budget: &Budget,
+) -> Option<RgbaImage> {
+    let overlay = match out.get(&format!("{target}_overlay.png"))? {
+        Output::Raw(bytes) => decode(bytes, budget)?,
+        Output::Image(image) | Output::Tga(image) => duplicate(image, budget)?,
+    };
+    tga::dye_mask(base, &overlay, budget)
+}
+
+/// Leather items Java draws tinted by a dye. The client draws a pack's own item icon as it is,
+/// so the undyed leather tint is baked into the icon, which is then a plain texture.
+const DYED_ITEMS: [&str; 5] = [
+    "textures/items/leather_helmet",
+    "textures/items/leather_chestplate",
+    "textures/items/leather_leggings",
+    "textures/items/leather_boots",
+    "textures/items/leather_horse_armor",
+];
+
+/// Replaces each leather item's dye mask by its undyed icon.
+fn dye_item_icons(out: &mut BTreeMap<String, Output>, budget: &Budget) {
+    for target in DYED_ITEMS {
+        let Some(mask) = [format!("{target}.tga"), format!("{target}.png")]
+            .iter()
+            .find_map(|path| match out.get(path)? {
+                Output::Raw(bytes) => {
+                    decode(bytes, budget).and_then(|base| dye_mask_of(out, target, &base, budget))
+                }
+                Output::Tga(image) => duplicate(image, budget),
+                Output::Image(image) => dye_mask_of(out, target, image, budget),
+            })
+        else {
+            continue;
+        };
+        out.remove(&format!("{target}.tga"));
+        out.insert(
+            format!("{target}.png"),
+            Output::Image(tga::tint_dye_mask(&mask)),
+        );
     }
 }
 

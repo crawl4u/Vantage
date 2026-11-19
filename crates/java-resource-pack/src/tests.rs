@@ -17,6 +17,13 @@ fn solid(width: u32, height: u32, color: [u8; 4]) -> Vec<u8> {
     encode(&RgbaImage::from_pixel(width, height, Rgba(color)))
 }
 
+/// A transparent `side`-pixel PNG with one `color` pixel in its top-left corner.
+fn corner_dot(side: u32, color: [u8; 4]) -> Vec<u8> {
+    let mut image = RgbaImage::new(side, side);
+    image.put_pixel(0, 0, Rgba(color));
+    encode(&image)
+}
+
 /// A transparent `size`-pixel atlas with each region, given in 256-pixel coordinates and scaled
 /// with the atlas, filled with its colour.
 fn marked_atlas(size: u32, regions: &[(Rect, [u8; 4])]) -> Vec<u8> {
@@ -1217,7 +1224,7 @@ fn particle_sprites_become_an_atlas_overlay_unless_the_pack_has_its_own_atlas() 
 }
 
 #[test]
-fn leather_armor_with_an_overlay_becomes_a_dye_mask_and_without_one_stays_vanilla() {
+fn leather_items_get_the_undyed_tint_baked_in_and_need_an_overlay_to_be_translated() {
     let items = "assets/minecraft/textures/item/";
     let files = pack(vec![
         (&format!("{items}leather_helmet.png"), solid(16, 16, WHITE)),
@@ -1225,16 +1232,48 @@ fn leather_armor_with_an_overlay_becomes_a_dye_mask_and_without_one_stays_vanill
             &format!("{items}leather_helmet_overlay.png"),
             solid(16, 16, RED),
         ),
+        (
+            &format!("{items}leather_chestplate.png"),
+            solid(16, 16, WHITE),
+        ),
+        (
+            &format!("{items}leather_chestplate_overlay.png"),
+            corner_dot(16, RED),
+        ),
         (&format!("{items}leather_boots.png"), solid(16, 16, WHITE)),
     ]);
     let translation = run(&files, "Pack").unwrap();
     let out = output(&translation);
-    // The overlay covers the whole helmet here, so every pixel is fixed (alpha 3).
-    assert_eq!(
-        pixel(&out, "textures/items/leather_helmet.tga", 0, 0),
-        ((16, 16), [255, 0, 0, 3])
+    // The overlay covers the whole helmet, so every pixel is fixed and keeps its colour.
+    let (size, helmet) = pixel(&out, "textures/items/leather_helmet.png", 0, 0);
+    assert_eq!(size, (16, 16));
+    assert!(
+        helmet[0] >= 250 && helmet[1] <= 4 && helmet[3] == 255,
+        "{helmet:?}"
     );
-    assert!(!out.contains_key("textures/items/leather_helmet.png"));
-    assert!(!out.contains_key("textures/items/leather_boots.tga"));
+    // Elsewhere the dyed base is browned.
+    let (_, brown) = pixel(&out, "textures/items/leather_chestplate.png", 5, 5);
+    assert!(
+        brown[0] > brown[1] && brown[1] > brown[2] && brown[3] == 255,
+        "{brown:?}"
+    );
+    assert!(!out.contains_key("textures/items/leather_helmet.tga"));
+    // With no overlay nothing separates the dyed layer, so vanilla's icon stays.
     assert!(!out.contains_key("textures/items/leather_boots.png"));
+    assert!(!out.contains_key("textures/items/leather_boots.tga"));
+}
+
+#[test]
+fn worn_leather_armor_becomes_a_dye_mask_texture() {
+    let layer = "assets/minecraft/textures/entity/equipment/humanoid/";
+    let files = pack(vec![
+        (&format!("{layer}leather.png"), solid(64, 32, WHITE)),
+        (&format!("{layer}leather_overlay.png"), solid(64, 32, RED)),
+    ]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(&out, "textures/models/armor/leather_1.tga", 0, 0),
+        ((64, 32), [255, 0, 0, 3])
+    );
 }

@@ -151,6 +151,28 @@ pub(crate) fn dye_mask(
     Some(out)
 }
 
+/// The tint of undyed leather, in RGB byte order.
+const LEATHER_TINT: [u8; 3] = [0xa0, 0x65, 0x40];
+
+/// Applies the undyed leather tint to a dye mask, as the client does for an item it draws from
+/// vanilla's mask: dyed pixels (alpha 255) are multiplied by the tint, fixed ones (alpha 3) are
+/// left almost as they are, and every drawn pixel ends up opaque.
+pub(crate) fn tint_dye_mask(mask: &RgbaImage) -> RgbaImage {
+    let mut out = mask.clone();
+    for pixel in out.pixels_mut() {
+        let alpha = u32::from(pixel.0[3]);
+        if alpha == 0 {
+            continue;
+        }
+        for (value, tint) in pixel.0.iter_mut().zip(LEATHER_TINT) {
+            let weight = 255 * (255 - alpha) + u32::from(tint) * alpha;
+            *value = (u32::from(*value) * weight / (255 * 255)) as u8;
+        }
+        pixel.0[3] = 255;
+    }
+    out
+}
+
 /// Encodes an image as a run-length-encoded 32-bit TGA with a bottom-left origin, the layout
 /// vanilla's compressed TGA textures use. Packets never cross a row, as the format requires.
 pub(crate) fn encode(image: &RgbaImage) -> Vec<u8> {
@@ -263,6 +285,22 @@ mod tests {
         assert_eq!(mask.get_pixel(0, 0).0, [80, 80, 80, 255]);
         assert_eq!(mask.get_pixel(1, 0).0, [50, 30, 20, 3]);
         assert_eq!(mask.get_pixel(2, 0).0, [0; 4]);
+    }
+
+    #[test]
+    fn the_undyed_tint_browns_dyed_pixels_and_leaves_fixed_ones() {
+        let mask = RgbaImage::from_fn(3, 1, |x, _| match x {
+            0 => Rgba([200, 200, 200, 255]),
+            1 => Rgba([50, 30, 20, FIXED_ALPHA]),
+            _ => Rgba([9, 9, 9, 0]),
+        });
+        let tinted = tint_dye_mask(&mask);
+        let [r, g, b, a] = tinted.get_pixel(0, 0).0;
+        assert!(r > g && g > b && a == 255, "{r} {g} {b}");
+        let [r, g, b, a] = tinted.get_pixel(1, 0).0;
+        assert!((48..=50).contains(&r) && (28..=30).contains(&g) && (18..=20).contains(&b));
+        assert_eq!(a, 255);
+        assert_eq!(tinted.get_pixel(2, 0).0[3], 0);
     }
 
     #[test]
