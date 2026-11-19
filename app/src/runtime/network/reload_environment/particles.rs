@@ -74,9 +74,14 @@ pub(super) fn prepare_particles(
                 assets::texture::policy::device_policy(),
                 true,
             )?;
-            // A translated Java pack supplies only some atlas cells; the rest stay the base's.
+            // A translated Java pack supplies only some atlas cells; the rest stay the base's. The
+            // marker counts only beside the atlas that won, never a lower pack's over a higher one.
             if path == resource_pack::particle_atlas::ATLAS
-                && let Some(marker) = view.read(resource_pack::particle_atlas::MARKER)
+                && let Some((marker_layer, marker)) =
+                    view.read_capped_with_layer(resource_pack::particle_atlas::MARKER, MARKER_LIMIT)
+                && view
+                    .read_capped_with_layer(&format!("{path}.png"), u64::MAX)
+                    .is_some_and(|(layer, _)| layer == marker_layer)
                 && let Some(base) = base.and_then(|base| base.texture(path))
                 && let Some((width, height, rgba8)) = resource_pack::particle_atlas::overlay(
                     (base.width, base.height, &base.rgba8),
@@ -129,6 +134,9 @@ pub(super) fn prepare_particles(
         }
     }
 }
+
+/// The most a particle atlas overlay marker may hold.
+const MARKER_LIMIT: u64 = 1 << 20;
 
 /// Checks effect admission against the retained texture payload.
 fn effects_fit(effect_bytes: usize, texture_bytes: usize, limit: usize) -> bool {
@@ -339,6 +347,55 @@ mod tests {
         assert_eq!(at(16, 16), [91, 73, 57, 255]);
         assert_eq!(at(0, 0), [7; 4]);
         assert_eq!(at(32, 16), [7; 4]);
+    }
+
+    #[test]
+    fn an_overlay_marker_beside_a_lower_atlas_does_not_touch_a_higher_atlas() {
+        let path = "textures/particle/particles";
+        let effect: Arc<[u8]> = Arc::from(br#"{"particle_effect":{"description":{"identifier":"test:particle","basic_render_parameters":{"texture":"textures/particle/particles"}}}}"#.as_slice());
+        let base = RuntimeParticleAssets::decode(
+            &assets::encode_particle_catalog(
+                [1; 32],
+                &[ParticleTexture {
+                    path: path.into(),
+                    width: 128,
+                    height: 128,
+                    rgba8: vec![7; 128 * 128 * 4].into(),
+                }],
+                &[ParticleEffectFile {
+                    identifier: "test:particle".into(),
+                    bytes: effect,
+                }],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let png = |side, color| {
+            let image = image::RgbaImage::from_pixel(side, side, image::Rgba(color));
+            let mut png = std::io::Cursor::new(Vec::new());
+            image.write_to(&mut png, image::ImageFormat::Png).unwrap();
+            png.into_inner()
+        };
+        let lower = png(256, [91, 73, 57, 255]);
+        let higher = png(128, [200, 10, 10, 255]);
+        let view = super::super::tests::stack(&[
+            &[
+                ("textures/particle/particles.png", lower.as_slice()),
+                (
+                    "textures/particle/particles.overlay.json",
+                    br#"{"cells":[[1,1]]}"#,
+                ),
+            ],
+            &[("textures/particle/particles.png", higher.as_slice())],
+        ]);
+        let system = prepare_particles(&view, Some(&base));
+        let placement = system.atlas().placement(path).unwrap();
+        assert_eq!([placement.width, placement.height], [128, 128]);
+        let offset = ((placement.y * system.atlas().side() + placement.x) * 4) as usize;
+        assert_eq!(
+            &system.atlas().pixels()[offset..offset + 4],
+            &[200, 10, 10, 255]
+        );
     }
 
     #[test]
