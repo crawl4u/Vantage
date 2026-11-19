@@ -226,7 +226,7 @@ impl EquipmentRuntime {
         icon_fallback: bool,
     ) -> Option<(EntityRigId, ActorArtworkLocation, bool, [f32; 2])> {
         use crate::session_artwork::{ItemArtwork, item_artwork};
-        item_artwork(self, |runtime, source| {
+        let found = item_artwork(self, |runtime, source| {
             let (index, key, placement, location) = match source {
                 ItemArtwork::SessionCube => {
                     let (index, placement, location) =
@@ -266,7 +266,11 @@ impl EquipmentRuntime {
             let block = matches!(key, MeshKey::Block(_) | MeshKey::SessionBlock(_));
             let span = glint_span(placement.uv_rect(), block);
             Some((mesh, location, block, span))
-        })
+        });
+        if found.is_none() {
+            self.report_unmeshed(item);
+        }
+        found
     }
 
     /// Resolves an ordinary icon even when the item also has a block or custom model route.

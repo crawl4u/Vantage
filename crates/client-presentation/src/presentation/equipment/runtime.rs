@@ -133,6 +133,8 @@ pub struct EquipmentRuntime {
     external_armor: external_armor::ExternalArmor,
     armor_maps: BTreeMap<(u32, Box<str>), ArmorBoneMap>,
     meshes: BTreeMap<MeshKey, Option<EntityRigId>>,
+    /// Items already reported as having no drawable held mesh, so each is logged once.
+    unmeshed_reported: std::collections::BTreeSet<Box<str>>,
     pending: Vec<ActorRigGeometry>,
     /// Worn head geometry and texture location per skull kind.
     skulls: BTreeMap<u8, (EntityRigId, ActorArtworkLocation)>,
@@ -340,6 +342,7 @@ impl EquipmentRuntime {
             armor_geometry: BTreeMap::new(),
             armor_maps: BTreeMap::new(),
             meshes: BTreeMap::new(),
+            unmeshed_reported: std::collections::BTreeSet::new(),
             use_overlays,
             base_item_use: Arc::clone(&item_use),
             item_use,

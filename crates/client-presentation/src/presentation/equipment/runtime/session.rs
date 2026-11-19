@@ -218,6 +218,41 @@ impl EquipmentRuntime {
         Some((sheet, placement, location))
     }
 
+    /// Logs once why a held `item` found no mesh to draw, so a server item that shows only as a
+    /// flat icon can be traced to the step that refused it.
+    pub(super) fn report_unmeshed(&mut self, item: &WornItem) {
+        if !self.unmeshed_reported.insert(Box::from(&*item.identifier)) {
+            return;
+        }
+        let (identifier, metadata) = self.session_icon_key(item);
+        let variants = self.session.by_identifier.get(identifier);
+        let index =
+            variants.and_then(|variants| variants.get(&metadata).or_else(|| variants.get(&0)));
+        let placement =
+            index.and_then(|index| self.session.placements.get(*index).copied().flatten());
+        let located = placement
+            .and_then(|placement| {
+                self.session
+                    .locations
+                    .get(placement.layer)
+                    .copied()
+                    .flatten()
+            })
+            .is_some();
+        bevy::log::info!(
+            item = %item.identifier,
+            metadata = item.metadata,
+            kind = ?item.kind,
+            session_sprites = self.session.sprites.len(),
+            session_layers = self.session.locations.len(),
+            session_icon = index.is_some(),
+            session_placement = placement.is_some(),
+            session_artwork_admitted = located,
+            startup_icon = self.held_icon_index(item).is_some(),
+            "held item has no drawable mesh"
+        );
+    }
+
     /// Whether the session carries every variant of `identifier` from zero up to `count`.
     pub(super) fn session_has_variants(&self, identifier: &str, count: u32) -> bool {
         self.session
