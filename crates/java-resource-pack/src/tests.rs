@@ -1215,3 +1215,26 @@ fn particle_sprites_become_an_atlas_overlay_unless_the_pack_has_its_own_atlas() 
     );
     assert!(!out.contains_key("textures/particle/particles.overlay.json"));
 }
+
+#[test]
+fn leather_armor_with_an_overlay_becomes_a_dye_mask_and_without_one_stays_vanilla() {
+    let items = "assets/minecraft/textures/item/";
+    let files = pack(vec![
+        (&format!("{items}leather_helmet.png"), solid(16, 16, WHITE)),
+        (
+            &format!("{items}leather_helmet_overlay.png"),
+            solid(16, 16, RED),
+        ),
+        (&format!("{items}leather_boots.png"), solid(16, 16, WHITE)),
+    ]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    // The overlay covers the whole helmet here, so every pixel is fixed (alpha 3).
+    assert_eq!(
+        pixel(&out, "textures/items/leather_helmet.tga", 0, 0),
+        ((16, 16), [255, 0, 0, 3])
+    );
+    assert!(!out.contains_key("textures/items/leather_helmet.png"));
+    assert!(!out.contains_key("textures/items/leather_boots.tga"));
+    assert!(!out.contains_key("textures/items/leather_boots.png"));
+}

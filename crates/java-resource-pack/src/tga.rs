@@ -28,7 +28,8 @@ pub(crate) enum TgaKind {
         legacy: MaskSources,
         flattened: MaskSources,
     },
-    /// Alpha carries a dye encoding with no Java equivalent: not translated.
+    /// Alpha tells the dyeable pixels from the fixed ones, composed from a Java base and overlay
+    /// by [`dye_mask`]; left to vanilla when the pack has no overlay.
     DyeMask,
 }
 
@@ -106,6 +107,45 @@ pub(crate) fn tint_mask(
         pixel.0 = match overlay.map(|overlay| overlay.get_pixel(x, y).0) {
             Some([r, g, b, a]) if a >= 128 => [r, g, b, 255],
             _ => [r, g, b, 0],
+        };
+    }
+    Some(out)
+}
+
+/// How much alpha a pixel the dye leaves alone keeps in a dye mask.
+const FIXED_ALPHA: u8 = 3;
+
+/// Composes a dye mask from Java's dyed layer and fixed overlay: where the overlay has any
+/// colour its colour is kept with alpha 3 (not dyed), elsewhere the base colour is kept with alpha
+/// 255 (dyed), and where neither has any the pixel is clear. The two layers are matched at the
+/// finer of their sizes.
+pub(crate) fn dye_mask(
+    base: &RgbaImage,
+    overlay: &RgbaImage,
+    budget: &Budget,
+) -> Option<RgbaImage> {
+    let (width, height) = (
+        base.width().max(overlay.width()),
+        base.height().max(overlay.height()),
+    );
+    let scaled = |layer: &RgbaImage| {
+        let mut out = canvas(width, height, budget)?;
+        for (x, y, pixel) in out.enumerate_pixels_mut() {
+            *pixel = *layer.get_pixel(x * layer.width() / width, y * layer.height() / height);
+        }
+        Some(out)
+    };
+    let (base, overlay) = (scaled(base)?, scaled(overlay)?);
+    let mut out = canvas(width, height, budget)?;
+    for (x, y, pixel) in out.enumerate_pixels_mut() {
+        let [br, bg, bb, ba] = base.get_pixel(x, y).0;
+        let [or, og, ob, oa] = overlay.get_pixel(x, y).0;
+        pixel.0 = if oa > 0 {
+            [or, og, ob, FIXED_ALPHA]
+        } else if ba > 0 {
+            [br, bg, bb, 255]
+        } else {
+            [0; 4]
         };
     }
     Some(out)
@@ -209,6 +249,32 @@ mod tests {
         assert_eq!(mask.get_pixel(1, 0).0, [100, 60, 40, 0]);
         let untinted = tint_mask(&base, None, &Budget::new()).unwrap();
         assert_eq!(untinted.get_pixel(0, 0).0, [100, 60, 40, 0]);
+    }
+
+    #[test]
+    fn a_dye_mask_marks_base_pixels_dyed_and_overlay_pixels_fixed() {
+        let base = RgbaImage::from_fn(3, 1, |x, _| {
+            Rgba([80, 80, 80, if x == 2 { 0 } else { 255 }])
+        });
+        let overlay = RgbaImage::from_fn(3, 1, |x, _| {
+            Rgba([50, 30, 20, if x == 1 { 255 } else { 0 }])
+        });
+        let mask = dye_mask(&base, &overlay, &Budget::new()).unwrap();
+        assert_eq!(mask.get_pixel(0, 0).0, [80, 80, 80, 255]);
+        assert_eq!(mask.get_pixel(1, 0).0, [50, 30, 20, 3]);
+        assert_eq!(mask.get_pixel(2, 0).0, [0; 4]);
+    }
+
+    #[test]
+    fn a_dye_mask_matches_layers_of_different_sizes() {
+        let base = RgbaImage::from_pixel(1, 1, Rgba([80, 80, 80, 255]));
+        let overlay = RgbaImage::from_fn(2, 2, |x, _| {
+            Rgba([50, 30, 20, if x == 1 { 255 } else { 0 }])
+        });
+        let mask = dye_mask(&base, &overlay, &Budget::new()).unwrap();
+        assert_eq!(mask.dimensions(), (2, 2));
+        assert_eq!(mask.get_pixel(0, 1).0, [80, 80, 80, 255]);
+        assert_eq!(mask.get_pixel(1, 1).0, [50, 30, 20, 3]);
     }
 
     #[test]

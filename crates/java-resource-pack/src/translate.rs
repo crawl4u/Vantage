@@ -189,7 +189,8 @@ fn decode_all(files: Vec<(String, Vec<u8>)>, budget: &Budget) -> BTreeMap<String
 }
 
 /// Rewrites PNG outputs whose vanilla texture is a TGA, which would otherwise be shadowed: cutouts
-/// become TGA files, and tint and dye masks are dropped because their alpha means something else.
+/// become TGA files and dye masks are composed from their base and overlay; tint masks are built
+/// elsewhere and any other output is dropped because its alpha means something else.
 fn retarget_tga(out: &mut BTreeMap<String, Output>, budget: &Budget) {
     let targets: Vec<(String, TgaKind)> = out
         .keys()
@@ -202,15 +203,27 @@ fn retarget_tga(out: &mut BTreeMap<String, Output>, budget: &Budget) {
         let Some(output) = out.remove(&path) else {
             continue;
         };
-        if kind != TgaKind::Cutout {
+        if !matches!(kind, TgaKind::Cutout | TgaKind::DyeMask) {
             continue;
         }
+        let target = &path[..path.len() - ".png".len()];
         let image = match output {
             Output::Raw(bytes) => decode(&bytes, budget),
             Output::Image(image) | Output::Tga(image) => Some(image),
         };
+        let image = match (kind, image) {
+            // The dyed layer is the Java base and the fixed one its overlay: with no overlay
+            // there is nothing to tell them apart, so vanilla's mask stays.
+            (TgaKind::DyeMask, Some(base)) => out
+                .get(&format!("{target}_overlay.png"))
+                .and_then(|overlay| match overlay {
+                    Output::Raw(bytes) => decode(bytes, budget),
+                    Output::Image(image) | Output::Tga(image) => duplicate(image, budget),
+                })
+                .and_then(|overlay| tga::dye_mask(&base, &overlay, budget)),
+            (_, image) => image,
+        };
         if let Some(image) = image {
-            let target = &path[..path.len() - ".png".len()];
             out.insert(format!("{target}.tga"), Output::Tga(image));
         }
     }
