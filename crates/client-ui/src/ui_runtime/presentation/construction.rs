@@ -146,6 +146,7 @@ impl UiPresentationRuntime {
             screens: forms::ScreenStates::default(),
             projections: forms::FrameProjections::default(),
             loading_stage: None,
+            loading_fraction: None,
             startup: StartupPresentationState::default(),
         })
     }

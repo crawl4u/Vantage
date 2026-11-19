@@ -178,6 +178,15 @@ impl WorldStream {
         }
     }
 
+    /// How much of the view startup waits for has loaded, from 0.0 to 1.0, for a loading screen to
+    /// show. None until the view is known.
+    #[must_use]
+    pub fn startup_view_fraction(&self) -> Option<f32> {
+        let progress = self.cohort_progress(self.publisher.cohort?);
+        (progress.expected > 0)
+            .then(|| (progress.loaded_target as f32 / progress.expected as f32).clamp(0.0, 1.0))
+    }
+
     /// How much of `target`'s required terrain has loaded. Agrees with [`Self::cohort_status`]
     /// on every field it shares, reading only the required and loaded columns.
     #[must_use]

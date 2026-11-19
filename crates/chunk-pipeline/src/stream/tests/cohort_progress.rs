@@ -58,3 +58,30 @@ fn cohort_progress_agrees_with_the_full_status() {
     let uncommitted = assert_progress_matches_status(&stream, other);
     assert_eq!((uncommitted.expected, uncommitted.loaded_target), (0, 0));
 }
+
+// The loading screen shows the share of the startup view that has arrived.
+#[test]
+fn the_startup_fraction_is_the_loaded_share_of_the_required_view() {
+    let explicit = ViewCohort::from_publisher(0, [0, 64, 0], 16);
+    let mut stream = stream();
+    assert_eq!(stream.startup_view_fraction(), None, "no view is known yet");
+    stream.publisher.cohort = Some(explicit);
+    stream.publisher.required_columns = ViewCohort {
+        publisher_geometry: None,
+        ..explicit
+    }
+    .classifier_columns();
+    assert_eq!(stream.startup_view_fraction(), Some(0.0));
+    let total = stream.publisher.required_columns.len();
+    stream.loaded_columns = stream
+        .publisher
+        .required_columns
+        .iter()
+        .take(total / 2)
+        .copied()
+        .collect();
+    let half = stream.startup_view_fraction().unwrap();
+    assert!((half - (total / 2) as f32 / total as f32).abs() < 1e-6);
+    stream.loaded_columns = stream.publisher.required_columns.clone();
+    assert_eq!(stream.startup_view_fraction(), Some(1.0));
+}

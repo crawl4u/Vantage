@@ -154,6 +154,19 @@ pub(super) fn prepare_loading(
         bridge::join_profile::JoinProfile::current().ready_for_presentation();
     }
     diagnostics.set_startup_probe_enabled(presentation.startup_mut().probe_enabled(connected));
+    // The terrain the loading screen waits for, as a share: the transfer's own count while a
+    // dimension changes, else the startup view's.
+    let fraction = observation
+        .cohort
+        .filter(|progress| progress.expected > 0)
+        .map(|progress| (progress.loaded_target as f32 / progress.expected as f32).clamp(0.0, 1.0))
+        .or_else(|| {
+            client_world
+                .stream
+                .as_ref()
+                .and_then(chunk_pipeline::WorldStream::startup_view_fraction)
+        });
+    presentation.set_loading_fraction(fraction.filter(|_| connected));
     presentation.set_loading_stage(if !connected {
         Some(LoadingStage::Connecting)
     } else if released && !client_world.dimension_transfer.active() {

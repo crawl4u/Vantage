@@ -255,6 +255,8 @@ pub struct UiPresentationRuntime {
     projections: forms::FrameProjections,
     /// Window-space rect of the sign editor's Done button in the last build.
     loading_stage: Option<LoadingStage>,
+    /// How much of the terrain the loading screen shows as loaded, when it is known.
+    loading_fraction: Option<f32>,
     startup: StartupPresentationState,
 }
 

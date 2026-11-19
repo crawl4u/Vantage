@@ -26,6 +26,11 @@ pub struct LoadingInput<'a> {
     pub destination_icon: Option<IconRef>,
     pub artwork: &'a HashMap<String, IconRef>,
     pub dimension: i32,
+    /// How much of the terrain has loaded, when that is known.
+    pub fraction: Option<f32>,
+    /// Set when the Java menu style is chosen, holding the Java GUI scale (none for Auto): the
+    /// screen is then Java's.
+    pub java: Option<Option<u8>>,
 }
 
 impl OreUiScreen {
@@ -43,6 +48,8 @@ impl OreUiScreen {
             destination_icon,
             artwork,
             dimension,
+            fraction,
+            java,
         } = input;
         let originals = self
             .originals
@@ -64,6 +71,24 @@ impl OreUiScreen {
         canvas.artwork = Some(artwork);
         self.transitions.begin_frame(None, false, frame.now);
         canvas.transitions = Some(&mut self.transitions);
+        // In the Java style the world loads behind Java's own loading screen.
+        if let Some(scale) = java
+            && crate::java::installed(&canvas)
+        {
+            return crate::java::progress::draw_world(
+                &mut canvas,
+                scale,
+                size,
+                // The resource pack wait keeps its own words.
+                matches!(
+                    stage,
+                    LoadingStage::BuildingTerrain | LoadingStage::ChangingDimension
+                ) && words != RESOURCE_PACK_WORDS,
+                words[0],
+                words[1],
+                fraction,
+            );
+        }
         progress::draw(
             &mut canvas,
             None,
@@ -71,7 +96,7 @@ impl OreUiScreen {
             &progress::Progress {
                 title: words[0],
                 detail: words[1],
-                fraction: None,
+                fraction,
                 cancel: None,
                 indicator: stage != LoadingStage::ChangingDimension,
                 stage,

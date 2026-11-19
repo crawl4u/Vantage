@@ -27,6 +27,11 @@ impl UiPresentationRuntime {
         self.loading_stage = stage;
     }
 
+    /// Sets how much of the terrain the loading screen shows as loaded; none when unknown.
+    pub fn set_loading_fraction(&mut self, fraction: Option<f32>) {
+        self.loading_fraction = fraction;
+    }
+
     pub fn set_menu_view(&mut self, view: Option<MenuView>) {
         if !view
             .as_ref()

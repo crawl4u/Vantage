@@ -49,6 +49,11 @@ pub(crate) fn draw_text(
 /// Sprite of a button at rest; its presence says the Java sprites are installed.
 const BUTTON: &str = "sprites/widget/button.png";
 
+/// Whether the Java sprites are installed, whichever style is chosen.
+pub(crate) fn installed(canvas: &Canvas<'_>) -> bool {
+    canvas.has_sprite(&super::images::java::key(BUTTON))
+}
+
 /// Whether the Java style is chosen and its sprites are installed, so Java screens draw.
 pub(super) fn selected(view: &MenuView, canvas: &Canvas<'_>) -> bool {
     view.settings_options.menu_style() == MenuStyle::Java

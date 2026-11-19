@@ -567,6 +567,8 @@ fn png_fixture(
                         destination_icon: None,
                         artwork: &artwork,
                         dimension: 0,
+                        fraction: None,
+                        java: None,
                     },
                     &mut frame,
                 )
@@ -607,6 +609,8 @@ fn png_fixture(
                         destination_icon: None,
                         artwork: &artwork,
                         dimension: 0,
+                        fraction: None,
+                        java: None,
                     },
                     &mut frame,
                 )
