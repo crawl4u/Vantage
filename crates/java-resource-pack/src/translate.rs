@@ -439,11 +439,13 @@ pub(crate) fn translate_within(
         };
         if let Some(side) = strip_frame(width, height)
             && let Some(animation) = animation::parse(&meta)
-            && let Some(entry) =
-                animation::patch(&names::block_path(layout, name), &animation, height / side)
         {
-            flipbooks.push(entry);
-            animated.insert(name.clone());
+            let patches =
+                animation::patch(&names::block_path(layout, name), &animation, height / side);
+            if !patches.is_empty() {
+                flipbooks.extend(patches);
+                animated.insert(name.clone());
+            }
         }
     }
     // OptiFine `random` rules become weighted texture lists on the block texture's atlas tile.
@@ -465,10 +467,10 @@ pub(crate) fn translate_within(
             continue;
         };
         let bedrock = names::block_path(layout, &rule.texture);
-        let Some(tile) = animation::solo_tile(&bedrock) else {
-            continue;
-        };
-        if random_tiles.contains_key(tile) {
+        let tiles: Vec<&str> = animation::solo_tiles(&bedrock)
+            .filter(|tile| !random_tiles.contains_key(*tile))
+            .collect();
+        if tiles.is_empty() {
             continue;
         }
         let stem = bedrock.trim_start_matches("blocks/");
@@ -497,10 +499,12 @@ pub(crate) fn translate_within(
             random_files.push((format!("{file}.png"), bytes));
         }
         if entries.len() >= 2 {
-            random_tiles.insert(
-                tile.to_owned(),
-                serde_json::json!({ "textures": [{ "variations": entries }] }),
-            );
+            for tile in tiles {
+                random_tiles.insert(
+                    tile.to_owned(),
+                    serde_json::json!({ "textures": [{ "variations": entries }] }),
+                );
+            }
         } else {
             random_files.retain(|(file, _)| !file.contains(&format!("{stem}_random")));
         }

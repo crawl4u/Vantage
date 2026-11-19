@@ -1397,8 +1397,12 @@ fn an_optifine_random_rule_becomes_a_weighted_texture_list_for_the_blocks_tile()
     let atlas: serde_json::Value =
         serde_json::from_slice(out["textures/terrain_texture.json"]).unwrap();
     let data = atlas["texture_data"].as_object().unwrap();
-    assert_eq!(data.len(), 1, "only the unconditional rule is translated");
-    let choices = data["dirt"]["textures"][0]["variations"]
+    // The dirt picture fills several single-variant tiles, the block's own `flattened_dirt` among
+    // them; the biome-bound stone rule is left alone.
+    assert!(data.contains_key("flattened_dirt"));
+    assert!(!data.contains_key("stone") && !data.contains_key("flattened_stone"));
+    assert!(data.values().all(|tile| tile == &data["flattened_dirt"]));
+    let choices = data["flattened_dirt"]["textures"][0]["variations"]
         .as_array()
         .unwrap();
     assert_eq!(choices.len(), 3);

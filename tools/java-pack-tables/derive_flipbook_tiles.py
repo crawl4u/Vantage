@@ -24,6 +24,9 @@ def main(root, out_path):
     terrain = jsonc(os.path.join(root, "textures/terrain_texture.json"))["texture_data"]
     flipbooks = jsonc(os.path.join(root, "textures/flipbook_textures.json"))
     vanilla = {entry["flipbook_texture"] for entry in flipbooks}
+    # Every tile a texture fills: several keys can name one picture (dirt is the `dirt` tile, the
+    # block's own `flattened_dirt` tile and the grass block's bottom), and a block draws whichever
+    # its `blocks.json` entry names.
     rows = {}
     for tile, entry in terrain.items():
         textures = entry.get("textures")
@@ -37,32 +40,24 @@ def main(root, out_path):
                 continue
             if not any(os.path.isfile(os.path.join(root, path + ext)) for ext in (".png", ".tga")):
                 continue
-            # Several tiles can share a picture (dirt is also the grass block's bottom): the tile
-            # named after the file is the one the texture belongs to.
-            if path not in rows or tile == os.path.basename(path):
-                rows[path] = (tile, index, "-")
+            rows.setdefault(path, {})[(tile, index, "-")] = ("static", len(textures))
     for entry in flipbooks:
         path = entry["flipbook_texture"]
         if not any(os.path.isfile(os.path.join(root, path + ext)) for ext in (".png", ".tga")):
             continue
-        rows[path] = (
-            entry["atlas_tile"],
-            entry.get("atlas_index", 0),
-            entry.get("atlas_tile_variant", "-"),
-        )
+        key = (entry["atlas_tile"], entry.get("atlas_index", 0), entry.get("atlas_tile_variant", "-"))
+        rows.setdefault(path, {})[key] = ("vanilla", 0)
     with open(out_path, "w", newline="\n") as out:
         out.write(
             "# Bedrock block texture (relative to textures/, no extension), its terrain atlas tile,\n"
-            "# atlas index, tile variant ('-' for none) and 'vanilla' when Bedrock animates it. Derived\n"
-            "# by tools/java-pack-tables/derive_flipbook_tiles.py from the pinned bedrock-samples pack.\n"
+            "# atlas index, tile variant ('-' for none), 'vanilla' when Bedrock animates it, and how\n"
+            "# many state variants the tile has (0 for animated). Derived by\n"
+            "# tools/java-pack-tables/derive_flipbook_tiles.py from the pinned bedrock-samples pack.\n"
         )
         for path in sorted(rows):
-            tile, index, variant = rows[path]
-            kind = "vanilla" if path in vanilla else "static"
-            out.write(
-                f"{path[len('textures/'):]}\t{tile}\t{index}\t{variant}\t{kind}\n"
-            )
-    print(f"{len(rows)} block textures, {len(vanilla)} animated by Bedrock")
+            for (tile, index, variant), (kind, count) in sorted(rows[path].items(), key=lambda x: str(x[0])):
+                out.write("%s%s%s%s%s%s%s%s%s%s%s" % (path[len("textures/"):], chr(9), tile, chr(9), index, chr(9), variant, chr(9), kind, chr(9), count) + chr(10))
+    print(f"{len(rows)} block textures, {sum(len(v) for v in rows.values())} tiles, {len(vanilla)} animated by Bedrock")
 
 
 if __name__ == "__main__":

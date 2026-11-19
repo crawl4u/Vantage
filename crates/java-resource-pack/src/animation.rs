@@ -18,38 +18,46 @@ struct Tile {
     name: &'static str,
     index: u32,
     variant: Option<u32>,
+    /// Whether Bedrock animates the texture itself through this tile.
+    vanilla: bool,
+    /// How many state variants the tile's atlas entry has; zero for an animated one.
+    variants: u32,
 }
 
-/// Bedrock block texture path (relative to `textures/`, no extension) to its tile.
-static TILES: LazyLock<HashMap<&'static str, Tile>> = LazyLock::new(|| {
-    TILES_TEXT
+/// Bedrock block texture path (relative to `textures/`, no extension) to every tile it fills.
+static TILES: LazyLock<HashMap<&'static str, Vec<Tile>>> = LazyLock::new(|| {
+    let mut tiles: HashMap<&'static str, Vec<Tile>> = HashMap::new();
+    for line in TILES_TEXT
         .lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(|line| {
-            let mut parts = line.split('\t');
-            let path = parts.next().unwrap();
-            let name = parts.next().unwrap();
-            let index = parts.next().unwrap().parse().unwrap();
-            let variant = parts.next().unwrap().parse().ok();
-            (
-                path,
-                Tile {
-                    name,
-                    index,
-                    variant,
-                },
-            )
-        })
-        .collect()
+    {
+        let mut parts = line.split('\t');
+        let path = parts.next().unwrap();
+        let name = parts.next().unwrap();
+        let index = parts.next().unwrap().parse().unwrap();
+        let variant = parts.next().unwrap().parse().ok();
+        let vanilla = parts.next().unwrap() == "vanilla";
+        let variants = parts.next().unwrap().parse().unwrap();
+        tiles.entry(path).or_default().push(Tile {
+            name,
+            index,
+            variant,
+            vanilla,
+            variants,
+        });
+    }
+    tiles
 });
 
-/// The terrain atlas tile name of the block texture at `path` (relative to `textures/`, no
-/// extension) when it is the only texture of its tile, which is when a weighted list of textures
-/// can stand in for it.
-pub(crate) fn solo_tile(path: &str) -> Option<&'static str> {
+/// The terrain atlas tiles the block texture at `path` (relative to `textures/`, no extension)
+/// is the only texture of, each of which a weighted list of textures can stand in for. A block
+/// draws whichever tile its `blocks.json` entry names, so every one is listed.
+pub(crate) fn solo_tiles(path: &str) -> impl Iterator<Item = &'static str> {
     TILES
         .get(path)
-        .filter(|tile| tile.index == 0 && tile.variant.is_none())
+        .into_iter()
+        .flatten()
+        .filter(|tile| tile.index == 0 && tile.variant.is_none() && tile.variants == 1)
         .map(|tile| tile.name)
 }
 
@@ -100,13 +108,16 @@ fn gcd(a: u32, b: u32) -> u32 {
     if b == 0 { a } else { gcd(b, a % b) }
 }
 
-/// The flipbook patch for the block texture at `path` (relative to `textures/`, no extension)
-/// whose strip holds `strip_frames` frames. `None` when Bedrock's atlas has no tile for it, the
-/// strip is not an animation, or the animation lists no usable frame.
-pub(crate) fn patch(path: &str, animation: &Animation, strip_frames: u32) -> Option<Value> {
-    let tile = TILES.get(path)?;
+/// The flipbook patches for the block texture at `path` (relative to `textures/`, no extension)
+/// whose strip holds `strip_frames` frames, one for each tile it animates: the tiles Bedrock
+/// animates itself, else every tile the texture fills. Empty when Bedrock's atlas has no tile for
+/// it, the strip is not an animation, or the animation lists no usable frame.
+pub(crate) fn patch(path: &str, animation: &Animation, strip_frames: u32) -> Vec<Value> {
+    let Some(tiles) = TILES.get(path) else {
+        return Vec::new();
+    };
     if strip_frames < 2 {
-        return None;
+        return Vec::new();
     }
     let sequence: Vec<(u32, u32)> = match &animation.frames {
         Some(frames) => frames
@@ -119,7 +130,7 @@ pub(crate) fn patch(path: &str, animation: &Animation, strip_frames: u32) -> Opt
             .collect(),
     };
     if sequence.is_empty() {
-        return None;
+        return Vec::new();
     }
     let ticks = sequence
         .iter()
@@ -143,18 +154,28 @@ pub(crate) fn patch(path: &str, animation: &Animation, strip_frames: u32) -> Opt
             sequence.iter().map(|(index, _)| *index).collect(),
         )
     };
-    let mut entry = json!({
-        "flipbook_texture": format!("textures/{path}"),
-        "atlas_tile": tile.name,
-        "atlas_index": tile.index,
-        "ticks_per_frame": ticks,
-        "frames": frames,
-        "blend_frames": animation.interpolate,
-    });
-    if let Some(variant) = tile.variant {
-        entry["atlas_tile_variant"] = json!(variant);
-    }
-    Some(entry)
+    let animated: Vec<&Tile> = if tiles.iter().any(|tile| tile.vanilla) {
+        tiles.iter().filter(|tile| tile.vanilla).collect()
+    } else {
+        tiles.iter().collect()
+    };
+    animated
+        .into_iter()
+        .map(|tile| {
+            let mut entry = json!({
+                "flipbook_texture": format!("textures/{path}"),
+                "atlas_tile": tile.name,
+                "atlas_index": tile.index,
+                "ticks_per_frame": ticks,
+                "frames": frames,
+                "blend_frames": animation.interpolate,
+            });
+            if let Some(variant) = tile.variant {
+                entry["atlas_tile_variant"] = json!(variant);
+            }
+            entry
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -173,7 +194,7 @@ mod tests {
 
     #[test]
     fn defaults_play_every_frame_in_order_one_tick_each() {
-        let patch = patch("blocks/lava_still", &animation(r#"{"animation":{}}"#), 4).unwrap();
+        let patch = patch("blocks/lava_still", &animation(r#"{"animation":{}}"#), 4).remove(0);
         assert_eq!(patch["atlas_tile"], "still_lava");
         assert_eq!(patch["ticks_per_frame"], 1);
         assert_eq!(patch["frames"], json!([0, 1, 2, 3]));
@@ -183,7 +204,7 @@ mod tests {
     #[test]
     fn frametime_interpolation_and_custom_order_carry_over() {
         let text = r#"{"animation":{"frametime":3,"interpolate":true,"frames":[2,0,1]}}"#;
-        let patch = patch("blocks/lava_still", &animation(text), 3).unwrap();
+        let patch = patch("blocks/lava_still", &animation(text), 3).remove(0);
         assert_eq!(patch["ticks_per_frame"], 3);
         assert_eq!(patch["frames"], json!([2, 0, 1]));
         assert_eq!(patch["blend_frames"], true);
@@ -192,7 +213,7 @@ mod tests {
     #[test]
     fn frames_with_their_own_times_repeat_on_the_common_tick() {
         let text = r#"{"animation":{"frametime":4,"frames":[{"index":0,"time":6},{"index":1}]}}"#;
-        let patch = patch("blocks/lava_still", &animation(text), 2).unwrap();
+        let patch = patch("blocks/lava_still", &animation(text), 2).remove(0);
         // 6 and 4 ticks share a 2-tick step: frame 0 shows three steps, frame 1 two.
         assert_eq!(patch["ticks_per_frame"], 2);
         assert_eq!(patch["frames"], json!([0, 0, 0, 1, 1]));
@@ -201,7 +222,7 @@ mod tests {
     #[test]
     fn frames_past_the_strip_are_ignored_and_tile_variants_are_kept() {
         let text = r#"{"animation":{"frames":[0,9,1]}}"#;
-        let patch = patch("blocks/bubble_column_outer_a", &animation(text), 2).unwrap();
+        let patch = patch("blocks/bubble_column_outer_a", &animation(text), 2).remove(0);
         assert_eq!(patch["frames"], json!([0, 1]));
         assert_eq!(patch["atlas_tile_variant"], 0);
     }
@@ -209,8 +230,8 @@ mod tests {
     #[test]
     fn a_texture_without_a_tile_or_a_strip_gets_no_patch() {
         let plain = animation(r#"{"animation":{}}"#);
-        assert!(patch("blocks/not_a_texture", &plain, 4).is_none());
-        assert!(patch("blocks/lava_still", &plain, 1).is_none());
+        assert!(patch("blocks/not_a_texture", &plain, 4).is_empty());
+        assert!(patch("blocks/lava_still", &plain, 1).is_empty());
     }
 
     #[test]
