@@ -224,6 +224,8 @@ pub struct MenuFeeds {
     pub selected_featured: Option<usize>,
     /// The saved server the Servers tab's details show, instead of a featured one.
     pub selected_saved: Option<usize>,
+    /// The world the Java-style world list has chosen, counting friends' worlds first.
+    pub selected_play_world: Option<usize>,
     /// The Realm the Realms tab's details show.
     pub selected_realm: Option<usize>,
     /// The list the Java-style Multiplayer screen shows.

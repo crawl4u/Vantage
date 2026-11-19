@@ -104,4 +104,8 @@ Java sprites and font when the active packs change, as the other pack-driven art
    and command macros stay on the Bedrock-style page, which each page's "More..." opens.
 10. Behaviour parity across the Java screens (the fourth requirement), checked screen by screen.
 
-Later rounds: world list, create world, mods, the rest of the menus.
+The world list (`java/worlds.rs`) replaces the Play screen's worlds tab: Java's entries, Play, New,
+template, Edit, Delete and Import. Search, re-creating a world and double-click to play are not
+done.
+
+Later rounds: create world, mods, the rest of the menus.

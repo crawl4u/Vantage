@@ -101,6 +101,12 @@ pub(super) const STATES: &[State] = &[
         fixture: java_language,
     },
     State {
+        name: "java-worlds",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_worlds,
+    },
+    State {
         name: "java-shaders",
         size: SIZE,
         gui_scale: GUI_SCALE,
@@ -200,6 +206,32 @@ fn java_language() -> Fixture {
     .map(|(code, name)| ((*code).to_owned(), (*name).to_owned()))
     .collect();
     Fixture::Menu(view)
+}
+
+/// The world list with three worlds, the second chosen.
+fn java_worlds() -> Fixture {
+    let mut view = MenuView::new(true, "Player".into());
+    view.screen = MenuScreen::Play;
+    view.auth_state = AuthState::Authenticated;
+    let card = |name: &str, mode: &str, size: &str| launcher::menu::LocalWorldCard {
+        name: name.to_owned(),
+        game_mode: mode.to_owned(),
+        world_type: "Default".to_owned(),
+        server: String::new(),
+        date: "11/2/2026".to_owned(),
+        size: size.to_owned(),
+        thumbnail: None,
+    };
+    view.local_worlds = vec![
+        card("Home Base", "Survival", "48.0 MB"),
+        card("Creative Plots", "Creative", "1.2 GB"),
+        card("Parkour", "Adventure", "6.5 MB"),
+    ]
+    .into();
+    view.feeds.selected_play_world = Some(1);
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    Fixture::Menu(Box::new(view))
 }
 
 /// The Shader Packs page with two packs, one active.

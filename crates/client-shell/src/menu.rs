@@ -517,6 +517,7 @@ impl MenuRuntime {
                     | MenuAction::PlayRealm(_)
                     | MenuAction::PlayFriend(_)
                     | MenuAction::PlayLocalWorld(_)
+                    | MenuAction::DeleteLocalWorld(_)
                     | MenuAction::OpenLiveEvent
                     | MenuAction::LocalWorld(_)
             )
@@ -839,7 +840,8 @@ impl MenuRuntime {
             MenuAction::GlobalResources(launcher::global_resources::Action::RenameFolder) => {
                 let folder = &self.global_resources.folder;
                 if !folder.is_empty() {
-                    self.pack_folder_name.set_text(resource_pack::folder_name(folder));
+                    self.pack_folder_name
+                        .set_text(resource_pack::folder_name(folder));
                     self.pack_renaming = true;
                     self.focus_field(MenuField::PackFolderName);
                 }
@@ -889,6 +891,17 @@ impl MenuRuntime {
                 }
             }
             MenuAction::LocalWorld(action) => self.queue_local_action(action),
+            MenuAction::SelectPlayWorld(index) => {
+                self.feeds.selected_play_world =
+                    (self.feeds.selected_play_world != Some(index)).then_some(index);
+            }
+            MenuAction::DeleteLocalWorld(index) => {
+                if index < self.local_worlds.len() {
+                    // Deleting asks from the world's own screen, so open it and ask there.
+                    self.queue_local_action(launcher::menu::LocalWorldAction::Edit(index));
+                    self.queue_local_action(launcher::menu::LocalWorldAction::Delete);
+                }
+            }
             MenuAction::WorldSettings(action) => self.activate_world_settings(action),
             MenuAction::ServerTrust(trusted) => self.answer_server_trust(trusted),
             MenuAction::Invite(action) => self.activate_invite(action),

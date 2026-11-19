@@ -331,6 +331,12 @@ impl MenuRuntime {
         self.local_ui.actions.push(action);
     }
 
+    /// The local-world presses waiting for the world service.
+    #[cfg(test)]
+    pub(super) fn queued_local_actions(&self) -> &[LocalWorldAction] {
+        &self.local_ui.actions
+    }
+
     fn push_local_text(&mut self, worlds: &mut LocalWorlds) {
         let ui = &self.local_ui;
         for &id in &ui.editing {

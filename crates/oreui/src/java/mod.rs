@@ -18,6 +18,7 @@ pub(super) mod servers;
 mod shaders;
 mod splash;
 mod storage;
+pub(super) mod worlds;
 
 use launcher::menu::{MenuView, settings_options::menu_style::MenuStyle};
 

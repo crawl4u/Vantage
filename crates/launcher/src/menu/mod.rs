@@ -236,6 +236,10 @@ pub enum MenuAction {
     JavaSettings(JavaSettingsAction),
     Respawn,
     PlayLocalWorld(usize),
+    /// Choose a world of the Java-style world list, counting friends' worlds first.
+    SelectPlayWorld(usize),
+    /// Ask to delete the local world at this index, as its edit screen does.
+    DeleteLocalWorld(usize),
     /// A press on a local-world screen (create, edit, templates) or its modals.
     LocalWorld(LocalWorldAction),
     /// A press in Settings' Game section for the world being played.

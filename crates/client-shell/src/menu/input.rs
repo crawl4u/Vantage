@@ -937,7 +937,9 @@ pub fn drive_menu_input(
                     launcher::dressing_room::Action::SaveRename,
                 ));
             }
-            KeyCode::Enter | KeyCode::NumpadEnter if menu.field == Some(MenuField::PackFolderName) => {
+            KeyCode::Enter | KeyCode::NumpadEnter
+                if menu.field == Some(MenuField::PackFolderName) =>
+            {
                 menu.activate(launcher::menu::MenuAction::GlobalResources(
                     launcher::global_resources::Action::CommitRename,
                 ));

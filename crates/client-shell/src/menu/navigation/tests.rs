@@ -319,3 +319,33 @@ fn renaming_a_pack_folder_opens_the_field_and_commits_or_cancels_it() {
     menu.activate(MenuAction::GlobalResources(Action::RenameFolder));
     assert!(!menu.view().pack_renaming);
 }
+
+#[test]
+fn the_java_world_list_chooses_worlds_and_deleting_opens_the_world_then_asks() {
+    use launcher::menu::LocalWorldAction;
+
+    let mut menu = MenuRuntime::new(true, 2, "Player".into());
+    menu.activate(MenuAction::SelectPlayWorld(1));
+    assert_eq!(menu.view().feeds.selected_play_world, Some(1));
+    // Pressing the chosen world again lets it go.
+    menu.activate(MenuAction::SelectPlayWorld(1));
+    assert_eq!(menu.view().feeds.selected_play_world, None);
+    // With no such world nothing is queued.
+    menu.activate(MenuAction::DeleteLocalWorld(0));
+    assert!(menu.queued_local_actions().is_empty());
+    menu.local_worlds = vec![launcher::menu::LocalWorldCard {
+        name: "Home".to_owned(),
+        game_mode: String::new(),
+        world_type: String::new(),
+        server: String::new(),
+        date: String::new(),
+        size: String::new(),
+        thumbnail: None,
+    }]
+    .into();
+    menu.activate(MenuAction::DeleteLocalWorld(0));
+    assert_eq!(
+        menu.queued_local_actions(),
+        [LocalWorldAction::Edit(0), LocalWorldAction::Delete]
+    );
+}

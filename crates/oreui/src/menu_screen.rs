@@ -428,6 +428,28 @@ impl Screen for OreUiScreen {
                     focus = Some(focus_actions(&canvas));
                     settings_input = true;
                 }
+                MenuScreen::Play
+                    if java::selected(view, &canvas)
+                        && world_settings::route(view.local.screen, &view.local).is_none() =>
+                {
+                    canvas.capture_focus = true;
+                    let rollback = (canvas.nodes.len(), *canvas.next);
+                    for attempt in 0..2 {
+                        java::worlds::draw(&mut canvas, view, size, artwork)?;
+                        if !scroll_focus::reveal(&mut canvas, scrolls, view) || attempt == 1 {
+                            break;
+                        }
+                        canvas.nodes.truncate(rollback.0);
+                        *canvas.next = rollback.1;
+                        canvas.hits.clear();
+                        canvas.clear_focus_geometry();
+                        canvas.scrolls.clear();
+                    }
+                    focus = Some(focus_actions(&canvas));
+                    if let Some(dialog) = modal::local_world_modal(&view.local) {
+                        modal::draw(&mut canvas, view, size, &dialog)?;
+                    }
+                }
                 MenuScreen::Servers
                     if java::selected(view, &canvas)
                         && world_settings::route(view.local.screen, &view.local).is_none() =>
