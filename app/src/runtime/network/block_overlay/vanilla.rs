@@ -370,6 +370,19 @@ impl Builder<'_> {
             selector.variation_start = start;
             selector.variation_count = choices.len() as u32;
             selector.variation_weight = 0;
+            // A catalog entry that declares a connected set or a tile pattern tags its selector.
+            let count = choices.len() as u32;
+            selector.mask_strength = match self.catalog.repeat(key) {
+                Some(assets::CONNECTED_PATTERN)
+                    if count == u32::from(assets::CONNECTED_TILE_COUNT) =>
+                {
+                    assets::compiled::connected_mask_strength()
+                }
+                Some((width, height)) if u32::from(width) * u32::from(height) == count => {
+                    assets::compiled::repeat_mask_strength(width, height)
+                }
+                _ => 0,
+            };
             let id = self.overlay.materials.len() as u32;
             self.overlay.materials.push(selector);
             id
