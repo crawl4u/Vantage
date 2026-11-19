@@ -28,7 +28,7 @@ pub(crate) const PANEL: &str = "textures/ui/dialog_background_opaque.png";
 /// Textures every screen shares, each with the copy only container screens draw instead. The
 /// copies keep a see-through pack's frames, cells and player box see-through where the shared
 /// ones would make every dialog hard to read. Keys have no extension.
-pub const CONTAINER_SWAPS: [(&str, &str); 5] = [
+pub const CONTAINER_SWAPS: [(&str, &str); 9] = [
     (
         "textures/ui/dialog_background_opaque",
         "textures/ui/dialog_background_container",
@@ -45,6 +45,22 @@ pub const CONTAINER_SWAPS: [(&str, &str); 5] = [
     (
         "textures/ui/player_preview_border",
         "textures/ui/player_preview_border_container",
+    ),
+    (
+        "textures/ui/recipe_book_light_button",
+        "textures/ui/recipe_book_light_button_container",
+    ),
+    (
+        "textures/ui/recipe_book_dark_button",
+        "textures/ui/recipe_book_dark_button_container",
+    ),
+    (
+        "textures/ui/recipe_book_dark_button_pressed",
+        "textures/ui/recipe_book_dark_button_pressed_container",
+    ),
+    (
+        "textures/ui/recipe_book_red_button",
+        "textures/ui/recipe_book_red_button_container",
     ),
 ];
 
@@ -155,6 +171,21 @@ pub(crate) fn container_swaps(
     if let Some(cell) = slot_cell(atlas, budget) {
         found.push((paths(2), cell, Some(CELL_SIDECAR)));
     }
+    // The recipe list's buttons are the pack's own slot in four states. Java has no pictures for
+    // them, so each is made from the slot: the slot's outline with a wash over its middle.
+    if let Some(cell) = slot_cell(atlas, budget) {
+        let states: [(usize, [u8; 4], Option<[u8; 3]>); 4] = [
+            (5, LIGHT_WASH, Some(LIGHT_OUTLINE)),
+            (6, [0; 4], None),
+            (7, PRESSED_WASH, None),
+            (8, RED_WASH, Some(RED_OUTLINE)),
+        ];
+        for (index, wash, outline) in states {
+            if let Some(button) = button_state(&cell, scale, wash, outline, budget) {
+                found.push((paths(index), button, Some(CELL_SIDECAR)));
+            }
+        }
+    }
     // The box the player stands in: its middle decides what Black becomes, its edge is the frame.
     let [box_x, box_y, box_width, box_height] = PLAYER_BOX.map(|value| value * scale);
     if let Some(player) = crop(atlas, box_x, box_y, box_width, box_height, budget) {
@@ -176,6 +207,43 @@ pub(crate) fn container_swaps(
         }
     }
     found
+}
+
+/// What a lit, pressed and red recipe button washes over the slot's middle, and the tint of the lit
+/// and red buttons' outline.
+const LIGHT_WASH: [u8; 4] = [255, 255, 255, 48];
+const PRESSED_WASH: [u8; 4] = [0, 0, 0, 96];
+const RED_WASH: [u8; 4] = [190, 40, 40, 64];
+const LIGHT_OUTLINE: [u8; 3] = [225, 225, 225];
+const RED_OUTLINE: [u8; 3] = [210, 70, 70];
+
+/// A copy of `cell` whose clear middle (inside the one-pixel outline, `scale` pixels wide) is
+/// washed with `wash`, and whose outline takes `outline` when given.
+fn button_state(
+    cell: &RgbaImage,
+    scale: u32,
+    wash: [u8; 4],
+    outline: Option<[u8; 3]>,
+    budget: &Budget,
+) -> Option<RgbaImage> {
+    let mut out = duplicate(cell, budget)?;
+    let (width, height) = out.dimensions();
+    for y in 0..height {
+        for x in 0..width {
+            let inside = x >= scale && y >= scale && x < width - scale && y < height - scale;
+            let pixel = out.get_pixel_mut(x, y);
+            if inside {
+                if pixel.0[3] == 0 {
+                    pixel.0 = wash;
+                }
+            } else if let Some([r, g, b]) = outline
+                && pixel.0[3] != 0
+            {
+                pixel.0 = [r, g, b, pixel.0[3]];
+            }
+        }
+    }
+    Some(out)
 }
 
 /// The player's box in a 256-pixel container atlas: its left, top, width and height, and the
@@ -350,6 +418,37 @@ mod tests {
         assert_eq!(open.get_pixel(88, 83).0[3], 0, "the middle is see-through");
         let opaque = panel(&panelled([150, 160, 170, 255]), &budget, false).unwrap();
         assert_eq!(opaque.get_pixel(88, 83).0, [150, 160, 170, 255]);
+    }
+
+    #[test]
+    fn recipe_buttons_wash_the_slots_middle_and_keep_its_outline() {
+        let budget = Budget::new();
+        let swaps = container_swaps(&panelled([0; 4]), &budget);
+        let button = |name: &str| {
+            swaps
+                .iter()
+                .find(|(path, ..)| path.ends_with(name))
+                .map(|(_, image, _)| image)
+                .unwrap()
+        };
+        // The dark button is the slot itself: an outline round a clear middle.
+        let dark = button("recipe_book_dark_button_container.png");
+        assert_eq!(dark.get_pixel(0, 0).0, [100, 120, 140, 255]);
+        assert_eq!(dark.get_pixel(9, 9).0[3], 0);
+        // The lit button washes its middle and lightens the outline; the red one tints both.
+        let light = button("recipe_book_light_button_container.png");
+        assert_eq!(light.get_pixel(9, 9).0, LIGHT_WASH);
+        assert_eq!(light.get_pixel(0, 0).0, [225, 225, 225, 255]);
+        let red = button("recipe_book_red_button_container.png");
+        assert_eq!(red.get_pixel(9, 9).0, RED_WASH);
+        // Every one stays see-through enough for the world to show.
+        for name in [
+            "recipe_book_dark_button_pressed_container.png",
+            "recipe_book_light_button_container.png",
+            "recipe_book_red_button_container.png",
+        ] {
+            assert!(button(name).get_pixel(9, 9).0[3] < 128, "{name}");
+        }
     }
 
     #[test]
