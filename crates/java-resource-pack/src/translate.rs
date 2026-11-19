@@ -281,14 +281,15 @@ pub(crate) fn translate_within(
     let widgets = optional(&format!("{TEXTURES}gui/widgets.png"));
     let inventory = optional(&format!("{TEXTURES}gui/container/inventory.png"));
     let particles = optional(&format!("{TEXTURES}particle/particles.png"));
-    let progress: Vec<(&str, Vec<u8>)> = container::PROGRESS_SPRITES
+    let progress: Vec<_> = container::SPRITES
         .iter()
-        .filter_map(|(java, bedrock)| {
+        .filter_map(|(java, bedrock, sidecar)| {
             let bytes = optional(&format!("{TEXTURES}gui/sprites/{java}.png"))?;
-            dimensions(&bytes).is_some().then_some((*bedrock, bytes))
+            dimensions(&bytes)
+                .is_some()
+                .then_some((*bedrock, bytes, *sidecar))
         })
         .collect();
-
     let tabs: Vec<(&str, Vec<u8>)> = container::TAB_SPRITES
         .iter()
         .filter_map(|(java, bedrock)| {
@@ -382,12 +383,15 @@ pub(crate) fn translate_within(
         out.insert("textures/particle/particles.png".into(), Output::Raw(bytes));
     }
     out.extend(block_outputs);
-    let mut tab_sidecars = Vec::new();
+    let mut tab_sidecars: Vec<(String, Vec<u8>)> = Vec::new();
     for (bedrock, bytes) in tabs {
         tab_sidecars.push((format!("{bedrock}.json"), container::TAB_SIDECAR.to_vec()));
         out.insert(format!("{bedrock}.png"), Output::Raw(bytes));
     }
-    for (bedrock, bytes) in progress {
+    for (bedrock, bytes, sidecar) in progress {
+        if let Some(sidecar) = sidecar {
+            tab_sidecars.push((format!("{bedrock}.json"), sidecar.to_vec()));
+        }
         out.insert(format!("{bedrock}.png"), Output::Raw(bytes));
     }
     for (java, bytes) in extra_files {

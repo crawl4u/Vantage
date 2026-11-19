@@ -22,32 +22,62 @@ pub(crate) const CELL_LOCK: &str = "textures/ui/cell_image_lock.png";
 /// The highlight Bedrock draws round the selected slot of its pocket inventory.
 pub(crate) const SLOT_HIGHLIGHT: &str = "textures/ui/pocket_ui_highlight_selected_slot.png";
 
-/// Pictures of a container's progress and error marks: a Java GUI sprite (relative to
-/// `textures/gui/sprites/`) and the Bedrock texture it replaces. Java draws the empty halves of
-/// these into the container's own atlas, so only the filled ones have a sprite.
-pub(crate) const PROGRESS_SPRITES: [(&str, &str); 6] = [
+/// Single pictures a Java GUI sprite (relative to `textures/gui/sprites/`) replaces: a
+/// container's progress and error marks, which Java draws the empty halves of into the
+/// container's own atlas, and the backgrounds behind a status effect. Each has its Bedrock
+/// texture and, for a nine-slice one, the sidecar describing it.
+pub(crate) const SPRITES: [(&str, &str, Option<&[u8]>); 10] = [
     (
         "container/furnace/lit_progress",
         "textures/ui/flame_full_image",
+        None,
     ),
     (
         "container/furnace/burn_progress",
         "textures/ui/arrow_active",
+        None,
     ),
     (
         "container/brewing_stand/brew_progress",
         "textures/ui/brewing_arrow_full",
+        None,
     ),
     (
         "container/brewing_stand/bubbles",
         "textures/ui/bubbles_full",
+        None,
     ),
     (
         "container/brewing_stand/fuel_length",
         "textures/ui/brewing_fuel_bar_full",
+        None,
     ),
-    ("container/anvil/error", "textures/ui/crossout"),
+    ("container/anvil/error", "textures/ui/crossout", None),
+    (
+        "hud/effect_background",
+        "textures/ui/hud_mob_effect_background",
+        None,
+    ),
+    (
+        "hud/effect_background_ambient",
+        "textures/ui/hud_mob_ambient_effect_background",
+        None,
+    ),
+    (
+        "container/inventory/effect_background_large",
+        "textures/ui/effect_background",
+        Some(EFFECT_SIDECAR),
+    ),
+    (
+        "container/inventory/effect_background_large",
+        "textures/ui/effect_background_ambient",
+        Some(EFFECT_SIDECAR),
+    ),
 ];
+
+/// The sidecar of the effect list's backgrounds: a four-pixel border round a 120 by 32 Java
+/// background.
+const EFFECT_SIDECAR: &[u8] = br#"{"nineslice_size":4,"base_size":[120,32]}"#;
 
 /// Java's creative category tabs (relative to `textures/gui/sprites/`) and the Bedrock tab
 /// textures each one draws: Java's first tab is the left-most, its last the right-most, and the
@@ -476,13 +506,13 @@ mod tests {
     }
 
     #[test]
-    fn progress_sprites_name_distinct_paths_in_their_own_folders() {
-        let mut bedrock: Vec<&str> = PROGRESS_SPRITES.iter().map(|(_, to)| *to).collect();
+    fn sprites_name_distinct_bedrock_paths_in_the_ui_folder() {
+        let mut bedrock: Vec<&str> = SPRITES.iter().map(|(_, to, _)| *to).collect();
         bedrock.sort_unstable();
         bedrock.dedup();
-        assert_eq!(bedrock.len(), PROGRESS_SPRITES.len());
-        for (java, to) in PROGRESS_SPRITES {
-            assert!(java.starts_with("container/") && to.starts_with("textures/ui/"));
+        assert_eq!(bedrock.len(), SPRITES.len());
+        for (_, to, _) in SPRITES {
+            assert!(to.starts_with("textures/ui/"));
         }
     }
 

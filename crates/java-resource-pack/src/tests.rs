@@ -1154,3 +1154,30 @@ fn creative_tab_sprites_become_every_bedrock_tab_with_a_sidecar() {
     );
     assert!(!out.contains_key("textures/ui/TabTopBack.png"));
 }
+
+#[test]
+fn effect_backgrounds_replace_the_hud_and_list_pictures() {
+    let files = pack(vec![
+        (
+            "assets/minecraft/textures/gui/sprites/hud/effect_background.png",
+            solid(24, 24, RED),
+        ),
+        (
+            "assets/minecraft/textures/gui/sprites/container/inventory/effect_background_large.png",
+            solid(120, 32, GREEN),
+        ),
+    ]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(&out, "textures/ui/hud_mob_effect_background.png", 0, 0),
+        ((24, 24), RED)
+    );
+    for list in ["effect_background", "effect_background_ambient"] {
+        assert_eq!(
+            pixel(&out, &format!("textures/ui/{list}.png"), 0, 0),
+            ((120, 32), GREEN)
+        );
+        assert!(out.contains_key(format!("textures/ui/{list}.json").as_str()));
+    }
+}
