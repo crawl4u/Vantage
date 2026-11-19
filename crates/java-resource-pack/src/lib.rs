@@ -18,6 +18,7 @@ mod extras;
 pub use container::CONTAINER_SWAPS;
 mod hud;
 mod items;
+pub mod java_model;
 mod manifest;
 pub mod menu_files;
 mod meta;
