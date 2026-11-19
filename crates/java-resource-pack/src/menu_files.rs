@@ -17,6 +17,14 @@ pub const VANILLA_PACK_ICON: &str = "vanilla_pack.png";
 /// Where the client jar holds the picture [`VANILLA_PACK_ICON`] is copied from.
 pub const JAR_PACK_ICON: &str = "pack.png";
 
+/// The picture the game shows for a world with no icon, relative to [`GUI_ROOT`]. The game keeps
+/// it as [`GAME_UNKNOWN_WORLD_ICON`], so it is copied from there.
+pub const UNKNOWN_WORLD_ICON: &str = "unknown_world.png";
+
+/// Where the game holds the picture [`UNKNOWN_WORLD_ICON`] is copied from, relative to
+/// `assets/minecraft/`.
+pub const GAME_UNKNOWN_WORLD_ICON: &str = "textures/misc/unknown_server.png";
+
 /// The GUI sprites and backgrounds the menus draw, relative to [`GUI_ROOT`]. Each may have a
 /// `.mcmeta` beside it that sets its nine-slice borders.
 pub const GUI_FILES: &[&str] = &[
@@ -41,6 +49,7 @@ pub const GUI_FILES: &[&str] = &[
     "sprites/widget/scroller.png",
     "sprites/widget/scroller_background.png",
     VANILLA_PACK_ICON,
+    UNKNOWN_WORLD_ICON,
     "sprites/world_list/join.png",
     "sprites/world_list/join_highlighted.png",
     "sprites/transferable_list/select.png",

@@ -28,7 +28,7 @@ const FIRST_CAPTURE: Duration = Duration::from_secs(4);
 const RECAPTURE: Duration = Duration::from_secs(60);
 /// The share of each frame dimension the thumbnail keeps around its centre, leaving out the
 /// hotbar, the held item and the status bars at the frame's bottom and sides.
-const CROP_SHARE: u32 = 70;
+const CROP_SHARE: u32 = 80;
 const JPEG_QUALITY: u8 = 80;
 
 /// Encoded JPEG thumbnails by world id, handed from the encoder to the store system.
@@ -130,7 +130,7 @@ fn capture_world_thumbnail(
     });
 }
 
-/// The frame cropped to a 16:9 view around its centre, a little above it, shrunk to
+/// The frame cropped to a 16:9 view centred across and kept to the top, so the horizon shows, shrunk to
 /// [`THUMBNAIL_SIZE`] and encoded as JPEG.
 fn encode_thumbnail(frame: Image) -> Option<Vec<u8>> {
     let pixels = frame.try_into_dynamic().ok()?.to_rgb8();
@@ -159,7 +159,7 @@ fn thumbnail_crop(width: u32, height: u32) -> Option<[u32; 4]> {
     let (crop_width, crop_height) = (units * aspect_width, units * aspect_height);
     Some([
         (width - crop_width) / 2,
-        (height - crop_height) / 3,
+        0,
         crop_width,
         crop_height,
     ])

@@ -267,15 +267,22 @@ fn entry(
         bounds[1] + ICON * unit,
     ];
     canvas.fill(icon, ICON_FILL)?;
-    if let Some(art) = row
+    let captured = row
         .thumbnail
         .as_ref()
         .and_then(|key| images.get(key).or_else(|| canvas.artwork?.get(key)))
-        .copied()
-    {
+        .copied();
+    if let Some(art) = captured {
         // A captured view is wider than the square Java gives a world: its middle fills it,
         // with nothing stretched and no bars.
         canvas.icon_ref_cover(art, icon)?;
+    } else {
+        // Java's picture for a world with no icon yet.
+        canvas.sprite(
+            &crate::images::java::key(java_resource_pack::menu_files::UNKNOWN_WORLD_ICON),
+            icon,
+            [255; 4],
+        )?;
     }
     let text_left = bounds[0] + (ICON + 3.0) * unit;
     let room = bounds[2] - text_left;

@@ -15,15 +15,15 @@ use std::{
 };
 
 use java_resource_pack::menu_files::{
-    FONT_DEFINITIONS, FONT_TEXTURES, GUI_FILES, JAR_PACK_ICON, PANORAMA_FACES, REQUIRED_GUI_FILES,
-    SPLASHES, VANILLA_PACK_ICON, gui_path, mcmeta,
+    FONT_DEFINITIONS, FONT_TEXTURES, GAME_UNKNOWN_WORLD_ICON, GUI_FILES, JAR_PACK_ICON, PANORAMA_FACES, REQUIRED_GUI_FILES,
+    SPLASHES, UNKNOWN_WORLD_ICON, VANILLA_PACK_ICON, gui_path, mcmeta,
 };
 use launcher::install_layout::InstallLayout;
 use serde::{Deserialize, Serialize};
 
 /// What the cache holds. A cache written under an older number is read from the game again, so a
 /// new kind of file reaches players whose game has not changed.
-const CACHE_FORMAT: u32 = 9;
+const CACHE_FORMAT: u32 = 10;
 
 /// A panorama face smaller than this on a side is a placeholder, not the picture.
 const MIN_PANORAMA_SIDE: u32 = 64;
@@ -348,6 +348,10 @@ pub fn extract(jar: &ClientJar, cache: &Path) -> Result<Manifest, String> {
     let icon = gui_path(VANILLA_PACK_ICON);
     if let Some(bytes) = source.read_root(JAR_PACK_ICON, MAX_SPRITE_BYTES)? {
         keep(&mut manifest, icon, bytes)?;
+    }
+    // The picture for a world with no icon sits under another name in the game.
+    if let Some(bytes) = source.read(GAME_UNKNOWN_WORLD_ICON, MAX_SPRITE_BYTES)? {
+        keep(&mut manifest, gui_path(UNKNOWN_WORLD_ICON), bytes)?;
     }
     // The font definitions, then the sheets they name; a game without them has no Java font.
     let mut sheets = Vec::new();
