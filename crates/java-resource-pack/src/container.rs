@@ -22,6 +22,33 @@ pub(crate) const CELL_LOCK: &str = "textures/ui/cell_image_lock.png";
 /// The highlight Bedrock draws round the selected slot of its pocket inventory.
 pub(crate) const SLOT_HIGHLIGHT: &str = "textures/ui/pocket_ui_highlight_selected_slot.png";
 
+/// Pictures of a container's progress and error marks: a Java GUI sprite (relative to
+/// `textures/gui/sprites/`) and the Bedrock texture it replaces. Java draws the empty halves of
+/// these into the container's own atlas, so only the filled ones have a sprite.
+pub(crate) const PROGRESS_SPRITES: [(&str, &str); 6] = [
+    (
+        "container/furnace/lit_progress",
+        "textures/ui/flame_full_image",
+    ),
+    (
+        "container/furnace/burn_progress",
+        "textures/ui/arrow_active",
+    ),
+    (
+        "container/brewing_stand/brew_progress",
+        "textures/ui/brewing_arrow_full",
+    ),
+    (
+        "container/brewing_stand/bubbles",
+        "textures/ui/bubbles_full",
+    ),
+    (
+        "container/brewing_stand/fuel_length",
+        "textures/ui/brewing_fuel_bar_full",
+    ),
+    ("container/anvil/error", "textures/ui/crossout"),
+];
+
 /// Bedrock's panel, which every container screen and dialog draws behind its controls.
 pub(crate) const PANEL: &str = "textures/ui/dialog_background_opaque.png";
 
@@ -398,6 +425,17 @@ mod tests {
                 cell.as_raw(),
                 "{name} is not washed or tinted"
             );
+        }
+    }
+
+    #[test]
+    fn progress_sprites_name_distinct_paths_in_their_own_folders() {
+        let mut bedrock: Vec<&str> = PROGRESS_SPRITES.iter().map(|(_, to)| *to).collect();
+        bedrock.sort_unstable();
+        bedrock.dedup();
+        assert_eq!(bedrock.len(), PROGRESS_SPRITES.len());
+        for (java, to) in PROGRESS_SPRITES {
+            assert!(java.starts_with("container/") && to.starts_with("textures/ui/"));
         }
     }
 

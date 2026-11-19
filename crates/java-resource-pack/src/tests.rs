@@ -1097,3 +1097,24 @@ fn a_see_through_pack_gets_see_through_recipe_list_item_and_player_box_copies_fo
         assert!(out.contains_key(sidecar), "{sidecar}");
     }
 }
+
+#[test]
+fn container_progress_sprites_replace_their_bedrock_textures_untouched() {
+    let sprites = "assets/minecraft/textures/gui/sprites/container/";
+    let flame = solid(14, 14, RED);
+    let files = pack(vec![
+        (&format!("{sprites}furnace/lit_progress.png"), flame.clone()),
+        (&format!("{sprites}anvil/error.png"), solid(28, 21, GREEN)),
+    ]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(&out, "textures/ui/flame_full_image.png", 0, 0),
+        ((14, 14), RED)
+    );
+    assert_eq!(
+        pixel(&out, "textures/ui/crossout.png", 0, 0),
+        ((28, 21), GREEN)
+    );
+    assert!(!out.contains_key("textures/ui/arrow_active.png"));
+}

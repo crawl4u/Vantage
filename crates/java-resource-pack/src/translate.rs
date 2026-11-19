@@ -281,6 +281,13 @@ pub(crate) fn translate_within(
     let widgets = optional(&format!("{TEXTURES}gui/widgets.png"));
     let inventory = optional(&format!("{TEXTURES}gui/container/inventory.png"));
     let particles = optional(&format!("{TEXTURES}particle/particles.png"));
+    let progress: Vec<(&str, Vec<u8>)> = container::PROGRESS_SPRITES
+        .iter()
+        .filter_map(|(java, bedrock)| {
+            let bytes = optional(&format!("{TEXTURES}gui/sprites/{java}.png"))?;
+            dimensions(&bytes).is_some().then_some((*bedrock, bytes))
+        })
+        .collect();
 
     let layout = detect_layout(paths.iter().map(String::as_str), meta.format);
     let (block_folder, item_folder) = layout.folders();
@@ -367,6 +374,9 @@ pub(crate) fn translate_within(
         out.insert("textures/particle/particles.png".into(), Output::Raw(bytes));
     }
     out.extend(block_outputs);
+    for (bedrock, bytes) in progress {
+        out.insert(format!("{bedrock}.png"), Output::Raw(bytes));
+    }
     for (java, bytes) in extra_files {
         let Some((width, height)) = dimensions(&bytes) else {
             continue;
