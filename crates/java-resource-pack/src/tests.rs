@@ -1277,3 +1277,26 @@ fn worn_leather_armor_becomes_a_dye_mask_texture() {
         ((64, 32), [255, 0, 0, 3])
     );
 }
+
+#[test]
+fn a_modern_square_zombie_fills_bedrocks_half_height_layout_with_its_top_half() {
+    let mut image = RgbaImage::new(128, 128);
+    for pixel in image.pixels_mut() {
+        *pixel = Rgba(RED);
+    }
+    for y in 64..128 {
+        for x in 0..128 {
+            image.put_pixel(x, y, Rgba(GREEN));
+        }
+    }
+    let files = pack(vec![(
+        "assets/minecraft/textures/entity/zombie/zombie.png",
+        encode(&image),
+    )]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(&out, "textures/entity/zombie/zombie.png", 5, 63),
+        ((128, 64), RED)
+    );
+}

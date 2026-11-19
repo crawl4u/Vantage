@@ -395,8 +395,9 @@ pub(crate) fn translate_within(
         path[sprite_folder.len()..path.len() - ".png".len()].to_owned()
     }));
     let sky_image = read_sky(&paths, &mut source, budget);
-    // Mobs, paintings, maps and the rest the table covers; only flattened packs name them as it does.
-    let extra_files = if layout == Layout::Flattened {
+    // Mobs, paintings, maps and the rest the table covers, and older mob names matched to
+    // Bedrock's by file name and size; a legacy pack's mobs keep the names Bedrock's descend from.
+    let extra_files = {
         let listed = paths
             .iter()
             .filter_map(|path| {
@@ -409,8 +410,6 @@ pub(crate) fn translate_within(
             })
             .collect::<Vec<_>>();
         source.load_all(listed)
-    } else {
-        Vec::new()
     };
 
     let masks = tint_mask_outputs(layout, &blocks, budget);
@@ -480,6 +479,11 @@ pub(crate) fn translate_within(
         };
         if let Some(bedrock) = extras::bedrock_path(&java, width, height) {
             out.insert(format!("textures/{bedrock}.png"), Output::Raw(bytes));
+        } else if let Some(bedrock) = extras::top_half_path(&java, width, height)
+            && let Some(image) = decode(&bytes, budget)
+            && let Some(top) = crop(&image, 0, 0, width, height / 2, budget)
+        {
+            out.insert(format!("textures/{bedrock}.png"), Output::Image(top));
         }
     }
     let mut composed = HashMap::new();

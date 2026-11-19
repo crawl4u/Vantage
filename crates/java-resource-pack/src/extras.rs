@@ -32,6 +32,49 @@ static TABLE: LazyLock<HashMap<&'static str, Target>> = LazyLock::new(|| {
         .collect()
 });
 
+const ENTITY_TEXT: &str = include_str!("../data/bedrock-entities.tsv");
+
+/// Bedrock entity texture (relative to `textures/`, no extension) to its vanilla size.
+static BEDROCK_ENTITIES: LazyLock<HashMap<&'static str, [u32; 2]>> = LazyLock::new(|| {
+    ENTITY_TEXT
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| {
+            let mut parts = line.split('\t');
+            let path = parts.next().unwrap();
+            let mut side = || parts.next().unwrap().parse::<u32>().unwrap();
+            (path, [side(), side()])
+        })
+        .collect()
+});
+
+/// Entity paths a Java texture is never matched to by name: their layouts differ from Bedrock's
+/// namesakes, or they are not mob skins at all.
+const NAME_EXCLUDED: [&str; 6] = [
+    "entity/banner/",
+    "entity/shield/",
+    "entity/player/",
+    "entity/equipment/",
+    "/profession",
+    "/type/",
+];
+
+/// The Bedrock entity textures a Java entity texture at `java` could be: the same path, else the
+/// bare file name in `entity/`.
+fn name_candidates(java: &str) -> impl Iterator<Item = &'static str> + '_ {
+    let bare = java.rsplit('/').next().unwrap_or(java);
+    [java.to_owned(), format!("entity/{bare}")]
+        .into_iter()
+        .filter(move |_| {
+            java.starts_with("entity/") && !NAME_EXCLUDED.iter().any(|part| java.contains(part))
+        })
+        .filter_map(|candidate| {
+            BEDROCK_ENTITIES
+                .get_key_value(candidate.as_str())
+                .map(|(path, _)| *path)
+        })
+}
+
 /// The folders of `textures/` the table covers.
 pub(crate) const FOLDERS: [&str; 8] = [
     "entity/",
@@ -47,20 +90,39 @@ pub(crate) const FOLDERS: [&str; 8] = [
 /// Whether the table has an entry for the Java texture at `java` (relative to `textures/`, no
 /// extension).
 pub(crate) fn is_listed(java: &str) -> bool {
-    TABLE.contains_key(java)
+    TABLE.contains_key(java) || name_candidates(java).next().is_some()
 }
 
 /// The Bedrock path (relative to `textures/`, no extension) for the Java texture at `java`
 /// (relative to `textures/`, no extension) whose image is `width` by `height`; `None` when the
 /// table has no entry or the image is not a whole-number multiple of the vanilla size.
 pub(crate) fn bedrock_path(java: &str, width: u32, height: u32) -> Option<&'static str> {
-    let target = TABLE.get(java)?;
-    let [vanilla_width, vanilla_height] = target.size;
-    let scaled = width.is_multiple_of(vanilla_width)
-        && height.is_multiple_of(vanilla_height)
-        && width / vanilla_width == height / vanilla_height
-        && width >= vanilla_width;
-    scaled.then_some(target.bedrock)
+    let scaled = |[vanilla_width, vanilla_height]: [u32; 2]| {
+        width.is_multiple_of(vanilla_width)
+            && height.is_multiple_of(vanilla_height)
+            && width / vanilla_width == height / vanilla_height
+            && width >= vanilla_width
+    };
+    if let Some(target) = TABLE.get(java) {
+        return scaled(target.size).then_some(target.bedrock);
+    }
+    name_candidates(java).find(|candidate| scaled(BEDROCK_ENTITIES[candidate]))
+}
+
+/// The Bedrock entity texture a square Java texture at `java` fills with its top half, when
+/// Bedrock's namesake is twice as wide as high and the Java width is a whole multiple of it. The
+/// modern 64 by 64 humanoid layout keeps the classic 64 by 32 one in its top half, which is all
+/// the older Bedrock model reads.
+pub(crate) fn top_half_path(java: &str, width: u32, height: u32) -> Option<&'static str> {
+    if width != height || TABLE.contains_key(java) {
+        return None;
+    }
+    name_candidates(java).find(|candidate| {
+        let [vanilla_width, vanilla_height] = BEDROCK_ENTITIES[candidate];
+        vanilla_width == vanilla_height * 2
+            && width.is_multiple_of(vanilla_width)
+            && width >= vanilla_width
+    })
 }
 
 #[cfg(test)]
@@ -117,6 +179,45 @@ mod tests {
         ] {
             assert!(!is_listed(java), "{java}");
         }
+    }
+
+    #[test]
+    fn the_entity_listing_matches_the_pinned_sample_pack() {
+        let Some(pack) = crate::test_support::sample_pack() else {
+            return;
+        };
+        for (path, [width, height]) in BEDROCK_ENTITIES.iter() {
+            let size = image::image_dimensions(pack.join("textures").join(format!("{path}.png")))
+                .unwrap_or_else(|error| panic!("{path}: {error}"));
+            assert_eq!(size, (*width, *height), "{path}");
+        }
+    }
+
+    #[test]
+    fn older_mob_names_match_bedrock_by_file_name_and_size() {
+        // A 1.12-era cow and pig: same layout and size as Bedrock's.
+        assert_eq!(
+            bedrock_path("entity/cow/cow", 64, 32),
+            Some("entity/cow/cow")
+        );
+        assert_eq!(
+            bedrock_path("entity/pig/pig", 128, 64),
+            Some("entity/pig/pig")
+        );
+        // The bare file name in `entity/` also counts.
+        assert_eq!(
+            bedrock_path("entity/squid/squid", 64, 32),
+            Some("entity/squid")
+        );
+        // A different layout (the modern 64 by 64 zombie) or a villager type is not matched.
+        assert_eq!(bedrock_path("entity/zombie/zombie", 64, 64), None);
+        assert_eq!(
+            top_half_path("entity/zombie/zombie", 128, 128),
+            Some("entity/zombie/zombie")
+        );
+        assert_eq!(top_half_path("entity/zombie/zombie", 128, 64), None);
+        assert_eq!(bedrock_path("entity/villager/type/plains", 64, 64), None);
+        assert!(!is_listed("entity/banner/base"));
     }
 
     #[test]
