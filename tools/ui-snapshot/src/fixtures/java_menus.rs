@@ -11,12 +11,6 @@ use launcher::menu::{
 /// The Java-style title screen at the usual and the smallest window sizes.
 pub(super) const STATES: &[State] = &[
     State {
-        name: "java-home",
-        size: SIZE,
-        gui_scale: GUI_SCALE,
-        fixture: java_home,
-    },
-    State {
         name: "java-home-scale-2",
         size: SIZE,
         gui_scale: GUI_SCALE,
@@ -99,6 +93,18 @@ pub(super) const STATES: &[State] = &[
         size: SMALL_SIZE,
         gui_scale: 1,
         fixture: java_language,
+    },
+    State {
+        name: "java-skins",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_skins,
+    },
+    State {
+        name: "java-home",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_home,
     },
     State {
         name: "java-worlds",
@@ -253,6 +259,49 @@ fn java_loading() -> Fixture {
         stage: launcher::local_worlds::Stage::Connecting,
         fraction: Some(0.4),
         detail: "My World".to_owned(),
+    });
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    Fixture::Menu(Box::new(view))
+}
+
+/// The Skin Presets list with the starter skins and one of the player's own.
+fn java_skins() -> Fixture {
+    let mut view = MenuView::new(true, "Player".into());
+    view.screen = MenuScreen::DressingRoom;
+    view.auth_state = AuthState::Authenticated;
+    use launcher::dressing_room::{
+        DressingRoomSkin, DressingRoomView, STARTER_SKIN_NAMES, SkinModel,
+    };
+    let skin = |index: usize, name: String, imported: bool| DressingRoomSkin {
+        engine_version: render_api::DEFAULT_SKIN_GEOMETRY_ENGINE_VERSION.into(),
+        id: index.to_string(),
+        name,
+        path: String::new(),
+        imported,
+        model: if index == 1 {
+            SkinModel::Slim
+        } else {
+            SkinModel::Classic
+        },
+        skin: render_api::StandardSkin {
+            width: render_api::CLASSIC_SKIN_SIDE as u32,
+            height: render_api::CLASSIC_SKIN_SIDE as u32,
+            rgba8: vec![160; render_api::CLASSIC_SKIN_SIDE.pow(2) * 4].into(),
+            cape: None,
+            geometry: None,
+        },
+    };
+    let mut skins: Vec<DressingRoomSkin> = STARTER_SKIN_NAMES
+        .iter()
+        .enumerate()
+        .map(|(index, name)| skin(index, (*name).to_owned(), false))
+        .collect();
+    skins.push(skin(skins.len(), "Backroom Warden".to_owned(), true));
+    view.dressing_room = Arc::new(DressingRoomView {
+        skins: skins.into(),
+        selected: Some(1),
+        ..Default::default()
     });
     let options = Arc::make_mut(&mut view.settings_options);
     assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));

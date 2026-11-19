@@ -15,13 +15,13 @@ use launcher::dressing_room::Action;
 use launcher::menu::{MenuAction, MenuView};
 use ui_engine::engine::screen::PaintError;
 
-pub(super) struct PreviewArea {
-    pub(super) control: Bounds,
-    pub(super) clip: Bounds,
-    pub(super) visible_skins: Vec<usize>,
-    pub(super) visible_capes: Vec<usize>,
-    pub(super) visible_cosmetics: Vec<usize>,
-    pub(super) filter_anchor: Option<Bounds>,
+pub(crate) struct PreviewArea {
+    pub(crate) control: Bounds,
+    pub(crate) clip: Bounds,
+    pub(crate) visible_skins: Vec<usize>,
+    pub(crate) visible_capes: Vec<usize>,
+    pub(crate) visible_cosmetics: Vec<usize>,
+    pub(crate) filter_anchor: Option<Bounds>,
 }
 
 fn command(action: Action) -> MenuAction {
@@ -142,7 +142,14 @@ pub(super) fn draw_overlay(
     size: [f32; 2],
     filter_anchor: Option<Bounds>,
 ) -> Result<(), PaintError> {
-    if view.dressing_room.editor.is_some() {
+    if super::java::selected(view, canvas) {
+        // The Java style edits on a page of its own, and has no category menu.
+        if view.dressing_room.editor.is_some() {
+            super::java::skins::draw_editor(canvas, view, size)
+        } else {
+            Ok(())
+        }
+    } else if view.dressing_room.editor.is_some() {
         editor::draw(canvas, view, size)
     } else if view.dressing_room.cosmetic_filter_open
         && enabled(view)

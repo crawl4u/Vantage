@@ -19,6 +19,7 @@ pub(crate) use packs::folder_icon;
 pub(super) mod pause;
 pub(super) mod servers;
 mod shaders;
+pub(super) mod skins;
 mod splash;
 mod storage;
 pub(super) mod world_form;

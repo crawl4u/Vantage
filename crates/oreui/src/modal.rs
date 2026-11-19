@@ -40,7 +40,7 @@ impl<'a> Modal<'a> {
         }
     }
 
-    fn text(title: &'a str, body: impl Into<Cow<'a, str>>) -> Self {
+    pub(super) fn text(title: &'a str, body: impl Into<Cow<'a, str>>) -> Self {
         Self {
             title,
             items: Vec::new(),

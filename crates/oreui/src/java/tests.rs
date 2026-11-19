@@ -127,6 +127,7 @@ fn the_java_title_offers_every_home_action_inside_the_window() {
             MenuAction::Navigate(MenuScreen::Servers),
             MenuAction::Navigate(MenuScreen::Social),
             MenuAction::Navigate(MenuScreen::Settings),
+            MenuAction::OpenSettingsSection(SettingSection::Mods.definition().index),
             MenuAction::OpenExitDialog,
             MenuAction::Navigate(MenuScreen::DressingRoom),
             MenuAction::Navigate(MenuScreen::Friends),
@@ -361,4 +362,88 @@ fn the_bedrock_page_opened_from_a_java_page_is_the_bedrock_page() {
     assert!(options::shows_java(&view));
     view.settings.java_view = JavaSettingsView::Bedrock;
     assert!(!options::shows_java(&view));
+}
+
+/// The wardrobe as the Java style draws it: three starter skins and two capes, one imported.
+fn skins_view() -> MenuView {
+    let mut view = crate::test_support::dressing_room_view(
+        launcher::dressing_room::STARTER_SKIN_NAMES.len() + 1,
+    );
+    crate::test_support::add_capes(&mut view);
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    view
+}
+
+#[test]
+fn the_skin_presets_list_offers_every_look_and_the_footer_buttons() {
+    use launcher::dressing_room::{Action, DressingRoomSection};
+    let mut view = skins_view();
+    let size = [1280.0, 720.0];
+    let imported = launcher::dressing_room::STARTER_SKIN_NAMES.len();
+    let mut area = None;
+    let (hits, _) = paint(true, size, |canvas| {
+        area = Some(skins::draw(canvas, &view, size).unwrap());
+    });
+    let has = |action: MenuAction| hits.iter().any(|(candidate, _)| *candidate == action);
+    for index in 0..=imported {
+        assert!(has(MenuAction::DressingRoom(Action::Select(index))));
+    }
+    // Only the player's own skin can be edited.
+    assert!(has(MenuAction::DressingRoom(Action::BeginRename(imported))));
+    assert!(!has(MenuAction::DressingRoom(Action::BeginRename(0))));
+    assert!(has(MenuAction::DressingRoom(Action::Import)));
+    assert!(has(MenuAction::AddBack));
+    for section in DressingRoomSection::ALL {
+        assert!(has(MenuAction::DressingRoom(Action::SetSection(section))));
+    }
+    let area = area.unwrap();
+    assert!(area.visible_skins.contains(&0));
+    // The equipped character has room beside the list in a wide window.
+    assert!(area.control[2] - area.control[0] > 100.0, "{:?}", area.control);
+
+    Arc::make_mut(&mut view.dressing_room).section = DressingRoomSection::Capes;
+    let (hits, _) = paint(true, size, |canvas| {
+        skins::draw(canvas, &view, size).unwrap();
+    });
+    let has = |action: MenuAction| hits.iter().any(|(candidate, _)| *candidate == action);
+    assert!(has(MenuAction::DressingRoom(Action::SelectCape(None))));
+    assert!(has(MenuAction::DressingRoom(Action::SelectCape(Some(1)))));
+    assert!(has(MenuAction::DressingRoom(Action::BeginRenameCape(1))));
+    assert!(has(MenuAction::DressingRoom(Action::ImportCape)));
+}
+
+#[test]
+fn editing_a_skin_offers_its_name_removal_and_done() {
+    use launcher::dressing_room::{Action, SkinEditor, SkinEditorMode, SkinEditorTarget};
+    let mut view = skins_view();
+    let index = launcher::dressing_room::STARTER_SKIN_NAMES.len();
+    Arc::make_mut(&mut view.dressing_room).editor = Some(SkinEditor {
+        index,
+        mode: SkinEditorMode::Rename,
+        draft: "Mine".to_owned(),
+        target: SkinEditorTarget::Skin,
+    });
+    let size = [1280.0, 720.0];
+    let (hits, _) = paint(true, size, |canvas| {
+        skins::draw_editor(canvas, &view, size).unwrap();
+    });
+    let has = |action: MenuAction| hits.iter().any(|(candidate, _)| *candidate == action);
+    assert!(has(MenuAction::EditSkinName));
+    assert!(has(MenuAction::DressingRoom(Action::BeginDelete(index))));
+    assert!(has(MenuAction::DressingRoom(Action::SaveRename)));
+    assert!(has(MenuAction::DressingRoom(Action::Cancel)));
+
+    // Asking to remove it puts a question over the page; only its buttons take presses.
+    Arc::make_mut(&mut view.dressing_room)
+        .editor
+        .as_mut()
+        .unwrap()
+        .mode = SkinEditorMode::Delete;
+    let (hits, _) = paint(true, size, |canvas| {
+        skins::draw_editor(canvas, &view, size).unwrap();
+    });
+    let has = |action: MenuAction| hits.iter().any(|(candidate, _)| *candidate == action);
+    assert!(has(MenuAction::DressingRoom(Action::ConfirmDelete)));
+    assert!(!has(MenuAction::EditSkinName));
 }

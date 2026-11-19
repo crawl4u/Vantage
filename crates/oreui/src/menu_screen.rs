@@ -340,8 +340,13 @@ impl Screen for OreUiScreen {
                 MenuScreen::DressingRoom => {
                     canvas.capture_focus = true;
                     let rollback = (canvas.nodes.len(), *canvas.next);
+                    let java = java::selected(view, &canvas);
                     for attempt in 0..2 {
-                        dressing_preview = Some(dressing_room::draw(&mut canvas, view, size)?);
+                        dressing_preview = Some(if java {
+                            java::skins::draw(&mut canvas, view, size)?
+                        } else {
+                            dressing_room::draw(&mut canvas, view, size)?
+                        });
                         if !scroll_focus::reveal(&mut canvas, scrolls, view) || attempt == 1 {
                             break;
                         }
