@@ -260,7 +260,8 @@ impl PackedModelDrawRef {
         Self {
             quad_index: (self.quad_index & crate::surface::QUAD_INDEX_MASK)
                 | (u32::from(tile) << crate::surface::TILE_SHIFT)
-                | (u32::from(border) << crate::surface::BORDER_SHIFT),
+                | (u32::from(border) << crate::surface::BORDER_SHIFT)
+                | (self.quad_index & !crate::surface::DRAW_WORD_MASK),
             ..self
         }
     }
@@ -274,11 +275,28 @@ impl PackedModelDrawRef {
     /// Validates the optional partition payload without reading GPU data.
     #[must_use]
     pub const fn valid_surface_tile(self) -> bool {
-        self.quad_index <= crate::surface::QUAD_INDEX_MASK
-            || (self.quad_index <= crate::surface::DRAW_WORD_MASK
-                && (self.quad_index >> crate::surface::BORDER_SHIFT) != 0
-                && ((self.quad_index >> crate::surface::TILE_SHIFT) & crate::surface::TILE_MASK)
-                    < crate::surface::TILE_COUNT)
+        let word = self.quad_index & crate::surface::DRAW_WORD_MASK;
+        (self.quad_index >> crate::surface::CONNECTION_SHIFT) <= crate::surface::CONNECTION_MASK
+            && (word <= crate::surface::QUAD_INDEX_MASK
+                || ((word >> crate::surface::BORDER_SHIFT) != 0
+                    && ((word >> crate::surface::TILE_SHIFT) & crate::surface::TILE_MASK)
+                        < crate::surface::TILE_COUNT))
+    }
+
+    /// Records the connected-texture tile of the quad this draw names (`0..=46`).
+    #[must_use]
+    pub const fn with_connection(self, tile: u8) -> Self {
+        Self {
+            quad_index: (self.quad_index & crate::surface::DRAW_WORD_MASK)
+                | ((tile as u32) << crate::surface::CONNECTION_SHIFT),
+            ..self
+        }
+    }
+
+    /// The connected-texture tile set by [`Self::with_connection`].
+    #[must_use]
+    pub const fn connection(self) -> u8 {
+        (self.quad_index >> crate::surface::CONNECTION_SHIFT) as u8
     }
 
     #[must_use]

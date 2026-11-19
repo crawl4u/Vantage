@@ -104,6 +104,21 @@ impl<'refs, 'assets, 'chunks> ConnectedSampler<'refs, 'assets, 'chunks> {
             .contains(BlockFlags::OCCLUDES_FULL_FACE)
     }
 
+    /// The tile of a face of `material` when that material is a connected-texture set the
+    /// neighbouring blocks choose from, else `None`.
+    pub(crate) fn connection(
+        &self,
+        materials: &[assets::Material],
+        coordinate: [usize; 3],
+        face: Face,
+        material: u32,
+    ) -> Option<u8> {
+        let selector = materials.get(material as usize)?;
+        (selector.variation_count == u32::from(assets::CONNECTED_TILE_COUNT)
+            && selector.mask_strength >> 16 == assets::CONNECTED_TAG)
+            .then(|| self.tile(coordinate, face, material))
+    }
+
     /// The `ctm` tile index of `face` of the block at `coordinate`, whose face shows `material`.
     pub(crate) fn tile(&self, coordinate: [usize; 3], face: Face, material: u32) -> u8 {
         let origin = coordinate.map(|value| value as i32);

@@ -295,7 +295,7 @@ fn consume_surface_draws(
         if !draw.valid_surface_tile() {
             return false;
         }
-        if words[1] <= meshing::surface::QUAD_INDEX_MASK {
+        if words[1] & meshing::surface::DRAW_WORD_MASK <= meshing::surface::QUAD_INDEX_MASK {
             if *index != start {
                 return false;
             }

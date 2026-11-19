@@ -32,10 +32,8 @@ impl CubeMaterialResolver<'_, '_, '_> {
         face: Face,
         material: u32,
     ) -> Option<u8> {
-        let selector = materials.get(material as usize)?;
-        (selector.variation_count == u32::from(assets::CONNECTED_TILE_COUNT)
-            && selector.mask_strength >> 16 == assets::CONNECTED_TAG)
-            .then(|| self.connected.tile(coordinate, face, material))
+        self.connected
+            .connection(materials, coordinate, face, material)
     }
 
     /// Vanilla grass samples only the block directly above:

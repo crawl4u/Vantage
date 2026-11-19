@@ -16,6 +16,9 @@ pub const TILE_COUNT: u32 = 9;
 pub const ALL_TILES: u16 = (1 << TILE_COUNT) - 1;
 pub const BORDER_SHIFT: u32 = 9;
 pub const DRAW_WORD_MASK: u32 = 65535;
+/// A draw word's bits above [`DRAW_WORD_MASK`] hold the connected-texture tile of its quad.
+pub const CONNECTION_SHIFT: u32 = 16;
+pub const CONNECTION_MASK: u32 = 63;
 const _: () = assert!(assets::MAX_MODEL_TEMPLATE_QUADS <= QUAD_INDEX_MASK as usize + 1);
 
 /// A three-by-three face partition, with independently visible corners, edges and centre.
@@ -209,6 +212,35 @@ mod tests {
                 face_offset(face, [1, -1, 0]),
                 std::array::from_fn(|i| u[i] - v[i])
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod connection_tests {
+    use crate::PackedModelDrawRef;
+
+    #[test]
+    fn a_connected_tile_rides_beside_the_quad_and_any_partition() {
+        let draw = PackedModelDrawRef::new(7, 4).with_connection(44);
+        assert_eq!((draw.quad_index(), draw.connection()), (4, 44));
+        assert!(draw.valid_surface_tile());
+        let patch = draw.with_surface_tile(3, 16);
+        assert_eq!((patch.quad_index(), patch.connection()), (4, 44));
+        assert!(patch.valid_surface_tile());
+        assert_eq!(
+            patch.words()[1] & super::DRAW_WORD_MASK,
+            4 | 3 << 5 | 16 << 9
+        );
+        // A tile beyond the 6-bit field is not a draw.
+        let broken = PackedModelDrawRef::new(7, 4 | 1 << 22);
+        assert!(!broken.valid_surface_tile());
+    }
+
+    #[test]
+    fn model_faces_and_cube_faces_number_the_sides_alike() {
+        for (index, face) in crate::Face::ALL.into_iter().enumerate() {
+            assert_eq!(face.index(), index);
         }
     }
 }

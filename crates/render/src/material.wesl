@@ -90,6 +90,22 @@ fn material_ao_shade(ao_face: f32, exponent_bits: u32) -> f32 {
     return pow(ao_face, exponent);
 }
 
+// A connected-texture selector holds OptiFine's 47 `ctm` tiles; the mesher chose the tile.
+fn is_connected_selector(base: MaterialGpu) -> bool {
+    return base.variation_count == 47u && (base.mask_strength >> 16u) == 0x2000u;
+}
+
+fn connected_tile(base: MaterialGpu, connection: u32) -> u32 {
+    return base.variation_start + min(connection, 46u);
+}
+
+// Model quads carry the tile the mesher chose beside the quad, as cube quads do.
+fn positional_material_id_connected(id: u32, position: vec3<i32>, connection: u32) -> u32 {
+    let base = materials(id);
+    if (is_connected_selector(base)) { return connected_tile(base, connection); }
+    return positional_material_id(id, position);
+}
+
 // Vanilla uses wrapping coordinates, subtractive weights, last fallback.
 fn positional_material_id(id: u32, position: vec3<i32>) -> u32 {
     let base = materials(id);
@@ -113,10 +129,7 @@ fn positional_material_id(id: u32, position: vec3<i32>) -> u32 {
 // north and east counting from the far end. Faces are numbered -X, +X, -Y, +Y, -Z, +Z.
 fn positional_material_id_face(id: u32, position: vec3<i32>, face: u32, connection: u32) -> u32 {
     let base = materials(id);
-    // A connected-texture selector holds OptiFine's 47 `ctm` tiles; the mesher chose the tile.
-    if (base.variation_count == 47u && (base.mask_strength >> 16u) == 0x2000u) {
-        return base.variation_start + min(connection, 46u);
-    }
+    if (is_connected_selector(base)) { return connected_tile(base, connection); }
     if (base.variation_count > 1u && (base.mask_strength >> 16u) == 0x4000u) {
         let width = (base.mask_strength >> 8u) & 0xffu;
         let height = base.mask_strength & 0xffu;

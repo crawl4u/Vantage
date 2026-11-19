@@ -358,7 +358,7 @@ pub(in crate::chunk) fn transparent_model_draw_candidate(
         let [x, y, z] = meshing::turn_model_position(position, turn);
         total + Vec3::new(f32::from(x), f32::from(y), f32::from(z))
     }) / (4.0 * 256.0);
-    if encoded_quad > meshing::surface::QUAD_INDEX_MASK {
+    if encoded_quad & meshing::surface::DRAW_WORD_MASK > meshing::surface::QUAD_INDEX_MASK {
         let tile = (encoded_quad >> meshing::surface::TILE_SHIFT) & meshing::surface::TILE_MASK;
         let border = (encoded_quad >> meshing::surface::BORDER_SHIFT) as f32 / 256.;
         let edges = [0., border, 1. - border, 1.];

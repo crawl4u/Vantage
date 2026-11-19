@@ -551,7 +551,21 @@ fn mesh_sub_chunk_core<
                             let mut remaining = visible_quad_mask;
                             while remaining != 0 {
                                 let quad_index = remaining.trailing_zeros();
-                                let draw_ref = PackedModelDrawRef::new(model_ref_index, quad_index);
+                                let mut draw_ref =
+                                    PackedModelDrawRef::new(model_ref_index, quad_index);
+                                // Blocks drawn as a cube model pick connected tiles per face.
+                                if template.flags & assets::MODEL_TEMPLATE_FLAG_TRANSPARENT_CUBE
+                                    != 0
+                                    && let Some(&face) = Face::ALL.get(quad_index as usize)
+                                    && let Some(tile) = connected.connection(
+                                        visuals.materials(),
+                                        [x, y, z],
+                                        face,
+                                        template_quads[quad_index as usize].material,
+                                    )
+                                {
+                                    draw_ref = draw_ref.with_connection(tile);
+                                }
                                 if template_quads[quad_index as usize].material
                                     != DIAGNOSTIC_MATERIAL
                                     && visuals

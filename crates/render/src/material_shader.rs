@@ -185,6 +185,8 @@ pub(crate) fn source(source: &str) -> String {
         .replace("SURFACE_TILE_MASK", &format!("{}u", meshing::surface::TILE_MASK))
         .replace("SURFACE_TILE_COUNT", &format!("{}u", meshing::surface::TILE_COUNT))
         .replace("SURFACE_BORDER_SHIFT", &format!("{}u", meshing::surface::BORDER_SHIFT))
+        .replace("SURFACE_CONNECTION_SHIFT", &format!("{}u", meshing::surface::CONNECTION_SHIFT))
+        .replace("SURFACE_CONNECTION_MASK", &format!("{}u", meshing::surface::CONNECTION_MASK))
         .replace("SURFACE_DRAW_WORD_MASK", &format!("{}u", meshing::surface::DRAW_WORD_MASK))
         .replace("SURFACE_BORDER_REL_SHIFT", &format!("{}u", meshing::surface::BORDER_SHIFT - meshing::surface::TILE_SHIFT))
         .replace("MODEL_RANDOM_OFFSET_FLAG", &format!("{}u", meshing::MODEL_REF_FLAG_RANDOM_OFFSET))

@@ -5,7 +5,7 @@ import render::chunk_bindings::{
     model_sampler, animations, animation_frames,
     clock, model_templates, model_templates_length, geometry_streams, atmosphere,
 };
-import render::material::{MaterialGpu, materials, positional_material_id, texture_layer, texture_page, material_uv_flags, texture_model_uv, texture_gradient_scale, material_ao_shade, material_uses_overlay_mask, material_mask_varyings, material_mask_reference};
+import render::material::{MaterialGpu, materials, positional_material_id, positional_material_id_connected, texture_layer, texture_page, material_uv_flags, texture_model_uv, texture_gradient_scale, material_ao_shade, material_uses_overlay_mask, material_mask_varyings, material_mask_reference};
 @if(ENHANCED_SHADOW)
 import render::enhanced::caster::caster_clip;
 import render::world_projection::{section_camera_offset, camera_offset_clip};
@@ -258,10 +258,10 @@ fn model_quad(instance_index: u32, metadata_index: u32) -> ModelQuad {
 /// Admits a bare template quad index, or one carrying a partition tile and a non-zero border
 /// inside the draw word, as `PackedModelDrawRef::valid_surface_tile` does on upload.
 fn surface_draw_word_valid(encoded_quad: u32) -> bool {
-    return encoded_quad <= SURFACE_QUAD_INDEX_MASK
-        || (encoded_quad <= SURFACE_DRAW_WORD_MASK
-            && (encoded_quad >> SURFACE_BORDER_SHIFT) != 0u
-            && ((encoded_quad >> SURFACE_TILE_SHIFT) & SURFACE_TILE_MASK) < SURFACE_TILE_COUNT);
+    let word = encoded_quad & SURFACE_DRAW_WORD_MASK;
+    return word <= SURFACE_QUAD_INDEX_MASK
+        || ((word >> SURFACE_BORDER_SHIFT) != 0u
+            && ((word >> SURFACE_TILE_SHIFT) & SURFACE_TILE_MASK) < SURFACE_TILE_COUNT);
 }
 
 /// Decodes a stable model-ref address and template quad in an origin slot, validating all reads.
@@ -305,7 +305,7 @@ fn model_quad_at(model_ref_index: u32, encoded_quad: u32, metadata_index: u32) -
     quad.valid = 1u;
     quad.template_quad_base = template_quad_words + (quad_start + quad_index) * 12u;
     quad.quad_index = quad_index;
-    quad.surface_patch = encoded_quad >> SURFACE_TILE_SHIFT;
+    quad.surface_patch = (encoded_quad & SURFACE_DRAW_WORD_MASK) >> SURFACE_TILE_SHIFT;
     quad.packed_transform = packed_transform;
     quad.lighting_base_index = lighting_base_index;
     quad.block_position = vec3<f32>(
@@ -338,7 +338,11 @@ fn model_quad_at(model_ref_index: u32, encoded_quad: u32, metadata_index: u32) -
     }
     quad.material_id = model_templates(quad.template_quad_base + 10u);
     quad.quad_flags = model_templates(quad.template_quad_base + 11u);
-    quad.selected_material_id = positional_material_id(quad.material_id, quad.chunk_origin.xyz + vec3<i32>(quad.block_position));
+    quad.selected_material_id = positional_material_id_connected(
+        quad.material_id,
+        quad.chunk_origin.xyz + vec3<i32>(quad.block_position),
+        (encoded_quad >> SURFACE_CONNECTION_SHIFT) & SURFACE_CONNECTION_MASK,
+    );
     if (lighting_base_index >= geometry_word_count / 2u || quad_index >= geometry_word_count / 2u - lighting_base_index) {
         return invalid_model_quad();
     }
