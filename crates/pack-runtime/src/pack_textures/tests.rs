@@ -419,3 +419,78 @@ fn the_highest_layer_holding_either_form_decides_between_image_and_texture_set()
             .unwrap();
     assert_eq!(&resolved.texture.rgba8[..], &[1, 2, 3, 255]);
 }
+
+/// A resource pack archive holding a manifest and each `(path, bytes)` file.
+fn archive(id: u128, files: &[(&str, Vec<u8>)]) -> protocol::ResourcePackArchive {
+    use std::io::Write;
+    let id = format!("00000000-0000-0000-0000-{id:012x}");
+    let manifest = format!(
+        r#"{{"format_version":2,"header":{{"uuid":"{id}","version":[1,0,0]}},"modules":[{{"type":"resources"}}]}}"#
+    );
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (path, bytes) in std::iter::once(("manifest.json", manifest.into_bytes()))
+        .chain(files.iter().map(|(path, bytes)| (*path, bytes.clone())))
+    {
+        zip.start_file(path, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(&bytes).unwrap();
+    }
+    protocol::ResourcePackArchive::unencrypted(
+        id.parse().unwrap(),
+        "1.0.0".into(),
+        String::new(),
+        zip.finish().unwrap().into_inner(),
+    )
+}
+
+fn encoded(format: ImageFormat, color: [u8; 4]) -> Vec<u8> {
+    let image = image::RgbaImage::from_pixel(2, 2, image::Rgba(color));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image.write_to(&mut bytes, format).unwrap();
+    bytes.into_inner()
+}
+
+#[test]
+fn a_higher_packs_png_replaces_a_lower_packs_tga() {
+    let lower = archive(
+        1,
+        &[(
+            "textures/items/leather_helmet.tga",
+            encoded(ImageFormat::Tga, [200, 0, 0, 255]),
+        )],
+    );
+    let upper = archive(
+        2,
+        &[(
+            "textures/items/leather_helmet.png",
+            encoded(ImageFormat::Png, [0, 200, 0, 255]),
+        )],
+    );
+    let view = LayeredPackView::new(resource_pack::validate_handoff(
+        protocol::ResourcePackHandoff::from_archives(vec![upper, lower]),
+    ));
+    let texture = decode_pack_texture(&view, "textures/items/leather_helmet").unwrap();
+    assert_eq!(&texture.rgba8[..4], &[0, 200, 0, 255]);
+}
+
+#[test]
+fn within_one_pack_a_tga_still_comes_before_a_png() {
+    let both = archive(
+        1,
+        &[
+            (
+                "textures/items/gem.png",
+                encoded(ImageFormat::Png, [0, 200, 0, 255]),
+            ),
+            (
+                "textures/items/gem.tga",
+                encoded(ImageFormat::Tga, [200, 0, 0, 255]),
+            ),
+        ],
+    );
+    let view = LayeredPackView::new(resource_pack::validate_handoff(
+        protocol::ResourcePackHandoff::from_archives(vec![both]),
+    ));
+    let texture = decode_pack_texture(&view, "textures/items/gem").unwrap();
+    assert_eq!(&texture.rgba8[..4], &[200, 0, 0, 255]);
+}

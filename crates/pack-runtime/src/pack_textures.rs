@@ -163,11 +163,22 @@ fn decode_image_file(
     policy: TexturePolicy,
     allow_strip: bool,
 ) -> Option<ResolvedPackTexture> {
-    texture_image_paths(path).into_iter().find_map(|path| {
-        let format = image_format(&path)?;
-        let (index, bytes) = view.read_capped_with_layer(&path, MAX_TEXTURE_SOURCE_BYTES as u64)?;
+    // The highest pack holding any image of this name wins, whatever its extension: a pack's PNG
+    // replaces vanilla's TGA. Extensions only order the copies within one pack.
+    let mut found: Vec<(usize, usize, String, Box<[u8]>)> = texture_image_paths(path)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(order, path)| {
+            image_format(&path)?;
+            let (index, bytes) =
+                view.read_capped_with_layer(&path, MAX_TEXTURE_SOURCE_BYTES as u64)?;
+            Some((index, order, path, bytes))
+        })
+        .collect();
+    found.sort_by_key(|(index, order, ..)| (*index, *order));
+    found.into_iter().find_map(|(index, _, path, bytes)| {
         Some(ResolvedPackTexture {
-            texture: decode_image_with_policy(&bytes, format, policy, allow_strip)?,
+            texture: decode_image_with_policy(&bytes, image_format(&path)?, policy, allow_strip)?,
             image_path: image_identity(index, &path),
         })
     })

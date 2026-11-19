@@ -35,16 +35,20 @@ pub fn indexed_image_candidate(view: &super::LayeredPackView, path: &str) -> Opt
     candidate.or_else(|| indexed_image(view, path))
 }
 
-/// Uses the decoder's extension order and indexed file sizes without loading pixels.
+/// Uses the decoder's precedence and indexed file sizes without loading pixels: the highest pack
+/// holding an image of this name, its extensions in order within one pack.
 fn indexed_image(view: &super::LayeredPackView, path: &str) -> Option<String> {
     super::texture_image_paths(path)
         .into_iter()
-        .find_map(|path| {
+        .enumerate()
+        .filter_map(|(order, path)| {
             let (index, _) = view
                 .layers()
                 .rev()
                 .enumerate()
                 .find(|(_, layer)| layer.file_size(&path).is_some())?;
-            Some(super::image_identity(index, &path))
+            Some((index, order, path))
         })
+        .min_by_key(|(index, order, _)| (*index, *order))
+        .map(|(index, _, path)| super::image_identity(index, &path))
 }
