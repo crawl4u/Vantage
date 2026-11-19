@@ -57,8 +57,12 @@ pub(crate) enum WorldLoad {
     Other,
 }
 
-/// The title as Java writes one: words capitalised, not shouting in capitals.
+/// The title as Java writes one: a title shouted in capitals has its words capitalised, and any
+/// other is kept as it is.
 fn title_case(title: &str) -> String {
+    if title.chars().any(char::is_lowercase) {
+        return title.to_owned();
+    }
     let lower = title.to_lowercase();
     lower
         .split(' ')
@@ -169,7 +173,9 @@ fn paint(
     let region =
         canvas.begin_focus_region(focus::SCREEN, [0.0, 0.0, size[0], size[1]], None, true)?;
     canvas.focus_delegate(cancel.map(|(_, action)| action), None);
-    let lines = wrap_lines(detail, TEXT_WIDTH.min(java_width - 20.0));
+    // A line that only says the title again is left out.
+    let mut lines = wrap_lines(detail, TEXT_WIDTH.min(java_width - 20.0));
+    lines.retain(|line| !line.eq_ignore_ascii_case(title));
     let tile_size = TILE_INNER + 2.0 * (TILE_PAD + TILE_BORDER);
     let height = BAR_HEIGHT
         + BAR_GAP
@@ -319,6 +325,8 @@ mod tests {
     fn a_shouted_title_is_written_the_way_java_writes_one() {
         assert_eq!(title_case("STARTING WORLD"), "Starting World");
         assert_eq!(title_case("Joining"), "Joining");
+        // Java's own sentence case is not changed.
+        assert_eq!(title_case("Loading terrain..."), "Loading terrain...");
         assert_eq!(title_case(""), "");
     }
 

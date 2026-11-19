@@ -75,7 +75,10 @@ pub(super) fn join(
     size: [f32; 2],
     translate: Translate<'_>,
 ) -> Result<(), PaintError> {
-    widgets::screen_overlay(canvas, size)?;
+    // Java's loading screen dims the menu behind it itself, not as heavily as this overlay does.
+    if !crate::java::selected(view, canvas) {
+        widgets::screen_overlay(canvas, size)?;
+    }
     let tr = |key: &str, fallback: &str| translated(translate, key, fallback);
     let (title, detail, fraction, cancel) = if let Some(local) = &view.local.progress {
         use launcher::local_worlds::Stage;
