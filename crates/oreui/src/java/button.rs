@@ -4,7 +4,7 @@ use launcher::menu::{MenuAction, MenuView};
 use ui_engine::engine::screen::PaintError;
 
 use crate::{
-    images::java::{border, key},
+    images::java::{border, border_units, key},
     paint::{Bounds, Canvas},
     theme::{BODY, TEXT, Type},
 };
@@ -126,7 +126,9 @@ pub(super) fn nine_slice(
     let key = key(sprite_name);
     // A sprite without borders is stretched whole.
     let slices = border(&key).unwrap_or([0; 4]);
-    let widths = slices.map(|texels| f32::from(texels) * unit / canvas.rem.max(f32::EPSILON));
+    let widths = border_units(&key)
+        .unwrap_or([0.0; 4])
+        .map(|pixels| pixels * unit / canvas.rem.max(f32::EPSILON));
     canvas.nine_slice(&key, bounds, slices, widths, true, [255; 4])
 }
 

@@ -708,7 +708,9 @@ fn field(
         };
         let key = crate::images::java::key(name);
         let slices = crate::images::java::border(&key).unwrap_or([0; 4]);
-        let widths = slices.map(|texels| f32::from(texels) * unit / canvas.rem.max(f32::EPSILON));
+        let widths = crate::images::java::border_units(&key)
+            .unwrap_or([0.0; 4])
+            .map(|pixels| pixels * unit / canvas.rem.max(f32::EPSILON));
         canvas.nine_slice(&key, b, slices, widths, true, [255; 4])?;
         left = b[0] + 4.0 * unit;
     } else {

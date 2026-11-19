@@ -174,12 +174,18 @@ fn borders_come_from_the_layer_that_supplied_the_texture() {
 #[test]
 fn a_border_is_read_per_side_scaled_and_other_scaling_has_none() {
     let all = br#"{"gui":{"scaling":{"type":"nine_slice","width":200,"height":20,"border":3}}}"#;
-    assert_eq!(parse_border(all, [200, 20]), Some([3; 4]));
+    assert_eq!(parse_border(all, [200, 20]), Some(([3; 4], [3.0; 4])));
     let sides = br#"{"gui":{"scaling":{"type":"nine_slice","width":8,"height":20,
         "border":{"left":2,"top":1,"right":4,"bottom":3}}}}"#;
-    assert_eq!(parse_border(sides, [8, 20]), Some([1, 4, 3, 2]));
-    // Twice the nominal width and height doubles every side.
-    assert_eq!(parse_border(sides, [16, 40]), Some([2, 8, 6, 4]));
+    assert_eq!(
+        parse_border(sides, [8, 20]),
+        Some(([1, 4, 3, 2], [1.0, 4.0, 3.0, 2.0]))
+    );
+    // Twice the nominal width and height doubles every side in texels, and none in Java pixels.
+    assert_eq!(
+        parse_border(sides, [16, 40]),
+        Some(([2, 8, 6, 4], [1.0, 4.0, 3.0, 2.0]))
+    );
     assert_eq!(
         parse_border(br#"{"gui":{"scaling":{"type":"stretch"}}}"#, [8, 8]),
         None

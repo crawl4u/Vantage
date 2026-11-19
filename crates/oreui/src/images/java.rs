@@ -60,6 +60,9 @@ impl Layers<'_> {
 struct Active {
     font: Arc<JavaFont>,
     borders: Arc<HashMap<String, [u16; 4]>>,
+    /// The same borders in Java pixels, the sprite's nominal size, which is what a drawn control
+    /// keeps them at however fine the texture is.
+    units: Arc<HashMap<String, [f32; 4]>>,
     splashes: Arc<Vec<String>>,
 }
 
@@ -80,6 +83,13 @@ pub fn font() -> Option<Arc<JavaFont>> {
 #[must_use]
 pub fn border(key: &str) -> Option<[u16; 4]> {
     ACTIVE.read().ok()?.as_ref()?.borders.get(key).copied()
+}
+
+/// The nine-slice borders of a sprite in Java pixels (top, right, bottom and left), the width a
+/// drawn control keeps them at; none for a sprite that is stretched whole.
+#[must_use]
+pub fn border_units(key: &str) -> Option<[f32; 4]> {
+    ACTIVE.read().ok()?.as_ref()?.units.get(key).copied()
 }
 
 /// The title's splash lines: the packs' and the game's together, as Java combines them.
@@ -132,6 +142,7 @@ pub(super) fn resolve(layers: &Layers<'_>) -> Option<Resolved> {
     }
     let mut art = Vec::new();
     let mut borders = HashMap::new();
+    let mut units = HashMap::new();
     for file in GUI_FILES {
         let path = gui_path(file);
         let Some((layer, bytes)) = layers.read(&path) else {
@@ -148,7 +159,8 @@ pub(super) fn resolve(layers: &Layers<'_>) -> Option<Resolved> {
             .find_map(|below| layers.read_at(below, &mcmeta(&path)))
             .and_then(|meta| parse_border(&meta, [width, height]))
         {
-            borders.insert(key(file), border);
+            borders.insert(key(file), border.0);
+            units.insert(key(file), border.1);
         }
         art.push((key(file), Art::Still(width, height, pixels)));
     }
@@ -170,6 +182,7 @@ pub(super) fn resolve(layers: &Layers<'_>) -> Option<Resolved> {
         active: Active {
             font: Arc::new(font),
             borders: Arc::new(borders),
+            units: Arc::new(units),
             splashes: Arc::new(splashes),
         },
     })
@@ -257,9 +270,10 @@ fn resolve_font(layers: &Layers<'_>) -> (JavaFont, Vec<(String, Art)>) {
 }
 
 /// The nine-slice border a Java `.mcmeta` declares, as top, right, bottom and left texels of a
-/// texture `dimensions` wide and high. A border is written for the sprite's nominal size, so a
-/// texture drawn at a higher resolution has it scaled up.
-fn parse_border(bytes: &[u8], dimensions: [u32; 2]) -> Option<[u16; 4]> {
+/// texture `dimensions` wide and high, then as Java pixels. A border is written for the sprite's
+/// nominal size, so a texture drawn at a higher resolution has its texels scaled up and its Java
+/// pixels unchanged.
+fn parse_border(bytes: &[u8], dimensions: [u32; 2]) -> Option<([u16; 4], [f32; 4])> {
     let meta: Value = serde_json::from_slice(bytes).ok()?;
     let scaling = &meta["gui"]["scaling"];
     if scaling["type"] != "nine_slice" {
@@ -285,12 +299,15 @@ fn parse_border(bytes: &[u8], dimensions: [u32; 2]) -> Option<[u16; 4]> {
         ),
     };
     let texels = |value: f64, scale: f64| (value * scale).round().min(f64::from(u16::MAX)) as u16;
-    Some([
-        texels(top, scale[1]),
-        texels(right, scale[0]),
-        texels(bottom, scale[1]),
-        texels(left, scale[0]),
-    ])
+    Some((
+        [
+            texels(top, scale[1]),
+            texels(right, scale[0]),
+            texels(bottom, scale[1]),
+            texels(left, scale[0]),
+        ],
+        [top as f32, right as f32, bottom as f32, left as f32],
+    ))
 }
 
 #[cfg(test)]
