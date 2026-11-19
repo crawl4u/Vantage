@@ -59,6 +59,16 @@ const NAME_EXCLUDED: [&str; 6] = [
     "/type/",
 ];
 
+/// Java textures whose Bedrock namesake is spelled differently: the Java path and the Bedrock one.
+const ALIASES: [(&str, &str); 3] = [
+    ("entity/bell/bell_body", "entity/bell/bell"),
+    ("entity/shulker/shulker", "entity/shulker/shulker_undyed"),
+    (
+        "entity/shulker/shulker_light_gray",
+        "entity/shulker/shulker_silver",
+    ),
+];
+
 /// The Bedrock textures a Java texture at `java` could be: the same path and, for an entity, the
 /// bare file name in `entity/`.
 fn name_candidates(java: &str) -> impl Iterator<Item = &'static str> + '_ {
@@ -66,7 +76,11 @@ fn name_candidates(java: &str) -> impl Iterator<Item = &'static str> + '_ {
     let bare_entity = java
         .starts_with("entity/")
         .then(|| format!("entity/{bare}"));
-    [Some(java.to_owned()), bare_entity]
+    let alias = ALIASES
+        .iter()
+        .find(|(from, _)| *from == java)
+        .map(|(_, to)| (*to).to_owned());
+    [alias, Some(java.to_owned()), bare_entity]
         .into_iter()
         .flatten()
         .filter(move |_| !NAME_EXCLUDED.iter().any(|part| java.contains(part)))
@@ -181,6 +195,22 @@ mod tests {
         ] {
             assert!(!is_listed(java), "{java}");
         }
+    }
+
+    #[test]
+    fn every_alias_names_a_bedrock_texture() {
+        for (java, bedrock) in ALIASES {
+            assert!(BEDROCK_TEXTURES.contains_key(bedrock), "{bedrock}");
+            assert!(!TABLE.contains_key(java), "{java} is already in the table");
+        }
+        assert_eq!(
+            bedrock_path("entity/shulker/shulker", 128, 128),
+            Some("entity/shulker/shulker_undyed")
+        );
+        assert_eq!(
+            bedrock_path("entity/bell/bell_body", 64, 64),
+            Some("entity/bell/bell")
+        );
     }
 
     #[test]
