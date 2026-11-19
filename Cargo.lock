@@ -5759,6 +5759,7 @@ dependencies = [
  "image",
  "mimalloc",
  "pack-compiler",
+ "pack-json",
  "serde_json",
  "tempfile",
  "world",

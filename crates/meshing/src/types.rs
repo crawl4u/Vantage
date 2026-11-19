@@ -179,7 +179,7 @@ impl Face {
 ///
 /// `geometry` packs local block origin X/Y/Z into bits 0..14 (five bits each),
 /// face into bits 15..17, `(width - 1)` into bits 18..21, and
-/// `(height - 1)` into bits 22..25. Bits 26..31 are reserved. The second word
+/// `(height - 1)` into bits 22..25. Bits 26..31 hold the connected-texture tile index. The second word
 /// stores the compact material-table ID resolved from the active asset set.
 ///
 /// Width/height axes are Z/Y for X faces, X/Z for Y faces, and X/Y for Z
@@ -522,6 +522,7 @@ impl PackedQuad {
     const FACE_SHIFT: u32 = 15;
     const WIDTH_SHIFT: u32 = 18;
     const HEIGHT_SHIFT: u32 = 22;
+    const CONNECTION_SHIFT: u32 = 26;
     const POSITION_MASK: u32 = 0x1f;
     const EXTENT_MASK: u32 = 0x0f;
 
@@ -542,6 +543,22 @@ impl PackedQuad {
             geometry,
             material_id,
         }
+    }
+
+    /// Records which neighbours continue this one-block face's connected texture; the value is
+    /// the tile index of OptiFine's `ctm` layout (`0..=46`) and stays zero for other faces.
+    #[must_use]
+    pub const fn with_connection(mut self, tile: u8) -> Self {
+        debug_assert!(tile < 64);
+        self.geometry = (self.geometry & !(0x3f << Self::CONNECTION_SHIFT))
+            | ((tile as u32) << Self::CONNECTION_SHIFT);
+        self
+    }
+
+    /// The connected-texture tile index set by [`Self::with_connection`].
+    #[must_use]
+    pub const fn connection(&self) -> u8 {
+        (self.geometry >> Self::CONNECTION_SHIFT) as u8
     }
 
     #[must_use]

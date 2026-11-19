@@ -280,6 +280,23 @@ pub const fn repeat_mask_strength(width: u8, height: u8) -> u32 {
     (REPEAT_TAG << 16) | ((width as u32) << 8) | height as u32
 }
 
+/// The top sixteen bits `mask_strength` carries on a selector whose range is the 47 tiles of
+/// OptiFine's `ctm` layout, which the mesher picks per face from the neighbouring blocks.
+pub const CONNECTED_TAG: u32 = 0x2000;
+
+/// How many tiles a connected-texture range holds.
+pub const CONNECTED_TILE_COUNT: u8 = 47;
+
+/// The `repeat` pattern an override or terrain entry uses to say its range is a connected-texture
+/// tile set rather than a width-by-height pattern (a real pattern never has width zero).
+pub const CONNECTED_PATTERN: (u8, u8) = (0, CONNECTED_TILE_COUNT);
+
+/// The `mask_strength` of a selector whose range is a connected-texture tile set.
+#[must_use]
+pub const fn connected_mask_strength() -> u32 {
+    CONNECTED_TAG << 16
+}
+
 impl Material {
     /// Returns an ordinary diagnostic material with no positional alternatives.
     pub const fn unvaried() -> Self {
@@ -321,6 +338,13 @@ pub fn positional_material_id(materials: &[Material], id: u32, position: [i32; 3
     match base.variation_count {
         0 => id,
         1 => base.variation_start,
+        // A connected-texture set draws its unconnected tile where no neighbours are known.
+        count
+            if count == u32::from(CONNECTED_TILE_COUNT)
+                && base.mask_strength >> 16 == CONNECTED_TAG =>
+        {
+            base.variation_start
+        }
         count => {
             let mut sample = (material_position_random(position) >> 16) as f32 / 65535.0;
             for index in 0..count {

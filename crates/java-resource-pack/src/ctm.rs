@@ -18,7 +18,31 @@ pub(crate) enum Choice {
     File(String),
 }
 
-/// A `random` or `repeat` rule for one block texture.
+/// How a connected-texture rule lays its tiles out, which decides how they fill the 47-tile set.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Connected {
+    /// `ctm`: the 47 tiles in OptiFine's order.
+    Full,
+    /// `ctm_compact`: five tiles whose quarters make up the others.
+    Compact,
+    /// `horizontal`: right only, both sides, left only, neither.
+    Horizontal,
+    /// `vertical`: top only, both, bottom only, neither.
+    Vertical,
+}
+
+impl Connected {
+    /// How many tiles the layout lists.
+    pub(crate) const fn tile_count(self) -> usize {
+        match self {
+            Self::Full => 47,
+            Self::Compact => 5,
+            Self::Horizontal | Self::Vertical => 4,
+        }
+    }
+}
+
+/// A `random`, `repeat` or neighbour-aware rule for one block texture.
 #[derive(Debug, PartialEq)]
 pub(crate) struct Rule {
     /// The block texture name the rule matches (`dirt`, not `block/dirt`).
@@ -26,6 +50,8 @@ pub(crate) struct Rule {
     pub(crate) choices: Vec<(Choice, f32)>,
     /// The pattern's width and height for a `repeat` rule, whose choices fill it in row order.
     pub(crate) repeat: Option<(u8, u8)>,
+    /// Set for a rule that picks its tile by the neighbouring blocks; the choices are its tiles.
+    pub(crate) connected: Option<Connected>,
 }
 
 /// Properties that make a rule depend on more than the block position.
@@ -92,9 +118,22 @@ fn tile_path(folder: &str, token: &str) -> String {
 pub(crate) fn parse(folder: &str, text: &str) -> Option<Rule> {
     let props = properties(text);
     let method = props.get("method").map(String::as_str)?;
-    if !matches!(method, "random" | "repeat")
-        || CONDITIONS.iter().any(|key| props.contains_key(*key))
-    {
+    let connected = match method {
+        "ctm" => Some(Connected::Full),
+        "ctm_compact" => Some(Connected::Compact),
+        "horizontal" => Some(Connected::Horizontal),
+        "vertical" => Some(Connected::Vertical),
+        _ => None,
+    };
+    if connected.is_none() && !matches!(method, "random" | "repeat") {
+        return None;
+    }
+    // Connected rules may name their block instead of its tile; `connect` and the other
+    // conditions still make a rule depend on more than the neighbours' tile.
+    let conditions = CONDITIONS
+        .iter()
+        .filter(|key| !(connected.is_some() && **key == "matchBlocks"));
+    if conditions.into_iter().any(|key| props.contains_key(*key)) {
         return None;
     }
     let side = |name: &str| props.get(name)?.parse::<u8>().ok().filter(|side| *side > 0);
@@ -103,11 +142,15 @@ pub(crate) fn parse(folder: &str, text: &str) -> Option<Rule> {
     } else {
         None
     };
-    let texture = props
-        .get("matchTiles")?
-        .split_whitespace()
-        .next()?
-        .trim_end_matches(".png");
+    let matched = match props.get("matchTiles") {
+        Some(tiles) => tiles,
+        // One plain block name stands for the tile of the same name, as glass and bookshelves do.
+        None if connected.is_some() => props
+            .get("matchBlocks")
+            .filter(|blocks| !blocks.contains(char::is_whitespace) && !blocks.contains(':'))?,
+        None => return None,
+    };
+    let texture = matched.split_whitespace().next()?.trim_end_matches(".png");
     let texture = texture
         .strip_prefix("minecraft:")
         .unwrap_or(texture)
@@ -142,11 +185,12 @@ pub(crate) fn parse(folder: &str, text: &str) -> Option<Rule> {
         .collect();
     let fits = repeat.is_none_or(|(width, height)| {
         choices.len() == usize::from(width) * usize::from(height) && choices.len() > 1
-    });
+    }) && connected.is_none_or(|layout| choices.len() >= layout.tile_count());
     (!choices.is_empty() && fits).then_some(Rule {
         texture,
         choices,
         repeat,
+        connected,
     })
 }
 
@@ -189,6 +233,37 @@ mod tests {
     }
 
     #[test]
+    fn neighbour_rules_name_a_tile_or_a_plain_block_and_list_enough_tiles() {
+        let glass = parse(FOLDER, "method=ctm\nmatchBlocks=glass\ntiles=0-46\n").unwrap();
+        assert_eq!(glass.texture, "glass");
+        assert_eq!(glass.connected, Some(Connected::Full));
+        assert_eq!(glass.choices.len(), 47);
+        let compact = parse(FOLDER, "method=ctm_compact\nmatchTiles=glass\ntiles=0-4").unwrap();
+        assert_eq!(compact.connected, Some(Connected::Compact));
+        for method in ["horizontal", "vertical"] {
+            let text = format!("method={method}\nmatchBlocks=bookshelf\ntiles=0-3");
+            assert!(parse(FOLDER, &text).is_some(), "{method}");
+        }
+        // Too few tiles, a block with state, a block list and extra conditions are refused.
+        assert!(parse(FOLDER, "method=ctm\nmatchBlocks=glass\ntiles=0-10").is_none());
+        assert!(
+            parse(
+                FOLDER,
+                "method=ctm_compact\nmatchBlocks=glass:colour=red\ntiles=0-4"
+            )
+            .is_none()
+        );
+        assert!(parse(FOLDER, "method=ctm\nmatchBlocks=glass sand\ntiles=0-46").is_none());
+        assert!(
+            parse(
+                FOLDER,
+                "method=ctm\nmatchTiles=glass\ntiles=0-46\nconnect=block"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
     fn missing_weights_are_one_each() {
         let rule = parse(FOLDER, "method=random\nmatchTiles=dirt\ntiles=1-3").unwrap();
         assert!(rule.choices.iter().all(|(_, weight)| *weight == 1.0));
@@ -219,7 +294,7 @@ mod tests {
             let text = format!("method=random\nmatchTiles=dirt\ntiles=1-2\n{extra}\n");
             assert!(parse(FOLDER, &text).is_none(), "{extra}");
         }
-        assert!(parse(FOLDER, "method=ctm\nmatchTiles=dirt\ntiles=1-2").is_none());
+        assert!(parse(FOLDER, "method=overlay\nmatchTiles=dirt\ntiles=1-2").is_none());
         assert!(parse(FOLDER, "method=random\nmatchBlocks=dirt\ntiles=1-2").is_none());
         assert!(parse(FOLDER, "method=random\nmatchTiles=dirt").is_none());
     }

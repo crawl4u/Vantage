@@ -106,19 +106,27 @@ pub fn parse_entry(value: &Value) -> Option<Entry> {
             Some(choices)
         })
         .collect::<Option<Vec<_>>>()?;
-    let repeat = value.get("cinnabar_repeat").and_then(|repeat| {
-        let side = |name: &str| {
-            repeat
-                .get(name)?
-                .as_u64()
-                .and_then(|side| u8::try_from(side).ok())
-                .filter(|side| *side > 0)
-        };
-        let pattern = (side("width")?, side("height")?);
-        // The pattern must fill the one variant's choices exactly.
-        (variants.len() == 1
-            && variants[0].len() == usize::from(pattern.0) * usize::from(pattern.1))
-        .then_some(pattern)
+    let connected = value
+        .get("cinnabar_connected")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        && variants.len() == 1
+        && variants[0].len() == usize::from(assets::CONNECTED_TILE_COUNT);
+    let repeat = connected.then_some(assets::CONNECTED_PATTERN).or_else(|| {
+        value.get("cinnabar_repeat").and_then(|repeat| {
+            let side = |name: &str| {
+                repeat
+                    .get(name)?
+                    .as_u64()
+                    .and_then(|side| u8::try_from(side).ok())
+                    .filter(|side| *side > 0)
+            };
+            let pattern = (side("width")?, side("height")?);
+            // The pattern must fill the one variant's choices exactly.
+            (variants.len() == 1
+                && variants[0].len() == usize::from(pattern.0) * usize::from(pattern.1))
+            .then_some(pattern)
+        })
     });
     Some(Entry {
         variants,

@@ -19,9 +19,25 @@ pub(crate) struct CubeMaterialResolver<'refs, 'assets, 'chunks> {
     pub(crate) neighbour_facts: &'refs [OnceCell<PaletteFacts<'chunks>>; Face::ALL.len()],
     pub(crate) seasonal_coverage: Option<&'refs super::seasonal_foliage::SeasonalCoverage>,
     pub(crate) leaves: &'refs super::leaves::LeafOcclusion<'assets, 'chunks>,
+    pub(crate) connected: &'refs super::connected::ConnectedSampler<'refs, 'assets, 'chunks>,
 }
 
 impl CubeMaterialResolver<'_, '_, '_> {
+    /// The connected-texture tile of a face of `material` when that material is a tile set the
+    /// neighbouring blocks choose from, else `None`.
+    pub(crate) fn connection(
+        &self,
+        materials: &[assets::Material],
+        coordinate: [usize; 3],
+        face: Face,
+        material: u32,
+    ) -> Option<u8> {
+        let selector = materials.get(material as usize)?;
+        (selector.variation_count == u32::from(assets::CONNECTED_TILE_COUNT)
+            && selector.mask_strength >> 16 == assets::CONNECTED_TAG)
+            .then(|| self.connected.tile(coordinate, face, material))
+    }
+
     /// Vanilla grass samples only the block directly above:
     /// every TopSnow height, Snow, or PowderSnow selects its snowy
     /// side. The carried face table and the top/bottom materials stay unchanged.

@@ -1480,3 +1480,49 @@ fn an_optifine_repeat_rule_becomes_a_declared_tile_pattern() {
         "the incomplete pattern writes nothing"
     );
 }
+
+#[test]
+fn an_optifine_compact_rule_becomes_the_full_declared_tile_set() {
+    let root = "assets/minecraft/";
+    let mut files = vec![
+        (
+            format!("{root}textures/block/stone.png"),
+            solid(16, 16, WHITE),
+        ),
+        (
+            format!("{root}optifine/ctm/stone/stone.properties"),
+            b"method=ctm_compact\nmatchBlocks=stone\ntiles=0-4\n".to_vec(),
+        ),
+    ];
+    let tones = [RED, GREEN, BLUE, YELLOW, WHITE];
+    for (index, color) in tones.into_iter().enumerate() {
+        files.push((
+            format!("{root}optifine/ctm/stone/{index}.png"),
+            solid(16, 16, color),
+        ));
+    }
+    let files = files
+        .iter()
+        .map(|(path, bytes)| (path.as_str(), bytes.clone()))
+        .collect();
+    let translation = run(&pack(files), "Pack").unwrap();
+    let out = output(&translation);
+    let atlas: serde_json::Value =
+        serde_json::from_slice(out["textures/terrain_texture.json"]).unwrap();
+    let tile = atlas["texture_data"]
+        .as_object()
+        .unwrap()
+        .values()
+        .find(|tile| tile.get("cinnabar_connected").is_some())
+        .expect("the stone tile set");
+    let choices = tile["textures"][0]["variations"].as_array().unwrap();
+    assert_eq!(choices.len(), 47);
+    let colour = |index: usize| {
+        let path = choices[index]["path"].as_str().unwrap();
+        pixel(&out, &format!("{path}.png"), 0, 0).1
+    };
+    // Tile 0 has no neighbours and tile 26 all of them; a quarter keeps its own source.
+    assert_eq!(colour(0), RED);
+    assert_eq!(colour(26), GREEN);
+    assert_eq!(colour(46), WHITE);
+}

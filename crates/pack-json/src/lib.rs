@@ -1,5 +1,7 @@
 //! Shared text decoding and JSONC parsing for resource-pack documents.
 
+pub mod connected_layout;
+
 use std::borrow::Cow;
 
 use serde::de::DeserializeOwned;

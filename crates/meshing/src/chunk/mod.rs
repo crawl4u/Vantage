@@ -1,4 +1,5 @@
 pub(crate) mod build;
+mod connected;
 mod cube_materials;
 mod leaves;
 mod liquids;

@@ -47,8 +47,10 @@ impl Builder<'_> {
                         texture: replacement.texture,
                         animation: replacement.animation,
                         variation: Some((replacement.variation_start, replacement.variation_count)),
-                        repeat: self.catalog.repeat(key).filter(|&(width, height)| {
-                            u32::from(width) * u32::from(height) == replacement.variation_count
+                        repeat: self.catalog.repeat(key).filter(|&pattern| {
+                            pattern == assets::CONNECTED_PATTERN
+                                || u32::from(pattern.0) * u32::from(pattern.1)
+                                    == replacement.variation_count
                         }),
                     });
                 }

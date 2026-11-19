@@ -653,3 +653,41 @@ fn a_repeat_override_tags_the_selector_with_its_pattern_and_must_fill_its_range(
     let plain = base.with_block_overlay(1, &overlay_with(None)).unwrap();
     assert_eq!(plain.material(1).mask_strength, 0);
 }
+
+#[test]
+fn a_connected_override_tags_the_selector_and_needs_exactly_the_47_tiles() {
+    let mut base = RuntimeAssets::diagnostic();
+    base.materials = vec![Material::unvaried(), Material::unvaried()].into();
+    let overlay_with = |tiles: usize| {
+        let mut overlay = cube_overlay(page(16));
+        overlay.materials = (0..tiles)
+            .map(|_| Material {
+                texture: TextureRef::new(1, 0).unwrap(),
+                animation: NO_ANIMATION,
+                variation_weight: (1.0_f32 / 47.0).to_bits(),
+                ..Material::unvaried()
+            })
+            .collect();
+        overlay.material_overrides.push(MaterialOverride {
+            material: 1,
+            texture: TextureRef::new(1, 0).unwrap(),
+            animation: NO_ANIMATION,
+            variation: Some((0, tiles as u32)),
+            repeat: Some(crate::compiled::CONNECTED_PATTERN),
+        });
+        overlay
+    };
+    let runtime = base.with_block_overlay(1, &overlay_with(47)).unwrap();
+    assert_eq!(runtime.material(1).variation_count, 47);
+    assert_eq!(
+        runtime.material(1).mask_strength,
+        crate::compiled::connected_mask_strength()
+    );
+    assert!(f32::from_bits(runtime.material(1).mask_strength).is_finite());
+    // Tools that pick a tile without neighbours see the unconnected tile.
+    assert_eq!(
+        crate::positional_material_id(&runtime.materials, 1, [3, 4, 5]),
+        runtime.material(1).variation_start
+    );
+    assert!(base.with_block_overlay(1, &overlay_with(46)).is_err());
+}

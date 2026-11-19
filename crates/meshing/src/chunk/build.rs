@@ -236,6 +236,7 @@ fn mesh_sub_chunk_core<
         options.rendering.transparent_leaves,
         options.cutout_leaves,
     );
+    let connected = super::connected::ConnectedSampler::new(palette_context, &facts);
     let cube_streams = &mut scratch.cubes;
     let mut diagnostic_geometry = DiagnosticGeometryAccumulator::default();
     // Greedy merging reads lighting only at the current slice's visible cells, which are
@@ -288,6 +289,7 @@ fn mesh_sub_chunk_core<
                     neighbour_facts: &neighbour_facts,
                     seasonal_coverage: seasonal_coverage.as_ref(),
                     leaves: &leaves,
+                    connected: &connected,
                 },
                 face,
                 slice,

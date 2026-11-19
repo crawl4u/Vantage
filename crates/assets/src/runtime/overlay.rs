@@ -389,6 +389,13 @@ impl RuntimeAssets {
             }
             let mask_strength = match replacement.repeat {
                 None => materials[replacement.material as usize].mask_strength,
+                Some(crate::compiled::CONNECTED_PATTERN) => {
+                    let count = replacement.variation.map_or(0, |(_, count)| count);
+                    if count != u32::from(crate::compiled::CONNECTED_TILE_COUNT) {
+                        return Err(invalid("overlay connected tile set is not 47 tiles"));
+                    }
+                    crate::compiled::connected_mask_strength()
+                }
                 Some((width, height)) => {
                     let count = replacement.variation.map_or(0, |(_, count)| count);
                     if width == 0 || height == 0 || u32::from(width) * u32::from(height) != count {

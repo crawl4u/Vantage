@@ -475,7 +475,43 @@ pub(crate) fn translate_within(
         }
         let stem = bedrock.trim_start_matches("blocks/");
         let mut entries = Vec::new();
-        for (index, (choice, weight)) in rule.choices.iter().enumerate() {
+        // The tiles of a neighbour-aware rule, expanded to the 47 the client picks from.
+        let connected_tiles: Option<Vec<RgbaImage>> = rule.connected.and_then(|layout| {
+            let images: Vec<RgbaImage> = rule
+                .choices
+                .iter()
+                .take(layout.tile_count())
+                .map(|(choice, _)| {
+                    let bytes = match choice {
+                        ctm::Choice::Default => blocks
+                            .iter()
+                            .find(|(name, _)| *name == rule.texture)
+                            .map(|(_, bytes)| bytes.clone()),
+                        ctm::Choice::File(path) if known.contains(path.as_str()) => {
+                            source.load(path)
+                        }
+                        ctm::Choice::File(_) => None,
+                    }?;
+                    let image = decode(&bytes, budget)?;
+                    (strip_frame(image.width(), image.height()).is_none()).then_some(image)
+                })
+                .collect::<Option<_>>()?;
+            crate::ctm_tiles::expand(layout, &images)
+        });
+        if rule.connected.is_some() && connected_tiles.is_none() {
+            continue;
+        }
+        for (index, tile) in connected_tiles.iter().flatten().enumerate() {
+            let file = format!("textures/blocks/{stem}_random{index}");
+            entries.push(serde_json::json!({ "path": file, "weight": 1.0 }));
+            random_files.push((format!("{file}.png"), crate::texture::encode(tile)));
+        }
+        let plain_choices = if connected_tiles.is_some() {
+            &[][..]
+        } else {
+            &rule.choices[..]
+        };
+        for (index, (choice, weight)) in plain_choices.iter().enumerate() {
             let bytes = match choice {
                 ctm::Choice::Default => blocks
                     .iter()
@@ -501,9 +537,13 @@ pub(crate) fn translate_within(
         // A pattern needs every one of its tiles; a weighted list keeps whichever it found.
         let complete = rule.repeat.is_none_or(|(width, height)| {
             entries.len() == usize::from(width) * usize::from(height)
-        });
+        }) && (rule.connected.is_none()
+            || entries.len() == pack_json::connected_layout::LAYOUT.len());
         if entries.len() >= 2 && complete {
             let mut entry = serde_json::json!({ "textures": [{ "variations": entries }] });
+            if rule.connected.is_some() {
+                entry["cinnabar_connected"] = serde_json::json!(true);
+            }
             if let Some((width, height)) = rule.repeat {
                 entry["cinnabar_repeat"] = serde_json::json!({ "width": width, "height": height });
             }

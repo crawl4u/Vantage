@@ -341,7 +341,9 @@ pub(crate) fn greedy_slice(
             let material = output.materials[material_id as usize];
             // Each isotropic face owns its block-position hash. Merging even
             // identical material/light records would repeat one block's UVs.
-            let positional = material.variation_count > 1
+            let connection = resolver.connection(output.materials, origin, face, material_id);
+            let positional = connection.is_some()
+                || material.variation_count > 1
                 || material.flags & assets::MATERIAL_FLAG_ISOTROPIC != 0
                 // Native leaf faces have block-local rotations and clamped
                 // atlas edges. A merged quad would stretch/clamp its mask.
@@ -397,7 +399,8 @@ pub(crate) fn greedy_slice(
                     width as u8,
                     height as u8,
                     material_id,
-                ),
+                )
+                .with_connection(connection.unwrap_or(0)),
                 lighting,
                 crate::is_single_sided_opaque(output.materials, material_id),
             );

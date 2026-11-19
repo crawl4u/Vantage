@@ -95,6 +95,8 @@ fn positional_material_id(id: u32, position: vec3<i32>) -> u32 {
     let base = materials(id);
     if (base.variation_count == 0u) { return id; }
     if (base.variation_count == 1u) { return base.variation_start; }
+    // A connected-texture set draws its unconnected tile where no neighbours are known.
+    if (base.variation_count == 47u && (base.mask_strength >> 16u) == 0x2000u) { return base.variation_start; }
     var sample = f32(material_position_random(position) >> 16u) / 65535.0;
     for (var i = 0u; i < base.variation_count; i += 1u) {
         let candidate = materials(base.variation_start + i);
@@ -109,8 +111,12 @@ fn positional_material_id(id: u32, position: vec3<i32>) -> u32 {
 // Each face picks its tile from the block's place on that face as OptiFine's repeat rule does:
 // top and bottom use x and z; sides use the horizontal axis along the face and negated y, with
 // north and east counting from the far end. Faces are numbered -X, +X, -Y, +Y, -Z, +Z.
-fn positional_material_id_face(id: u32, position: vec3<i32>, face: u32) -> u32 {
+fn positional_material_id_face(id: u32, position: vec3<i32>, face: u32, connection: u32) -> u32 {
     let base = materials(id);
+    // A connected-texture selector holds OptiFine's 47 `ctm` tiles; the mesher chose the tile.
+    if (base.variation_count == 47u && (base.mask_strength >> 16u) == 0x2000u) {
+        return base.variation_start + min(connection, 46u);
+    }
     if (base.variation_count > 1u && (base.mask_strength >> 16u) == 0x4000u) {
         let width = (base.mask_strength >> 8u) & 0xffu;
         let height = base.mask_strength & 0xffu;

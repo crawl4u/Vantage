@@ -370,6 +370,7 @@ fn cube_quad(instance_index: u32, metadata_index: u32) -> CubeQuad {
             quad.material_id,
             chunk_origin.value.xyz + vec3<i32>(local_origin),
             (geometry >> 15u) & 0x7u,
+            geometry >> 26u,
         ),
     );
 }
