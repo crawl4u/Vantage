@@ -36,13 +36,18 @@ pub(crate) fn sprite_names() -> impl Iterator<Item = &'static str> {
     CELLS.iter().map(|(name, _)| *name)
 }
 
-/// Whether a sprite is a square whole multiple of a cell.
+/// The finest scale a composed atlas takes (2048 pixels a side), so a pack of 256-pixel sprites
+/// does not need a 4096-pixel atlas; larger sprites are shrunk to it.
+const MAX_SCALE: u32 = 16;
+
+/// Whether a sprite is a square picture of at least a cell's width.
 fn usable(sprite: &RgbaImage) -> bool {
-    sprite.width() == sprite.height() && sprite.width() >= CELL && sprite.width().is_multiple_of(CELL)
+    sprite.width() == sprite.height() && sprite.width() >= CELL
 }
 
-/// The atlas of the cells `sprites` fill, at the finest scale among them, and the marker listing
-/// those cells. `None` when no sprite is a usable square multiple of a cell.
+/// The atlas of the cells `sprites` fill and the marker listing those cells. Its scale is the
+/// finest sprite's, up to [`MAX_SCALE`]; each sprite is enlarged by whole pixels or resampled to
+/// its cell. `None` when no sprite is a usable square.
 pub(crate) fn compose(
     sprites: &HashMap<String, RgbaImage>,
     budget: &Budget,
@@ -50,8 +55,9 @@ pub(crate) fn compose(
     let scale = CELLS
         .iter()
         .filter_map(|(name, _)| sprites.get(*name).filter(|sprite| usable(sprite)))
-        .map(|sprite| sprite.width() / CELL)
-        .max()?;
+        .map(|sprite| sprite.width().div_ceil(CELL))
+        .max()?
+        .min(MAX_SCALE);
     let mut atlas = canvas(ATLAS_SIDE * scale, ATLAS_SIDE * scale, budget)?;
     let mut filled = Vec::new();
     let side = CELL * scale;
@@ -59,14 +65,15 @@ pub(crate) fn compose(
         let Some(sprite) = sprites.get(*name).filter(|sprite| usable(sprite)) else {
             continue;
         };
-        let own = sprite.width() / CELL;
-        if !scale.is_multiple_of(own) {
-            continue;
-        }
-        let cell = if own == scale {
+        let cell = if sprite.width() == side {
             Cow::Borrowed(sprite)
         } else {
-            Cow::Owned(imageops::resize(sprite, side, side, imageops::Nearest))
+            let filter = if side.is_multiple_of(sprite.width()) {
+                imageops::Nearest
+            } else {
+                imageops::Triangle
+            };
+            Cow::Owned(imageops::resize(sprite, side, side, filter))
         };
         paste(&mut atlas, &cell, column * side, row * side);
         filled.push([*column, *row]);
@@ -181,10 +188,24 @@ mod tests {
     }
 
     #[test]
+    fn huge_and_odd_sized_sprites_are_resampled_to_a_bounded_atlas() {
+        let budget = Budget::new();
+        let mut found = sprites(256, &["flame"]);
+        found.extend(sprites(55, &["heart"]));
+        let (atlas, _) = compose(&found, &budget).unwrap();
+        assert_eq!(atlas.dimensions(), (2048, 2048));
+        assert_eq!(atlas.get_pixel(0, 3 * 128).0, [9, 8, 7, 255]);
+        assert_eq!(atlas.get_pixel(64, 5 * 128 + 64).0, [9, 8, 7, 255]);
+    }
+
+    #[test]
     fn no_usable_sprite_gives_no_atlas() {
         let budget = Budget::new();
         assert!(compose(&sprites(8, &["not_a_particle"]), &budget).is_none());
-        assert!(compose(&sprites(12, &["flame"]), &budget).is_none());
+        let mut wide = HashMap::new();
+        wide.insert("flame".to_owned(), RgbaImage::new(8, 16));
+        assert!(compose(&wide, &budget).is_none());
+        assert!(compose(&sprites(4, &["flame"]), &budget).is_none());
         assert!(compose(&HashMap::new(), &budget).is_none());
     }
 
