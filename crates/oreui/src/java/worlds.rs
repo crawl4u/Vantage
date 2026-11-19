@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use launcher::menu::{LocalWorldAction, MenuAction, MenuView};
+use launcher::menu::{LocalWorldAction, MenuAction, MenuField, MenuView};
 use ui::IconRef;
 use ui_engine::engine::screen::PaintError;
 
@@ -25,6 +25,15 @@ const BAR_OFFSET: f32 = 164.0;
 const GREY: [u8; 4] = [128, 128, 128, 255];
 const BLACK: [u8; 4] = [0, 0, 0, 255];
 const ICON_FILL: [u8; 4] = [38, 38, 38, 255];
+const HEADER: f32 = 50.0;
+const SEARCH_TOP: f32 = 24.0;
+const SEARCH_HEIGHT: f32 = 20.0;
+const SEARCH_WIDTH: f32 = 200.0;
+/// Java's play arrow over a hovered world's icon, at rest and under the pointer.
+const JOIN: [&str; 2] = [
+    "sprites/world_list/join.png",
+    "sprites/world_list/join_highlighted.png",
+];
 
 /// One world of the list.
 struct Row {
@@ -38,6 +47,16 @@ struct Row {
     play: MenuAction,
     /// The index of an owned world, which only owned worlds have.
     local: Option<usize>,
+}
+
+impl Row {
+    /// Whether the world's name has every whitespace-separated term of `query`, in any case.
+    fn matches(&self, query: &str) -> bool {
+        let name = self.title.to_lowercase();
+        query
+            .split_whitespace()
+            .all(|term| name.contains(&term.to_lowercase()))
+    }
 }
 
 /// The rows: friends' worlds, then the player's own.
@@ -122,12 +141,30 @@ pub(crate) fn draw(
     let spec = Spec {
         title: "Select World",
         subtitle: None,
-        header: frame::HEADER,
+        header: HEADER,
         rows: &[&first, &second],
         more: None,
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
-        list(canvas, view, frame, &rows, chosen, images)
+        let unit = frame.unit;
+        let width = SEARCH_WIDTH.min(frame.centre * 2.0 - 24.0);
+        let left = frame.centre - width / 2.0;
+        crate::widgets::java_field(
+            canvas,
+            view,
+            [left, SEARCH_TOP, left + width, SEARCH_TOP + SEARCH_HEIGHT].map(|v| v * unit),
+            &view.world_query,
+            "Search worlds",
+            view.field == Some(MenuField::WorldQuery),
+            Some(MenuAction::SearchWorlds),
+            unit,
+        )?;
+        let shown: Vec<(usize, &Row)> = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.matches(&view.world_query))
+            .collect();
+        list(canvas, view, frame, &shown, rows.is_empty(), chosen, images)
     })
 }
 
@@ -136,7 +173,8 @@ fn list(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
     frame: &Frame,
-    rows: &[Row],
+    rows: &[(usize, &Row)],
+    none_at_all: bool,
     chosen: Option<usize>,
     images: &HashMap<String, IconRef>,
 ) -> Result<(), PaintError> {
@@ -153,17 +191,23 @@ fn list(
         |canvas, offset| {
             let top = frame.viewport[1] - offset + PADDING * unit;
             if rows.is_empty() {
+                let text = if none_at_all {
+                    "No worlds yet. Use New World to make one."
+                } else {
+                    "No worlds match"
+                };
                 put(
                     canvas,
-                    "No worlds yet. Use New World to make one.",
+                    text,
                     [left + 4.0 * unit, top + 8.0 * unit],
                     unit,
                     GREY,
                     ENTRY_WIDTH * unit,
                 )?;
             }
-            for (index, row) in rows.iter().enumerate() {
-                let y = top + index as f32 * ENTRY_STEP * unit;
+            for (place, (index, row)) in rows.iter().enumerate() {
+                let index = *index;
+                let y = top + place as f32 * ENTRY_STEP * unit;
                 let bounds = [
                     left,
                     y,
@@ -233,18 +277,9 @@ fn entry(
         .and_then(|key| images.get(key).or_else(|| canvas.artwork?.get(key)))
         .copied()
     {
-        // The picture keeps its shape inside the square.
-        let source = [
-            f32::from(art.uv[2] - art.uv[0]).max(1.0),
-            f32::from(art.uv[3] - art.uv[1]).max(1.0),
-        ];
-        let scale = (ICON * unit / source[0]).min(ICON * unit / source[1]);
-        let size = [source[0] * scale, source[1] * scale];
-        let at = [
-            icon[0] + (ICON * unit - size[0]) * 0.5,
-            icon[1] + (ICON * unit - size[1]) * 0.5,
-        ];
-        canvas.icon_ref(art, [at[0], at[1], at[0] + size[0], at[1] + size[1]])?;
+        // A captured view is wider than the square Java gives a world: its middle fills it,
+        // with nothing stretched and no bars.
+        canvas.icon_ref_cover(art, icon)?;
     }
     let text_left = bounds[0] + (ICON + 3.0) * unit;
     let room = bounds[2] - text_left;
@@ -272,7 +307,59 @@ fn entry(
         GREY,
         room,
     )?;
-    canvas.hit(select, bounds)
+    canvas.hit(select, bounds)?;
+    play_arrow(
+        canvas,
+        view,
+        row.play,
+        state.hovered || state.focused,
+        icon,
+        unit,
+    )
+}
+
+/// Java's play arrow over a world's icon while the pointer is on the entry; pressing it plays
+/// the world. It is the game's sprite, or the resource pack's own, else a plain triangle.
+fn play_arrow(
+    canvas: &mut Canvas<'_>,
+    view: &MenuView,
+    play: MenuAction,
+    entry_hovered: bool,
+    icon: Bounds,
+    unit: f32,
+) -> Result<(), PaintError> {
+    canvas.pointer_hit(play, icon)?;
+    let over_icon = canvas.interaction(view, Some(play)).hovered;
+    if !over_icon && !entry_hovered {
+        return Ok(());
+    }
+    canvas.fill(icon, [144, 144, 144, 160])?;
+    let [rest, lit] = JOIN;
+    let key = crate::images::java::key(if over_icon { lit } else { rest });
+    if canvas.sprite(&key, icon, [255; 4])? {
+        return Ok(());
+    }
+    // Five stripes make a triangle pointing right.
+    let colour = if over_icon {
+        [255, 255, 160, 255]
+    } else {
+        [255, 255, 255, 255]
+    };
+    let centre = [(icon[0] + icon[2]) * 0.5, (icon[1] + icon[3]) * 0.5];
+    for step in 0..7 {
+        let along = (step as f32 - 3.0) * 2.0 * unit;
+        let span = (3.5 - (step as f32 - 3.0).abs()) * 2.0 * unit;
+        canvas.fill(
+            [
+                centre[0] + along - unit,
+                centre[1] - span,
+                centre[0] + along + unit,
+                centre[1] + span,
+            ],
+            colour,
+        )?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -302,6 +389,16 @@ mod tests {
         assert_eq!(listed[0].detail, "48.0 MB · 11/2/2026");
         assert_eq!(listed[0].play, MenuAction::PlayLocalWorld(0));
         assert_eq!(listed[0].local, Some(0));
+    }
+
+    #[test]
+    fn the_search_needs_every_term_in_the_name_in_any_case() {
+        let mut view = MenuView::new(true, "Player".into());
+        view.local_worlds = vec![card("Creative Plots")].into();
+        let row = &rows(&view)[0];
+        assert!(row.matches(""));
+        assert!(row.matches("plots CREATIVE"));
+        assert!(!row.matches("plots survival"));
     }
 
     #[test]

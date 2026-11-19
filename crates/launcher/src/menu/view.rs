@@ -490,6 +490,8 @@ pub struct MenuView {
     pub storage_query: String,
     /// The text the resource pack lists are filtered by.
     pub pack_query: String,
+    /// The text the Java-style world list is filtered by.
+    pub world_query: String,
     /// The name typed for the resource pack folder being renamed.
     pub pack_folder_name: String,
     /// A resource pack folder is being renamed.
@@ -783,6 +785,7 @@ impl MenuView {
             settings_query: String::new(),
             storage_query: String::new(),
             pack_query: String::new(),
+            world_query: String::new(),
             pack_folder_name: String::new(),
             pack_renaming: false,
             field: None,

@@ -14,6 +14,7 @@ impl MenuAction {
             Self::EditSkinName => Some(MenuField::SkinName),
             Self::SearchFriends => Some(MenuField::FriendQuery),
             Self::SearchSettings => Some(MenuField::SettingsQuery),
+            Self::SearchWorlds => Some(MenuField::WorldQuery),
             Self::GlobalResources(crate::global_resources::Action::Search) => {
                 Some(MenuField::PackQuery)
             }

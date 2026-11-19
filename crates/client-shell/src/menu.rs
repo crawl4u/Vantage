@@ -129,6 +129,7 @@ pub struct MenuRuntime {
     settings_query: ui::ChatEditor,
     storage_query: ui::ChatEditor,
     pack_query: ui::ChatEditor,
+    world_query: ui::ChatEditor,
     pack_folder_name: ui::ChatEditor,
     pack_renaming: bool,
     /// Names typed for the open resource pack folder, for the pack worker to rename it to.
@@ -891,6 +892,7 @@ impl MenuRuntime {
                 }
             }
             MenuAction::LocalWorld(action) => self.queue_local_action(action),
+            MenuAction::SearchWorlds => {}
             MenuAction::SelectPlayWorld(index) => {
                 self.feeds.selected_play_world =
                     (self.feeds.selected_play_world != Some(index)).then_some(index);

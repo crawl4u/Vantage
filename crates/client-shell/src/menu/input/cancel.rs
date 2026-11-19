@@ -56,6 +56,13 @@ impl MenuRuntime {
             ));
             return;
         }
+        if self.screen == launcher::menu::MenuScreen::Play
+            && self.dialog.is_none()
+            && !self.world_query.as_str().is_empty()
+        {
+            self.world_query.set_text("");
+            return;
+        }
         if self.pack_renaming {
             self.activate(launcher::menu::MenuAction::GlobalResources(
                 launcher::global_resources::Action::CancelRename,

@@ -108,6 +108,8 @@ pub enum MenuField {
     PackQuery,
     /// The new name of the resource pack folder being renamed.
     PackFolderName,
+    /// Filters the Java-style world list by name.
+    WorldQuery,
     StorageQuery,
     Name,
     Address,
@@ -238,6 +240,8 @@ pub enum MenuAction {
     PlayLocalWorld(usize),
     /// Choose a world of the Java-style world list, counting friends' worlds first.
     SelectPlayWorld(usize),
+    /// Focus the Java-style world list's search field.
+    SearchWorlds,
     /// Ask to delete the local world at this index, as its edit screen does.
     DeleteLocalWorld(usize),
     /// A press on a local-world screen (create, edit, templates) or its modals.

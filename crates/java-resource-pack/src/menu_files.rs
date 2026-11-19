@@ -41,6 +41,8 @@ pub const GUI_FILES: &[&str] = &[
     "sprites/widget/scroller.png",
     "sprites/widget/scroller_background.png",
     VANILLA_PACK_ICON,
+    "sprites/world_list/join.png",
+    "sprites/world_list/join_highlighted.png",
     "sprites/transferable_list/select.png",
     "sprites/transferable_list/select_highlighted.png",
     "sprites/transferable_list/unselect.png",
