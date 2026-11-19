@@ -106,7 +106,7 @@ pub(crate) fn draw(
         (layout.links[1], "Mods", section(SettingSection::Mods)),
         (layout.links[2], "Discord", section(SettingSection::Discord)),
         (layout.links[3], "Updates", section(SettingSection::Updates)),
-        (layout.options, "Options...", MenuAction::PauseSettings),
+        (layout.options, "Options", MenuAction::PauseSettings),
         (
             layout.quit,
             "Save and Quit to Title",

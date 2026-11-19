@@ -134,7 +134,7 @@ fn extras(view: &MenuView, section: SettingSection) -> Vec<Entry> {
         )],
         SettingSection::Touch => {
             if view.touch_available {
-                vec![link("Edit Layout...", MenuAction::EditTouchControls)]
+                vec![link("Edit Layout", MenuAction::EditTouchControls)]
             } else {
                 vec![Entry::Label("No touch screen found".to_owned())]
             }
@@ -310,10 +310,7 @@ fn hub_entries(view: &MenuView, translate: Translate<'_>) -> Vec<Entry> {
             JavaSettingsAction::Page(definition.index)
         };
         let name = page_name(view, translate, definition.id);
-        entries.push(Entry::Link(
-            format!("{name}..."),
-            MenuAction::JavaSettings(action),
-        ));
+        entries.push(Entry::Link(name, MenuAction::JavaSettings(action)));
     }
     entries
 }
@@ -326,7 +323,7 @@ fn page_entries(view: &MenuView, section: SettingSection) -> Vec<Entry> {
         .collect();
     entries.extend(extras(view, section));
     entries.push(Entry::Link(
-        "More settings...".to_owned(),
+        "More settings".to_owned(),
         MenuAction::JavaSettings(JavaSettingsAction::Bedrock(section.definition().index)),
     ));
     entries
@@ -809,17 +806,14 @@ mod tests {
             })
             .collect();
         let at = |name: &str| labels.iter().position(|label| label == name);
-        let (sounds, video, controls) = (
-            at("Music & Sounds..."),
-            at("Video Settings..."),
-            at("Controls..."),
-        );
+        let (sounds, video, controls) =
+            (at("Music & Sounds"), at("Video Settings"), at("Controls"));
         assert!(sounds < video && video < controls, "{labels:?}");
         assert!(controls.is_some(), "{labels:?}");
         // Java's pages come before the pages this client adds.
-        let accessibility = at("Accessibility Settings...").unwrap();
+        let accessibility = at("Accessibility Settings").unwrap();
         assert!(labels[accessibility + 1..].iter().all(|label| {
-            !["Music & Sounds...", "Video Settings...", "Controls..."].contains(&label.as_str())
+            !["Music & Sounds", "Video Settings", "Controls"].contains(&label.as_str())
         }));
     }
 
@@ -879,7 +873,7 @@ mod tests {
             ["No touch screen found"]
         );
         view.touch_available = true;
-        assert_eq!(labels(&view, SettingSection::Touch), ["Edit Layout..."]);
+        assert_eq!(labels(&view, SettingSection::Touch), ["Edit Layout"]);
     }
 
     #[test]

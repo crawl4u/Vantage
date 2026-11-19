@@ -125,6 +125,12 @@ pub(super) const STATES: &[State] = &[
         fixture: || java_world_form(launcher::local_worlds::Screen::ConfirmDelete),
     },
     State {
+        name: "java-loading",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: java_loading,
+    },
+    State {
         name: "java-shaders",
         size: SIZE,
         gui_scale: GUI_SCALE,
@@ -233,6 +239,21 @@ fn java_world_form(screen: launcher::local_worlds::Screen) -> Fixture {
     view.auth_state = AuthState::Authenticated;
     view.local.screen = screen;
     view.local.tab = launcher::local_worlds::Tab::General;
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    Fixture::Menu(Box::new(view))
+}
+
+/// A world being started, in the Java style, with a known amount done.
+fn java_loading() -> Fixture {
+    let mut view = MenuView::new(true, "Player".into());
+    view.screen = MenuScreen::Play;
+    view.auth_state = AuthState::Authenticated;
+    view.local.progress = Some(launcher::local_worlds::Progress {
+        stage: launcher::local_worlds::Stage::Connecting,
+        fraction: Some(0.4),
+        detail: "My World".to_owned(),
+    });
     let options = Arc::make_mut(&mut view.settings_options);
     assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
     Fixture::Menu(Box::new(view))

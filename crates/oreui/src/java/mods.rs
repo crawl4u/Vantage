@@ -2,7 +2,7 @@
 //! the active ones on the right, each row a tile with the mod's name, version and authors. Pressing
 //! a row chooses it, and the footer then offers what can be done with it: enable or disable, move
 //! it up or down the active list, reload and remove it. Permissions and the marketplace stay on the
-//! Bedrock-style page, which "More..." opens.
+//! Bedrock-style page, which "More" opens.
 
 use launcher::{
     menu::{JavaSettingsAction, MenuAction, MenuView, settings_sections::SettingSection},
@@ -59,7 +59,7 @@ fn footer(snapshot: &Snapshot) -> (Vec<Btn<'static>>, Vec<Btn<'static>>) {
     let chosen = snapshot.details_expanded;
     let on = chosen.and_then(|id| active.iter().position(|item| item.id == id));
     let off = chosen.filter(|id| available.iter().any(|item| item.id == *id));
-    let import = Btn::new("Import...", idle.then_some(command(Action::Import)));
+    let import = Btn::new("Import", idle.then_some(command(Action::Import)));
     let toggle = match (on, off) {
         (Some(_), _) => Btn::new(
             "Disable",
@@ -337,7 +337,7 @@ mod tests {
                 .and_then(|button| button.action)
         };
         // Nothing chosen: only importing works.
-        assert!(find(&snapshot, "Import...").is_some());
+        assert!(find(&snapshot, "Import").is_some());
         assert!(find(&snapshot, "Enable").is_none() && find(&snapshot, "Remove").is_none());
         // A mod that is off can be enabled or removed.
         snapshot.details_expanded = Some(2);
@@ -345,6 +345,6 @@ mod tests {
         assert_eq!(find(&snapshot, "Remove"), Some(command(Action::Remove(2))));
         // A busy library accepts nothing.
         snapshot.library.busy = true;
-        assert!(find(&snapshot, "Import...").is_none() && find(&snapshot, "Enable").is_none());
+        assert!(find(&snapshot, "Import").is_none() && find(&snapshot, "Enable").is_none());
     }
 }

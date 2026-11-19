@@ -123,6 +123,20 @@ pub(super) fn draw(
     size: [f32; 2],
     progress: &Progress<'_>,
 ) -> Result<(), PaintError> {
+    // While joining from the menu in the Java style the loading screen is Java's.
+    if let Some(view) = view
+        && crate::java::selected(view, canvas)
+    {
+        return crate::java::progress::draw(
+            canvas,
+            view,
+            size,
+            progress.title,
+            progress.detail,
+            progress.fraction,
+            progress.cancel,
+        );
+    }
     let margin = canvas.r(2.0).min(size[0] * 0.05).min(size[1] * 0.05);
     let width = canvas.r(theme::LOADING_WIDTH).min(size[0] - margin * 2.0);
     let pad = canvas.r(theme::LOADING_PAD).min(width * 0.07);

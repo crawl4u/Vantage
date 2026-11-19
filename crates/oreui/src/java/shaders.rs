@@ -85,12 +85,12 @@ fn footer(view: &MenuView) -> (Vec<Btn<'static>>, Vec<Btn<'static>>) {
         if view.shader_pack_importing {
             "Adding..."
         } else {
-            "Add Pack..."
+            "Add Pack"
         },
         (!view.shader_pack_importing).then_some(MenuAction::ImportShaderPacks),
     );
     let folder = Btn::new(
-        "Open Folder...",
+        "Open Folder",
         view.storage
             .opens_folders
             .then_some(MenuAction::SettingsStorage(StorageAction::OpenFolder(
@@ -98,7 +98,7 @@ fn footer(view: &MenuView) -> (Vec<Btn<'static>>, Vec<Btn<'static>>) {
             ))),
     );
     let settings = Btn::new(
-        "Pack Settings...",
+        "Pack Settings",
         (pack && !locked).then_some(MenuAction::ShaderOptions(ShaderAction::Open)),
     );
     let remove = match view.renderer {
@@ -252,8 +252,8 @@ mod tests {
                 .find(|button| button.label == label)
                 .is_some_and(|button| button.action.is_some())
         };
-        assert!(enabled("Add Pack..."));
-        assert!(!enabled("Pack Settings...") && !enabled("Reload") && !enabled("Delete"));
+        assert!(enabled("Add Pack"));
+        assert!(!enabled("Pack Settings") && !enabled("Reload") && !enabled("Delete"));
     }
 
     #[test]
@@ -279,7 +279,7 @@ mod tests {
             Some(MenuAction::RemoveShaderPackDialog(1, 3))
         );
         assert_eq!(find("Reload"), Some(MenuAction::ReloadShaders));
-        assert!(find("Pack Settings...").is_some());
+        assert!(find("Pack Settings").is_some());
         // While it loads nothing that changes it is offered.
         view.shader_pack_loading = true;
         let (first, second) = footer(&view);

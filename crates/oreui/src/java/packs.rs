@@ -139,7 +139,7 @@ fn entries<'a>(snapshot: &'a Snapshot, query: &str, active: bool) -> Vec<Entry<'
 /// `opens_folders` says whether this machine can open the folder packs are kept in.
 fn footer(snapshot: &Snapshot, opens_folders: bool) -> (Vec<Btn<'static>>, Vec<Btn<'static>>) {
     let idle = !snapshot.busy;
-    let add = Btn::new("Add Pack...", idle.then_some(command(Action::Import)));
+    let add = Btn::new("Add Pack", idle.then_some(command(Action::Import)));
     let done = Btn::new("Done", Some(MenuAction::AddBack));
     let selected = snapshot.selected;
     let available = selected.filter(|(active, index)| !active && *index < snapshot.available.len());
@@ -968,7 +968,7 @@ mod tests {
         };
         // Nothing chosen: only adding and leaving work.
         let none = labels(&snapshot);
-        assert!(none.contains(&("Add Pack...", true)) && none.contains(&("Activate", false)));
+        assert!(none.contains(&("Add Pack", true)) && none.contains(&("Activate", false)));
         snapshot.selected = Some((false, 1));
         assert!(labels(&snapshot).contains(&("Activate", true)));
         assert!(labels(&snapshot).contains(&("Delete", true)));
@@ -983,6 +983,6 @@ mod tests {
         assert!(top.contains(&("Move Up", false)) && top.contains(&("Move Down", true)));
         // A busy library accepts nothing.
         snapshot.busy = true;
-        assert!(labels(&snapshot).contains(&("Add Pack...", false)));
+        assert!(labels(&snapshot).contains(&("Add Pack", false)));
     }
 }

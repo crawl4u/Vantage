@@ -103,10 +103,10 @@ fn draw_screen(canvas: &mut Canvas<'_>, view: &MenuView, size: [f32; 2]) -> Resu
     )?;
     let go = |screen: MenuScreen| Some(MenuAction::Navigate(screen));
     for (rect, label, action) in [
-        (layout.wide[0], "Play", go(MenuScreen::Play)),
-        (layout.wide[1], "Servers", go(MenuScreen::Servers)),
+        (layout.wide[0], "Singleplayer", go(MenuScreen::Play)),
+        (layout.wide[1], "Multiplayer", go(MenuScreen::Servers)),
         (layout.wide[2], "Realms", go(MenuScreen::Social)),
-        (layout.options, "Options...", go(MenuScreen::Settings)),
+        (layout.options, "Options", go(MenuScreen::Settings)),
         (layout.quit, "Quit Game", Some(MenuAction::OpenExitDialog)),
     ] {
         button::draw(canvas, view, px(rect), label, action, unit)?;

@@ -157,7 +157,7 @@ pub(super) fn draw(
     if let Some(action) = spec.more {
         let x = java_width - MORE[0] - MORE_EDGE;
         let bounds = [x, MORE_EDGE, x + MORE[0], MORE_EDGE + MORE[1]].map(|value| value * unit);
-        button::draw(canvas, view, bounds, "More...", Some(action), unit)?;
+        button::draw(canvas, view, bounds, "More", Some(action), unit)?;
     }
     canvas.end_focus_region(screen);
     Ok(())
