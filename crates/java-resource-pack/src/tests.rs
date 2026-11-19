@@ -1398,7 +1398,9 @@ fn an_optifine_random_rule_becomes_a_weighted_texture_list_for_the_blocks_tile()
         serde_json::from_slice(out["textures/terrain_texture.json"]).unwrap();
     let data = atlas["texture_data"].as_object().unwrap();
     assert_eq!(data.len(), 1, "only the unconditional rule is translated");
-    let choices = data["dirt"]["textures"].as_array().unwrap();
+    let choices = data["dirt"]["textures"][0]["variations"]
+        .as_array()
+        .unwrap();
     assert_eq!(choices.len(), 3);
     assert_eq!(choices[0]["weight"], 3.0);
     assert_eq!(choices[2]["path"], "textures/blocks/dirt_random2");

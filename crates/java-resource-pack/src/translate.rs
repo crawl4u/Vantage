@@ -497,7 +497,10 @@ pub(crate) fn translate_within(
             random_files.push((format!("{file}.png"), bytes));
         }
         if entries.len() >= 2 {
-            random_tiles.insert(tile.to_owned(), serde_json::json!({ "textures": entries }));
+            random_tiles.insert(
+                tile.to_owned(),
+                serde_json::json!({ "textures": [{ "variations": entries }] }),
+            );
         } else {
             random_files.retain(|(file, _)| !file.contains(&format!("{stem}_random")));
         }
