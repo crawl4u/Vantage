@@ -8,7 +8,7 @@
 
 use assets::audio_category::AudioCategory;
 use launcher::menu::{
-    JavaSettingsAction, JavaSettingsView, MenuAction, MenuView,
+    JavaSettingsAction, JavaSettingsView, MenuAction, MenuField, MenuView,
     auth::AuthState,
     settings_options::{
         BindingId, EXTRA_GAMEPAD, EXTRA_KEYS, GAMEPAD_BINDINGS, GAMEPAD_OFFSET, KEY_BINDINGS,
@@ -67,8 +67,19 @@ const HANDLE: [&str; 2] = [
 const HANDLE_SIZE: [f32; 2] = [8.0, 20.0];
 
 /// One widget of the list.
-enum Entry {
+pub(super) enum Entry {
     Option(SettingId),
+    /// A line of text in the warning colour, across the whole list.
+    Notice(String),
+    /// A label with a text field beside it, across the whole list: what the field edits, its
+    /// text, what it shows while empty, the field it focuses and the press that focuses it.
+    Field {
+        label: String,
+        value: String,
+        placeholder: String,
+        field: MenuField,
+        press: MenuAction,
+    },
     Link(String, MenuAction),
     /// A button that does nothing, which says something: who is signed in.
     Label(String),
@@ -85,7 +96,7 @@ impl Entry {
     fn wide(&self) -> bool {
         match self {
             Self::Option(id) => SETTINGS_OPTIONS[id.index()].volume == Some(AudioCategory::Master),
-            Self::Heading(_) | Self::Binding(_) => true,
+            Self::Heading(_) | Self::Binding(_) | Self::Notice(_) | Self::Field { .. } => true,
             Self::Link(..) | Self::Label(_) => false,
         }
     }
@@ -353,8 +364,13 @@ pub(crate) fn draw(
     canvas.focus_delegate(Some(MenuAction::AddBack), None);
     let viewport = [0.0, HEADER * unit, size[0], size[1] - FOOTER * unit];
     canvas.fill(viewport, LIST_SHADE)?;
+    let key = if hub {
+        "java_options/hub".to_owned()
+    } else {
+        format!("java_options/{}", open.definition().name)
+    };
     list(
-        canvas, view, translate, viewport, java_width, &entries, hub, open, unit,
+        canvas, view, translate, viewport, java_width, &entries, &key, unit,
     )?;
     separators(canvas, size, unit)?;
     button::label_centred(
@@ -457,28 +473,22 @@ fn places(entries: &[Entry]) -> Vec<Place> {
 
 /// The scrolling list of widgets in two columns.
 #[allow(clippy::too_many_arguments, reason = "one screen's drawing state")]
-fn list(
+pub(super) fn list(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
     translate: Translate<'_>,
     viewport: Bounds,
     java_width: f32,
     entries: &[Entry],
-    hub: bool,
-    open: SettingSection,
+    key: &str,
     unit: f32,
 ) -> Result<(), PaintError> {
-    let key = if hub {
-        "java_options/hub".to_owned()
-    } else {
-        format!("java_options/{}", open.definition().name)
-    };
     let places = places(entries);
     let defaults = SettingsOptions::default();
     let rows = places.last().map_or(0, |place| place.row + 1) as f32;
     let content = (LIST_PADDING * 2.0 + rows * ROW) * unit;
     let max = (content - (viewport[3] - viewport[1])).max(0.0);
-    if let Some(offset) = canvas.offsets.get_mut(&key) {
+    if let Some(offset) = canvas.offsets.get_mut(key) {
         *offset = offset.min(max);
     }
     let centre = (java_width / 2.0).floor();
@@ -489,7 +499,7 @@ fn list(
         width: SCROLLBAR_WIDTH * unit,
         min_thumb: SCROLLER_MIN * unit,
     });
-    let scroll = canvas.begin_scroll(&key, viewport)?;
+    let scroll = canvas.begin_scroll(key, viewport)?;
     let columns = [
         centre - COLUMN_GAP / 2.0 - WIDGET_WIDTH,
         centre + COLUMN_GAP / 2.0,
@@ -511,6 +521,41 @@ fn list(
             }
             Entry::Option(id) => widget(canvas, view, translate, bounds, *id, unit)?,
             Entry::Label(label) => button::draw(canvas, view, bounds, label, None, unit)?,
+            Entry::Notice(text) => put(
+                canvas,
+                text,
+                [bounds[0], bounds[1] + 6.0 * unit],
+                unit,
+                [255, 85, 85, 255],
+                bounds[2] - bounds[0],
+            )?,
+            Entry::Field {
+                label,
+                value,
+                placeholder,
+                field,
+                press,
+            } => {
+                let split = 100.0 * unit;
+                put(
+                    canvas,
+                    label,
+                    [bounds[0], bounds[1] + 6.0 * unit],
+                    unit,
+                    TEXT,
+                    split - 4.0 * unit,
+                )?;
+                crate::widgets::java_field(
+                    canvas,
+                    view,
+                    [bounds[0] + split, bounds[1], bounds[2], bounds[3]],
+                    value,
+                    placeholder,
+                    view.field == Some(*field),
+                    Some(*press),
+                    unit,
+                )?;
+            }
             Entry::Heading(text) => put(
                 canvas,
                 text,

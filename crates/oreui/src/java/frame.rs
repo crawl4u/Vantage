@@ -24,6 +24,8 @@ const BUTTON_HEIGHT: f32 = 20.0;
 const BUTTON_WIDTH: f32 = 100.0;
 const BUTTON_GAP: f32 = 5.0;
 const WIDE_BUTTON_WIDTH: f32 = 200.0;
+/// Two buttons share a row at Java's 150 pixels each.
+const PAIR_BUTTON_WIDTH: f32 = 150.0;
 /// The width a row of buttons shares, as Java's three and four button rows do.
 const ROW_WIDTH: f32 = 310.0;
 /// Where the rows of buttons start below the footer's top edge, and the distance between rows.
@@ -131,6 +133,8 @@ pub(super) fn draw(
         // A button alone on its row is Java's wide Done.
         let width = if row.len() == 1 {
             WIDE_BUTTON_WIDTH
+        } else if row.len() == 2 {
+            PAIR_BUTTON_WIDTH
         } else {
             BUTTON_WIDTH.min((ROW_WIDTH - BUTTON_GAP * (count - 1.0)) / count)
         };
@@ -233,4 +237,34 @@ pub(super) fn put(
     let style = button::label_style(canvas, unit);
     canvas.text_line(&text, [at[0], at[1] - unit], room, style, colour)?;
     Ok(())
+}
+
+/// `text` broken at spaces into lines of at most `max` Java pixels, in Java's font; a word longer
+/// than a line stands alone. Without a Java font a character counts as six pixels.
+pub(super) fn wrap_lines(text: &str, max: f32) -> Vec<String> {
+    let width = |line: &str| -> f32 {
+        super::text_width(line).unwrap_or(line.chars().count() as f32 * 6.0)
+    };
+    let mut lines: Vec<String> = Vec::new();
+    for paragraph in text.split('\n') {
+        let mut current = String::new();
+        for word in paragraph.split_whitespace() {
+            let joined = if current.is_empty() {
+                word.to_owned()
+            } else {
+                format!("{current} {word}")
+            };
+            if width(&joined) <= max || current.is_empty() {
+                current = joined;
+            } else {
+                lines.push(std::mem::take(&mut current));
+                current = word.to_owned();
+            }
+        }
+        lines.push(current);
+    }
+    while lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
+    lines
 }

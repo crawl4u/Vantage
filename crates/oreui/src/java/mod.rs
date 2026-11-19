@@ -9,6 +9,7 @@ pub(super) mod frame;
 pub(crate) use button::label_style;
 pub(super) mod home;
 mod language;
+pub(crate) mod modal;
 mod mods;
 pub(super) mod options;
 pub(crate) mod pack_drag;
@@ -18,6 +19,7 @@ pub(super) mod servers;
 mod shaders;
 mod splash;
 mod storage;
+pub(super) mod world_form;
 pub(super) mod worlds;
 
 use launcher::menu::{MenuView, settings_options::menu_style::MenuStyle};

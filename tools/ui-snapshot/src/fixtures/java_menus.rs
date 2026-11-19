@@ -107,6 +107,24 @@ pub(super) const STATES: &[State] = &[
         fixture: java_worlds,
     },
     State {
+        name: "java-world-create",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || java_world_form(launcher::local_worlds::Screen::Create),
+    },
+    State {
+        name: "java-world-importing",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || java_world_form(launcher::local_worlds::Screen::Importing),
+    },
+    State {
+        name: "java-world-delete",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || java_world_form(launcher::local_worlds::Screen::ConfirmDelete),
+    },
+    State {
         name: "java-shaders",
         size: SIZE,
         gui_scale: GUI_SCALE,
@@ -206,6 +224,18 @@ fn java_language() -> Fixture {
     .map(|(code, name)| ((*code).to_owned(), (*name).to_owned()))
     .collect();
     Fixture::Menu(view)
+}
+
+/// The create screen, or a message over the world list, in the Java style.
+fn java_world_form(screen: launcher::local_worlds::Screen) -> Fixture {
+    let mut view = MenuView::new(true, "Player".into());
+    view.screen = MenuScreen::Play;
+    view.auth_state = AuthState::Authenticated;
+    view.local.screen = screen;
+    view.local.tab = launcher::local_worlds::Tab::General;
+    let options = Arc::make_mut(&mut view.settings_options);
+    assert!(options.set(SettingId::MenuStyle.index(), MenuStyle::Java.value()));
+    Fixture::Menu(Box::new(view))
 }
 
 /// The world list with three worlds, the second chosen.

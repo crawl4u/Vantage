@@ -430,6 +430,30 @@ impl Screen for OreUiScreen {
                 }
                 MenuScreen::Play
                     if java::selected(view, &canvas)
+                        && world_settings::route(view.local.screen, &view.local).is_some() =>
+                {
+                    canvas.capture_focus = true;
+                    let route = world_settings::route(view.local.screen, &view.local)
+                        .unwrap_or(launcher::local_worlds::Screen::Create);
+                    let rollback = (canvas.nodes.len(), *canvas.next);
+                    for attempt in 0..2 {
+                        java::world_form::draw(&mut canvas, view, size, route)?;
+                        if !scroll_focus::reveal(&mut canvas, scrolls, view) || attempt == 1 {
+                            break;
+                        }
+                        canvas.nodes.truncate(rollback.0);
+                        *canvas.next = rollback.1;
+                        canvas.hits.clear();
+                        canvas.clear_focus_geometry();
+                        canvas.scrolls.clear();
+                    }
+                    focus = Some(focus_actions(&canvas));
+                    if let Some(dialog) = modal::local_world_modal(&view.local) {
+                        modal::draw(&mut canvas, view, size, &dialog)?;
+                    }
+                }
+                MenuScreen::Play
+                    if java::selected(view, &canvas)
                         && world_settings::route(view.local.screen, &view.local).is_none() =>
                 {
                     canvas.capture_focus = true;
