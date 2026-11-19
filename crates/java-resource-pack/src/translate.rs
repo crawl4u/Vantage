@@ -2,7 +2,7 @@
 
 use crate::menu_files;
 use crate::{
-    Layout, TranslateError, Translation, hud, items, manifest,
+    Layout, TranslateError, Translation, container, hud, items, manifest,
     meta::{TEXTURES, detect_layout, read_meta},
     names, sky,
     texture::{Budget, crop, decode, dimensions, duplicate, encode, strip_frame},
@@ -279,6 +279,7 @@ pub(crate) fn translate_within(
     let pack_icon = optional("pack.png");
     let icons = optional(&format!("{TEXTURES}gui/icons.png"));
     let widgets = optional(&format!("{TEXTURES}gui/widgets.png"));
+    let inventory = optional(&format!("{TEXTURES}gui/container/inventory.png"));
     let particles = optional(&format!("{TEXTURES}particle/particles.png"));
 
     let layout = detect_layout(paths.iter().map(String::as_str), meta.format);
@@ -381,6 +382,21 @@ pub(crate) fn translate_within(
     let selection = sprites
         .remove("hotbar_selection")
         .or_else(|| widget_rect(hud::LEGACY_SELECTION));
+    // The inventory's slot cells and the highlight round the selected slot follow the pack.
+    let inventory = inventory.and_then(|bytes| decode(&bytes, budget));
+    for (path, image) in inventory
+        .as_ref()
+        .map(|atlas| container::cell_textures(atlas, budget))
+        .unwrap_or_default()
+    {
+        out.insert(path, Output::Image(image));
+    }
+    if let Some(highlight) = selection
+        .as_ref()
+        .and_then(|selection| hud::square_selection(selection, budget))
+    {
+        out.insert(container::SLOT_HIGHLIGHT.into(), Output::Image(highlight));
+    }
     let modern_crosshair = sprites.contains_key(hud::CROSSHAIR);
     hud_sprites.extend(sprites);
     for (path, image) in
@@ -446,6 +462,10 @@ pub(crate) fn translate_within(
     }
     if survived(hud::XP_BAR_TEXTURES[0]) {
         companions.push((hud::XP_NUB.to_owned(), encode(&RgbaImage::new(1, 1))));
+    }
+    for cell in container::CELL_TEXTURES.into_iter().filter(|cell| survived(cell)) {
+        let stem = cell.trim_end_matches(".png");
+        companions.push((format!("{stem}.json"), container::CELL_SIDECAR.to_vec()));
     }
     files.extend(companions);
     // Checked after size filtering, so a pack whose every texture was dropped is not installed. A

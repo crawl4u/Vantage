@@ -337,7 +337,7 @@ pub(crate) fn hud_textures(
 
 /// Pads the 24x23 hotbar selection of 1.20.2+ to Bedrock's 24x24 by repeating its top border row
 /// at the bottom, which is how the 24x24 legacy and Bedrock textures are drawn.
-fn square_selection(selection: &RgbaImage, budget: &Budget) -> Option<RgbaImage> {
+pub(crate) fn square_selection(selection: &RgbaImage, budget: &Budget) -> Option<RgbaImage> {
     let (width, height) = selection.dimensions();
     if width == height || width == 0 || height > width {
         return duplicate(selection, budget);

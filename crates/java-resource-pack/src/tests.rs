@@ -886,3 +886,56 @@ fn a_pack_that_only_restyles_the_menus_is_still_a_pack() {
     )]);
     assert!(run(&files, "Menus").is_ok());
 }
+
+#[test]
+fn the_inventory_slot_becomes_every_bedrock_cell_with_sidecars() {
+    let slot = Rect {
+        x: 7,
+        y: 83,
+        w: 18,
+        h: 18,
+    };
+    let files = pack(vec![(
+        "assets/minecraft/textures/gui/container/inventory.png",
+        marked_atlas(512, &[(slot, GREEN)]),
+    )]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    for cell in [
+        "textures/ui/cell_image.png",
+        "textures/ui/cell_image_normal.png",
+        "textures/ui/cell_image_darkgrey.png",
+        "textures/ui/cell_image_invert.png",
+        "textures/ui/cell_image_red.png",
+        "textures/ui/cell_image_lock.png",
+    ] {
+        assert_eq!(pixel(&out, cell, 0, 0).0, (36, 36), "{cell}");
+        let sidecar = cell.replace(".png", ".json");
+        let value: serde_json::Value = serde_json::from_slice(out[sidecar.as_str()]).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({"nineslice_size": 1, "base_size": [18, 18]})
+        );
+    }
+    assert_eq!(pixel(&out, "textures/ui/cell_image.png", 0, 0).1, GREEN);
+}
+
+#[test]
+fn the_hotbar_selection_also_highlights_the_selected_inventory_slot() {
+    let sprites = "assets/minecraft/textures/gui/sprites/hud/";
+    let files = pack(vec![(
+        &format!("{sprites}hotbar_selection.png"),
+        solid(24, 23, YELLOW),
+    )]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(
+            &out,
+            "textures/ui/pocket_ui_highlight_selected_slot.png",
+            0,
+            0
+        ),
+        ((24, 24), YELLOW)
+    );
+}
