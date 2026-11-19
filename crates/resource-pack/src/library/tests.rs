@@ -1285,3 +1285,43 @@ fn a_java_pack_may_exceed_the_bedrock_archive_limit_but_a_bedrock_pack_may_not()
             .is_err()
     );
 }
+
+#[test]
+fn a_java_pack_may_hold_more_files_than_a_bedrock_pack() {
+    let count = crate::MAX_ENTRIES_PER_PACK + 1000;
+    let names: Vec<String> = (0..count)
+        .map(|index| format!("assets/minecraft/optifine/ctm/{index}.properties"))
+        .collect();
+    let planks = png([0, 255, 0, 255]);
+    let mut java: Vec<(&str, &[u8])> = vec![
+        ("pack.mcmeta", br#"{"pack":{"pack_format":15}}"#),
+        ("assets/minecraft/textures/block/oak_planks.png", &planks),
+    ];
+    java.extend(
+        names
+            .iter()
+            .map(|name| (name.as_str(), b"method=ctm".as_slice())),
+    );
+    let fixture = Fixture::new();
+    let mut library = fixture.library();
+    let report = library
+        .import(&fixture.write("many-java.zip", &zip(&java)))
+        .unwrap();
+    assert_eq!(report.imported.len(), 1, "{:?}", report.rejected);
+
+    let manifest = br#"{"format_version":2,"header":{"name":"Many","uuid":"00000000-0000-0000-0000-000000000c16","version":[1,0,0]},"modules":[{"type":"resources","uuid":"00000000-0000-0000-0000-000000000c17","version":[1,0,0]}]}"#;
+    let bedrock_names: Vec<String> = (0..count)
+        .map(|index| format!("misc/{index}.txt"))
+        .collect();
+    let mut bedrock: Vec<(&str, &[u8])> = vec![("manifest.json", manifest)];
+    bedrock.extend(
+        bedrock_names
+            .iter()
+            .map(|name| (name.as_str(), b"x".as_slice())),
+    );
+    let outcome = library.import(&fixture.write("many-bedrock.zip", &zip(&bedrock)));
+    assert!(
+        outcome.is_err() || !outcome.unwrap().rejected.is_empty(),
+        "a Bedrock pack keeps the entry limit"
+    );
+}

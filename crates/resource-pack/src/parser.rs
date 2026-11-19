@@ -371,7 +371,15 @@ fn preflight_eocd(bytes: &[u8]) -> Result<usize, AdmissionError> {
 
 /// Removes only the validated ZIP comment so downstream footer searches cannot select its bytes.
 pub(crate) fn prepare_zip_bytes(bytes: &mut Vec<u8>) -> Result<usize, AdmissionError> {
-    Ok(zip_footer::prepare_zip_bytes(bytes, MAX_ENTRIES_PER_PACK)?)
+    prepare_zip_bytes_with(bytes, MAX_ENTRIES_PER_PACK)
+}
+
+/// [`prepare_zip_bytes`] admitting up to `max_entries` entries.
+pub(crate) fn prepare_zip_bytes_with(
+    bytes: &mut Vec<u8>,
+    max_entries: usize,
+) -> Result<usize, AdmissionError> {
+    Ok(zip_footer::prepare_zip_bytes(bytes, max_entries)?)
 }
 
 pub(crate) fn is_regular_file(mode: Option<u32>) -> bool {

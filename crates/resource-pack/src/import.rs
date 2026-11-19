@@ -8,9 +8,7 @@ use crate::{
     MAX_JAVA_ARCHIVE_BYTES, MAX_MANIFEST_BYTES, MAX_PACKS,
     library::{ImportReport, InstalledPack, LibraryError},
     manifest::{Version, manifest_identity, read_manifest},
-    parser::{
-        MANIFEST_NAMES, canonical_path, is_regular_file, prepare_zip_bytes, validate_archive_parts,
-    },
+    parser::{MANIFEST_NAMES, canonical_path, is_regular_file, validate_archive_parts},
 };
 use serde_json::Value;
 use std::{
@@ -128,7 +126,12 @@ fn read_bundle(
     if length > limit {
         return Err(AdmissionError::ArchiveTooLarge.into());
     }
-    prepare_zip_bytes(&mut bytes)?;
+    let entries = if depth == 0 {
+        crate::MAX_JAVA_ENTRIES
+    } else {
+        crate::MAX_ENTRIES_PER_PACK
+    };
+    crate::parser::prepare_zip_bytes_with(&mut bytes, entries)?;
     let mut archive =
         ZipArchive::new(Cursor::new(bytes)).map_err(|_| AdmissionError::MalformedZip)?;
     let paths = index_archive(&mut archive)?;

@@ -56,6 +56,9 @@ pub const MAX_ARCHIVE_BYTES: usize = 64 * 1024 * 1024;
 /// translation, whose Bedrock output is held to [`MAX_ARCHIVE_BYTES`]; HD packs commonly exceed
 /// the Bedrock limit while translating to far less.
 pub const MAX_JAVA_ARCHIVE_BYTES: usize = 512 * 1024 * 1024;
+/// The most entries a Java Edition pack archive may hold when imported; OptiFine packs ship tens
+/// of thousands of small files that translate to a far smaller Bedrock pack.
+pub const MAX_JAVA_ENTRIES: usize = 262_144;
 /// Maximum compressed archive bytes accepted in one local import.
 pub const MAX_STACK_ARCHIVE_BYTES: usize = 128 * 1024 * 1024;
 /// Maximum encoded pack thumbnail bytes retained for optional presentation.
