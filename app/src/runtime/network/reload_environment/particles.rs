@@ -89,9 +89,16 @@ pub(super) fn prepare_particles(
                     &marker,
                 )
             {
+                bevy::log::info!(width, height, "particle atlas overlay applied");
                 texture.width = width;
                 texture.height = height;
                 texture.rgba8 = rgba8.into();
+            } else if path == resource_pack::particle_atlas::ATLAS {
+                bevy::log::info!(
+                    width = texture.width,
+                    height = texture.height,
+                    "particle atlas replaced whole by the winning pack"
+                );
             }
             Some(texture)
         },
