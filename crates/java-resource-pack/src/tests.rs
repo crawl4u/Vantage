@@ -975,3 +975,33 @@ fn the_inventory_frame_becomes_the_bedrock_panel_with_a_sidecar() {
         serde_json::json!({"nineslice_size": 4, "base_size": [176, 166]})
     );
 }
+
+#[test]
+fn the_container_panel_keeps_a_see_through_pack_see_through_beside_the_filled_one() {
+    let files = pack(vec![(
+        "assets/minecraft/textures/gui/container/inventory.png",
+        marked_atlas(
+            256,
+            &[(
+                Rect {
+                    x: 0,
+                    y: 0,
+                    w: 176,
+                    h: 2,
+                },
+                GREEN,
+            )],
+        ),
+    )]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(&out, "textures/ui/dialog_background_container.png", 10, 0),
+        ((176, 166), GREEN)
+    );
+    assert_eq!(
+        pixel(&out, "textures/ui/dialog_background_container.png", 88, 83).1[3],
+        0
+    );
+    assert!(out.contains_key("textures/ui/dialog_background_container.json"));
+}

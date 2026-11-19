@@ -462,6 +462,8 @@ impl UiPresentationRuntime {
     ) -> Option<EngineFrame> {
         let window_text = &self.hud_frame.window_text;
         let renderer = self.engine.as_deref()?;
+        // Container screens draw the pack's container-only panel for as long as this paint runs.
+        let _panel = ContainerPanel::begin(&renderer.textures);
         let (_, title_key) = layout.screen();
         // A mount's screen is titled with its own entity name.
         let mount_key = runtime
@@ -628,6 +630,23 @@ impl UiPresentationRuntime {
         json_ui::hit_test(&frame.hits, [f64::from(gui[0]), f64::from(gui[1])])?
             .sound
             .as_ref()
+    }
+}
+
+/// Holds the container-only panel texture in force and releases it when dropped, so no other screen
+/// ever draws it.
+struct ContainerPanel<'a>(&'a ui_engine::textures::TextureSet);
+
+impl<'a> ContainerPanel<'a> {
+    fn begin(textures: &'a ui_engine::textures::TextureSet) -> Self {
+        textures.set_container_panel(true);
+        Self(textures)
+    }
+}
+
+impl Drop for ContainerPanel<'_> {
+    fn drop(&mut self) {
+        self.0.set_container_panel(false);
     }
 }
 

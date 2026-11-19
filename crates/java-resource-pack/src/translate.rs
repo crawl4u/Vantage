@@ -391,11 +391,13 @@ pub(crate) fn translate_within(
     {
         out.insert(path, Output::Image(image));
     }
-    if let Some(panel) = inventory
-        .as_ref()
-        .and_then(|atlas| container::panel(atlas, budget))
-    {
-        out.insert(container::PANEL.into(), Output::Image(panel));
+    if let Some(atlas) = &inventory {
+        if let Some(panel) = container::panel(atlas, budget, true) {
+            out.insert(container::PANEL.into(), Output::Image(panel));
+        }
+        if let Some(panel) = container::panel(atlas, budget, false) {
+            out.insert(container::CONTAINER_PANEL.into(), Output::Image(panel));
+        }
     }
     if let Some(highlight) = selection
         .as_ref()
@@ -469,9 +471,12 @@ pub(crate) fn translate_within(
     if survived(hud::XP_BAR_TEXTURES[0]) {
         companions.push((hud::XP_NUB.to_owned(), encode(&RgbaImage::new(1, 1))));
     }
-    if survived(container::PANEL) {
+    for panel in [container::PANEL, container::CONTAINER_PANEL]
+        .into_iter()
+        .filter(|panel| survived(panel))
+    {
         companions.push((
-            container::PANEL.replace(".png", ".json"),
+            panel.replace(".png", ".json"),
             container::PANEL_SIDECAR.to_vec(),
         ));
     }

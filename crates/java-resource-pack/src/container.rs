@@ -25,6 +25,14 @@ pub(crate) const SLOT_HIGHLIGHT: &str = "textures/ui/pocket_ui_highlight_selecte
 /// Bedrock's panel, which every container screen and dialog draws behind its controls.
 pub(crate) const PANEL: &str = "textures/ui/dialog_background_opaque.png";
 
+/// The texture keys (paths without the extension) of the shared panel and of the one only
+/// container screens draw, which keeps a see-through pack's frame see-through.
+pub const SHARED_PANEL_KEY: &str = "textures/ui/dialog_background_opaque";
+pub const CONTAINER_PANEL_KEY: &str = "textures/ui/dialog_background_container";
+
+/// The container-only panel's file.
+pub(crate) const CONTAINER_PANEL: &str = "textures/ui/dialog_background_container.png";
+
 /// The panel's sidecar: a four-pixel frame round a flat middle, over the Java panel's own 176 by
 /// 166 size.
 pub(crate) const PANEL_SIDECAR: &[u8] = br#"{"nineslice_size":4,"base_size":[176,166]}"#;
@@ -72,11 +80,12 @@ pub(crate) fn slot_cell(atlas: &RgbaImage, budget: &Budget) -> Option<RgbaImage>
     (!is_empty(&cell)).then_some(cell)
 }
 
-/// The Bedrock panel for a Java container atlas: its frame, round a flat opaque middle. The middle
-/// is the pack's own fill when its panel has one, else Java's classic grey, so a pack whose
-/// containers are see-through keeps its frame without making every dialog hard to read. Slots and
+/// The Bedrock panel for a Java container atlas: its frame, round a flat middle. With `filled`, the
+/// middle is opaque: the pack's own fill when its panel has one, else Java's classic grey, so a
+/// pack whose containers are see-through keeps its frame without making every dialog hard to
+/// read. Without it the middle is the pack's own, see-through when the pack's is. Slots and
 /// pictures drawn inside the panel are cleared. `None` when the atlas has no panel.
-pub(crate) fn panel(atlas: &RgbaImage, budget: &Budget) -> Option<RgbaImage> {
+pub(crate) fn panel(atlas: &RgbaImage, budget: &Budget, filled: bool) -> Option<RgbaImage> {
     let scale = (atlas.width() / 256).max(1);
     let frame = PANEL_FRAME * scale;
     let [width, height] = PANEL_SIZE.map(|side| side * scale);
@@ -87,8 +96,10 @@ pub(crate) fn panel(atlas: &RgbaImage, budget: &Budget) -> Option<RgbaImage> {
     let sample = region.get_pixel(frame, frame).0;
     let fill = if sample[3] >= 250 {
         sample
-    } else {
+    } else if filled {
         CLASSIC_FILL
+    } else {
+        [0; 4]
     };
     let mut panel = canvas(width, height, budget)?;
     for pixel in panel.pixels_mut() {
@@ -244,7 +255,7 @@ mod tests {
     #[test]
     fn an_opaque_panel_keeps_its_frame_and_fill_and_loses_what_was_drawn_inside_it() {
         let budget = Budget::new();
-        let panel = panel(&panelled([150, 160, 170, 255]), &budget).unwrap();
+        let panel = panel(&panelled([150, 160, 170, 255]), &budget, true).unwrap();
         assert_eq!(panel.dimensions(), (176, 166));
         assert_eq!(panel.get_pixel(0, 0).0, [0, 0, 0, 255]);
         // The slot outline inside the panel is gone, replaced by the pack's fill.
@@ -255,7 +266,7 @@ mod tests {
     #[test]
     fn a_see_through_panel_keeps_its_frame_over_java_grey() {
         let budget = Budget::new();
-        let panel = panel(&panelled([0; 4]), &budget).unwrap();
+        let panel = panel(&panelled([0; 4]), &budget, true).unwrap();
         assert_eq!(panel.get_pixel(0, 0).0, [0, 0, 0, 255]);
         assert_eq!(panel.get_pixel(88, 83).0, CLASSIC_FILL);
         for pixel in panel.pixels() {
@@ -264,8 +275,18 @@ mod tests {
     }
 
     #[test]
+    fn the_container_panel_stays_see_through_where_the_packs_is() {
+        let budget = Budget::new();
+        let open = panel(&panelled([0; 4]), &budget, false).unwrap();
+        assert_eq!(open.get_pixel(0, 0).0, [0, 0, 0, 255], "the frame is kept");
+        assert_eq!(open.get_pixel(88, 83).0[3], 0, "the middle is see-through");
+        let opaque = panel(&panelled([150, 160, 170, 255]), &budget, false).unwrap();
+        assert_eq!(opaque.get_pixel(88, 83).0, [150, 160, 170, 255]);
+    }
+
+    #[test]
     fn an_atlas_without_a_panel_gives_none() {
-        assert!(panel(&RgbaImage::new(256, 256), &Budget::new()).is_none());
+        assert!(panel(&RgbaImage::new(256, 256), &Budget::new(), true).is_none());
     }
 
     #[test]

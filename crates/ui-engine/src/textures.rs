@@ -8,7 +8,10 @@
 use std::{
     borrow::Cow,
     collections::HashMap,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        Arc, Mutex, MutexGuard,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use assets::RuntimeUiAssets;
@@ -50,6 +53,9 @@ pub struct TextureSet {
     full_res_sources: crate::atlas::OversizedTextures,
     /// A client part's screen: only portable `textures/` paths, never a URL.
     confined: bool,
+    /// Set while a container screen draws: the shared dialog panel is then the pack's
+    /// container-only panel, when it ships one.
+    container_panel: AtomicBool,
     /// Changes whenever the icons, full-resolution art or installed atlas change.
     revision: Revision,
 }
@@ -87,8 +93,16 @@ impl TextureSet {
             full_res: HashMap::new(),
             full_res_sources: Default::default(),
             confined: false,
+            container_panel: AtomicBool::new(false),
             revision: Default::default(),
         }
+    }
+
+    /// Makes container screens draw the pack's container-only panel, which keeps a see-through
+    /// pack's frame see-through, in place of the dialog panel every screen shares; `false` ends
+    /// it. A pack without that panel draws the shared one throughout.
+    pub fn set_container_panel(&self, active: bool) {
+        self.container_panel.store(active, Ordering::Relaxed);
     }
 
     pub fn with_carrier(mut self, carrier: Arc<RuntimeUiAssets>) -> Self {
@@ -149,6 +163,7 @@ impl TextureSet {
             full_res: HashMap::new(),
             full_res_sources: Default::default(),
             confined: true,
+            container_panel: AtomicBool::new(false),
             revision: Default::default(),
         }
     }
@@ -230,7 +245,14 @@ pub struct Textures<'a> {
 impl<'a> Textures<'a> {
     /// `path` without an image extension, the key every source uses.
     pub fn canonical<'p>(&self, path: &'p str) -> Cow<'p, str> {
-        Cow::Borrowed(texture_key(path))
+        let key = texture_key(path);
+        if key == resource_pack::SHARED_PANEL_KEY
+            && self.set.container_panel.load(Ordering::Relaxed)
+            && self.atlas.has_image(resource_pack::CONTAINER_PANEL_KEY)
+        {
+            return Cow::Borrowed(resource_pack::CONTAINER_PANEL_KEY);
+        }
+        Cow::Borrowed(key)
     }
 
     /// A confined set reads only portable `textures/` paths: no URL, no `..`, no other root.
@@ -508,6 +530,68 @@ fn test_carrier() -> Arc<RuntimeUiAssets> {
 #[cfg(test)]
 #[path = "textures/animation_tests.rs"]
 mod animation_tests;
+
+#[cfg(test)]
+mod container_panel_tests {
+    use super::*;
+
+    /// A solid PNG of `side` pixels.
+    fn png(side: u32, red: u8) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        image::RgbaImage::from_pixel(side, side, image::Rgba([red, 0, 0, 255]))
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        bytes
+    }
+
+    #[test]
+    fn container_screens_draw_the_pack_s_container_panel_and_nothing_else_does() {
+        let shared = resource_pack::SHARED_PANEL_KEY;
+        let container = resource_pack::CONTAINER_PANEL_KEY;
+        let assets = test_carrier();
+        let set = TextureSet::new(0, Arc::new(NoDownloads), ImageWork::inline());
+        let files = [
+            (format!("{shared}.png"), png(16, 1)),
+            (format!("{container}.png"), png(32, 2)),
+        ];
+        let mut atlas = ServerAtlas::new(&files, None, 2).with_image_work(ImageWork::inline());
+        atlas.require([shared, container]);
+        let view = |atlas: &ServerAtlas| {
+            let textures = Textures {
+                assets: &assets,
+                set: &set,
+                atlas,
+                images: None,
+            };
+            textures.canonical(shared).into_owned()
+        };
+        assert_eq!(view(&atlas), shared, "other screens keep the shared panel");
+        set.set_container_panel(true);
+        assert_eq!(view(&atlas), container, "a container screen swaps it");
+        set.set_container_panel(false);
+        assert_eq!(view(&atlas), shared);
+    }
+
+    #[test]
+    fn a_pack_without_a_container_panel_draws_the_shared_one_in_containers_too() {
+        let shared = resource_pack::SHARED_PANEL_KEY;
+        let assets = test_carrier();
+        let set = TextureSet::new(0, Arc::new(NoDownloads), ImageWork::inline());
+        let atlas = ServerAtlas::new(&[(format!("{shared}.png"), png(16, 1))], None, 1)
+            .with_image_work(ImageWork::inline());
+        set.set_container_panel(true);
+        let textures = Textures {
+            assets: &assets,
+            set: &set,
+            atlas: &atlas,
+            images: None,
+        };
+        assert_eq!(textures.canonical(shared), shared);
+    }
+}
 
 #[cfg(test)]
 mod review_tests {
