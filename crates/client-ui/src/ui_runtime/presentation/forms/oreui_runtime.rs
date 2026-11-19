@@ -371,12 +371,8 @@ impl UiPresentationRuntime {
             artwork: &self.menu_artwork.refs,
             dimension: self.hud_frame.dimension,
             fraction: self.loading_fraction,
-            java: self.menu_view.as_ref().and_then(|view| {
-                let options = &view.settings_options;
-                (options.menu_style()
-                    == launcher::menu::settings_options::menu_style::MenuStyle::Java)
-                    .then(|| options.java_gui_scale())
-            }),
+            grid: self.loading_grid.as_ref(),
+            java: self.java_loading,
         };
         let mut frame = PaintFrame {
             layouts: &mut self.layouts,

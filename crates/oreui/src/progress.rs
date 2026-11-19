@@ -133,7 +133,6 @@ pub(super) fn draw(
             size,
             progress.title,
             progress.detail,
-            progress.fraction,
             progress.cancel,
         );
     }

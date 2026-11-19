@@ -167,6 +167,15 @@ pub(super) fn prepare_loading(
                 .and_then(chunk_pipeline::WorldStream::startup_view_fraction)
         });
     presentation.set_loading_fraction(fraction.filter(|_| connected));
+    // The chunks round the player, as a grid for the tile of Java's loading screen.
+    presentation.set_loading_grid(
+        client_world
+            .stream
+            .as_ref()
+            .filter(|_| connected)
+            .and_then(|stream| stream.startup_view_grid(11))
+            .map(|(side, cells)| ui::LoadingGrid { side, cells }),
+    );
     presentation.set_loading_stage(if !connected {
         Some(LoadingStage::Connecting)
     } else if released && !client_world.dimension_transfer.active() {

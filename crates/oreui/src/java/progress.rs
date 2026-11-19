@@ -1,10 +1,14 @@
 //! The Java-style loading screen, as Java Edition shows a world or server being joined or the
-//! terrain loading: the world dimmed behind it, a thin green bar over the title, what is happening
-//! in lines under it, and a tile that fills with white squares from its middle as the terrain
-//! arrives. The bar and the tile follow the real progress; while it is not known the bar sweeps
-//! to and fro so something always shows. Cancel appears where the join can be called off.
+//! terrain loading: the world dimmed behind it, a thin green bar over the title that fills as the
+//! whole opening goes on, what is happening in lines under it, and a tile of the chunks round the
+//! player that turn white as they arrive. Cancel appears where the join can be called off.
+//!
+//! One bar runs through every screen of the opening, never backwards: starting or joining takes
+//! it to half, and the terrain loading takes it the rest of the way.
 
-use launcher::menu::{MenuAction, MenuView};
+use launcher::local_worlds::Stage;
+use launcher::menu::{JoinStage, MenuAction, MenuView};
+use ui::LoadingGrid;
 use ui_engine::engine::screen::PaintError;
 
 use super::{
@@ -23,19 +27,35 @@ const CANCEL_HEIGHT: f32 = 20.0;
 const BAR_WIDTH: f32 = 100.0;
 const BAR_HEIGHT: f32 = 2.0;
 const BAR_GAP: f32 = 6.0;
-/// The tile under the text, its cells across, each cell's size and the border round it.
-const CELLS: usize = 5;
-const CELL: f32 = 5.0;
-const CELL_GAP: f32 = 1.0;
+/// The tile under the text: the room for its cells, and the border and padding round them.
+const TILE_INNER: f32 = 33.0;
 const TILE_PAD: f32 = 3.0;
 const TILE_BORDER: f32 = 1.0;
 const TILE_GAP: f32 = 8.0;
+/// The cells across the tile shows before the chunks around the player are known.
+const PLACEHOLDER_CELLS: usize = 5;
+/// How far through the bar the menu's part of an opening takes it; the terrain does the rest.
+const MENU_PART: f32 = 0.5;
 const DIM: [u8; 4] = [0, 0, 0, 130];
 const BAR_FILL: [u8; 4] = [88, 200, 88, 255];
 const BAR_TRACK: [u8; 4] = [48, 48, 48, 255];
 const DETAIL: [u8; 4] = [170, 170, 170, 255];
-const EMPTY_CELL: [u8; 4] = [40, 40, 40, 255];
+const EMPTY_CELL: [u8; 4] = [48, 48, 48, 255];
+const NEEDED_CELL: [u8; 4] = [70, 70, 70, 255];
 const LOADED_CELL: [u8; 4] = [255, 255, 255, 255];
+
+/// What the world loading screen waits on.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WorldLoad {
+    /// The connection to the world is not made yet.
+    Joining,
+    /// The terrain round the player is arriving.
+    Terrain,
+    /// The terrain of another dimension is arriving.
+    Dimension,
+    /// Something that is not the terrain, such as applying resource packs.
+    Other,
+}
 
 /// The title as Java writes one: words capitalised, not shouting in capitals.
 fn title_case(title: &str) -> String {
@@ -52,48 +72,94 @@ fn title_case(title: &str) -> String {
         .join(" ")
 }
 
-/// Which cells of the tile are loaded when `fraction` of the terrain is: they fill from the
-/// middle outward, as the chunks around the player do.
-fn loaded_cells(fraction: f32) -> [[bool; CELLS]; CELLS] {
-    let mut order: Vec<(usize, usize)> = (0..CELLS)
-        .flat_map(|row| (0..CELLS).map(move |column| (row, column)))
-        .collect();
-    let middle = (CELLS as f32 - 1.0) / 2.0;
-    let distance = |(row, column): (usize, usize)| {
-        (row as f32 - middle).powi(2) + (column as f32 - middle).powi(2)
+/// How far a local world's opening has got, from 0.0 to the half the menu's part takes it: the
+/// steps run in order and the one under way fills its own share.
+fn local_progress(stage: Stage, fraction: Option<f32>) -> f32 {
+    // Setting the server up comes first on a first run and takes the first tenth.
+    let (start, end) = match stage {
+        Stage::CheckingDocker | Stage::PullingImage | Stage::DownloadingServer => (0.0, 0.08),
+        Stage::InstallingServer => (0.08, 0.1),
+        Stage::StartingServer => (0.1, 0.35),
+        Stage::Connecting => (0.35, MENU_PART),
     };
-    // Cells at one distance fill in turn round the middle, so the blob grows evenly.
-    let angle = |(row, column): (usize, usize)| (row as f32 - middle).atan2(column as f32 - middle);
-    order.sort_by(|a, b| {
-        distance(*a)
-            .total_cmp(&distance(*b))
-            .then(angle(*a).total_cmp(&angle(*b)))
-    });
-    let count = (fraction.clamp(0.0, 1.0) * (CELLS * CELLS) as f32).round() as usize;
-    let mut loaded = [[false; CELLS]; CELLS];
-    for (row, column) in order.into_iter().take(count) {
-        loaded[row][column] = true;
+    start + (end - start) * fraction.unwrap_or(0.0).clamp(0.0, 1.0)
+}
+
+/// How far a join to a server or Realm has got, within the menu's half.
+fn join_progress(stage: JoinStage) -> f32 {
+    match stage {
+        JoinStage::Realm => 0.05,
+        JoinStage::Connecting => 0.12,
+        JoinStage::Packs {
+            received_bytes,
+            total_bytes,
+            done,
+            total,
+        } => {
+            let shared = if total_bytes > 0 {
+                received_bytes as f32 / total_bytes as f32
+            } else if total > 0 {
+                done as f32 / total as f32
+            } else {
+                0.0
+            };
+            0.12 + (MENU_PART - 0.12 - 0.05) * shared.clamp(0.0, 1.0)
+        }
+        JoinStage::Generating => MENU_PART - 0.02,
     }
-    loaded
 }
 
-/// Where an unknown amount's bar segment is, as a share of the bar's width, `seconds` in: a
-/// third of the bar sweeping out and back.
-fn sweep(seconds: f64) -> [f32; 2] {
-    let wave = (seconds * 1.4).sin() as f32 * 0.5 + 0.5;
-    let start = wave * (1.0 - 1.0 / 3.0);
-    [start, start + 1.0 / 3.0]
+/// The bar's fill for an opening shown from the menu.
+pub(crate) fn menu_progress(view: &MenuView) -> f32 {
+    match &view.local.progress {
+        Some(local) => local_progress(local.stage, local.fraction),
+        None => join_progress(view.feeds.join.stage),
+    }
 }
 
-/// Draws the loading screen at `unit` logical pixels to a Java pixel over `size`. `cancel` is the
-/// button that calls the join off, with the menu view it reads its hover from.
+/// The bar's fill for the world loading screen, given how much terrain has arrived.
+fn world_progress(load: WorldLoad, terrain: Option<f32>) -> f32 {
+    let terrain = terrain.unwrap_or(0.0).clamp(0.0, 1.0);
+    match load {
+        WorldLoad::Joining => MENU_PART,
+        WorldLoad::Terrain => MENU_PART + (1.0 - MENU_PART) * terrain,
+        WorldLoad::Dimension | WorldLoad::Other => terrain,
+    }
+}
+
+/// What the tile shows.
+enum Tile<'a> {
+    /// The chunks round the player, as the world stream has them.
+    Grid(&'a LoadingGrid),
+    /// Nothing is known of the chunks yet.
+    Empty,
+}
+
+/// The cells of `tile`, row by row, as 0 (not needed), 1 (waiting) or 2 (arrived), and the side.
+fn cells(tile: &Tile<'_>) -> (usize, Vec<u8>) {
+    match tile {
+        Tile::Grid(grid) if grid.side > 0 && grid.cells.len() == grid.side * grid.side => {
+            (grid.side, grid.cells.clone())
+        }
+        _ => (
+            PLACEHOLDER_CELLS,
+            vec![1; PLACEHOLDER_CELLS * PLACEHOLDER_CELLS],
+        ),
+    }
+}
+
+/// Draws the loading screen at `unit` logical pixels to a Java pixel over `size`, with the bar
+/// `bar` of the way. `cancel` is the button that calls the join off, with the menu view it reads
+/// its hover from.
+#[allow(clippy::too_many_arguments, reason = "one screen's drawing state")]
 fn paint(
     canvas: &mut Canvas<'_>,
     unit: f32,
     size: [f32; 2],
     title: &str,
     detail: &str,
-    fraction: Option<f32>,
+    bar: f32,
+    tile: &Tile<'_>,
     cancel: Option<(&MenuView, MenuAction)>,
 ) -> Result<(), PaintError> {
     let java_width = (size[0] / unit).ceil();
@@ -104,38 +170,25 @@ fn paint(
         canvas.begin_focus_region(focus::SCREEN, [0.0, 0.0, size[0], size[1]], None, true)?;
     canvas.focus_delegate(cancel.map(|(_, action)| action), None);
     let lines = wrap_lines(detail, TEXT_WIDTH.min(java_width - 20.0));
-    let tile =
-        CELLS as f32 * CELL + (CELLS as f32 - 1.0) * CELL_GAP + 2.0 * (TILE_PAD + TILE_BORDER);
+    let tile_size = TILE_INNER + 2.0 * (TILE_PAD + TILE_BORDER);
     let height = BAR_HEIGHT
         + BAR_GAP
         + LINE * (1.0 + lines.len() as f32)
         + TILE_GAP
-        + tile
+        + tile_size
         + cancel.map_or(0.0, |_| CANCEL_HEIGHT + 12.0);
     let mut y = ((java_height - height) / 2.0).max(20.0);
-    // The bar, over the text. Without a known amount a segment of it sweeps to and fro.
+    // The bar over the text: a dark track with the green share done.
     let left = (centre - BAR_WIDTH / 2.0) * unit;
-    let bar = [
+    let track = [
         left,
         y * unit,
         left + BAR_WIDTH * unit,
         (y + BAR_HEIGHT) * unit,
     ];
-    canvas.fill(bar, BAR_TRACK)?;
-    let width = bar[2] - bar[0];
-    let [from, to] = match fraction {
-        Some(fraction) => [0.0, fraction.clamp(0.0, 1.0)],
-        None => {
-            if let Some(transitions) = canvas.transitions.as_deref_mut() {
-                transitions.marquee_drawn = true;
-            }
-            sweep(canvas.seconds)
-        }
-    };
-    canvas.fill(
-        [bar[0] + width * from, bar[1], bar[0] + width * to, bar[3]],
-        BAR_FILL,
-    )?;
+    canvas.fill(track, BAR_TRACK)?;
+    let filled = track[0] + (track[2] - track[0]) * bar.clamp(0.0, 1.0);
+    canvas.fill([track[0], track[1], filled, track[3]], BAR_FILL)?;
     y += BAR_HEIGHT + BAR_GAP;
     let line = |canvas: &mut Canvas<'_>, text: &str, y: f32, colour: [u8; 4]| {
         button::label_centred(
@@ -152,13 +205,13 @@ fn paint(
         line(canvas, text, y, DETAIL)?;
         y += LINE;
     }
-    // The tile: a grey border round black, the loaded cells white and the rest dark.
+    // The tile: a grey border round black, a cell for each chunk column round the player.
     y += TILE_GAP;
     let outer = [
-        (centre - tile / 2.0) * unit,
+        (centre - tile_size / 2.0) * unit,
         y * unit,
-        (centre + tile / 2.0) * unit,
-        (y + tile) * unit,
+        (centre + tile_size / 2.0) * unit,
+        (y + tile_size) * unit,
     ];
     canvas.fill(outer, [110, 110, 110, 255])?;
     canvas.fill(
@@ -170,22 +223,25 @@ fn paint(
         ],
         [0, 0, 0, 255],
     )?;
-    let loaded = loaded_cells(fraction.unwrap_or(0.0));
+    let (side, states) = cells(tile);
+    let pitch = TILE_INNER / side as f32;
+    let cell = (pitch - 1.0).max(1.0);
     let origin = [
         outer[0] + (TILE_BORDER + TILE_PAD) * unit,
         outer[1] + (TILE_BORDER + TILE_PAD) * unit,
     ];
-    for (row, cells) in loaded.iter().enumerate() {
-        for (column, on) in cells.iter().enumerate() {
-            let x = origin[0] + column as f32 * (CELL + CELL_GAP) * unit;
-            let top = origin[1] + row as f32 * (CELL + CELL_GAP) * unit;
-            canvas.fill(
-                [x, top, x + CELL * unit, top + CELL * unit],
-                if *on { LOADED_CELL } else { EMPTY_CELL },
-            )?;
-        }
+    for (place, state) in states.iter().enumerate() {
+        let colour = match state {
+            2 => LOADED_CELL,
+            1 => NEEDED_CELL,
+            0 => continue,
+            _ => EMPTY_CELL,
+        };
+        let x = origin[0] + (place % side) as f32 * pitch * unit;
+        let top = origin[1] + (place / side) as f32 * pitch * unit;
+        canvas.fill([x, top, x + cell * unit, top + cell * unit], colour)?;
     }
-    y += tile;
+    y += tile_size;
     if let Some((view, action)) = cancel {
         y += 12.0;
         let item = Btn::new("Cancel", Some(action));
@@ -208,7 +264,6 @@ pub(crate) fn draw(
     size: [f32; 2],
     title: &str,
     detail: &str,
-    fraction: Option<f32>,
     cancel: Option<MenuAction>,
 ) -> Result<(), PaintError> {
     let unit = unit(view, canvas, size);
@@ -218,29 +273,42 @@ pub(crate) fn draw(
         size,
         title,
         detail,
-        fraction,
+        menu_progress(view),
+        &Tile::Empty,
         cancel.map(|action| (view, action)),
     )
 }
 
 /// Draws the loading screen while the world itself loads, with no menu to read: the player's Java
-/// GUI scale (none for Auto) sets its size. The terrain stage says what Java says.
+/// GUI scale (none for Auto) sets its size, `terrain` is how much of the terrain has arrived and
+/// `grid` the chunks round the player. The terrain stages say what Java says.
+#[allow(clippy::too_many_arguments, reason = "one screen's drawing state")]
 pub(crate) fn draw_world(
     canvas: &mut Canvas<'_>,
     scale: Option<u8>,
     size: [f32; 2],
-    terrain: bool,
+    load: WorldLoad,
     title: &str,
     detail: &str,
-    fraction: Option<f32>,
+    terrain: Option<f32>,
+    grid: Option<&LoadingGrid>,
 ) -> Result<(), PaintError> {
     let unit = unit_for(size, scale, canvas.metrics.dpi_scale.get());
-    let (title, detail) = if terrain {
-        ("Loading terrain...", "")
-    } else {
-        (title, detail)
+    let (title, detail) = match load {
+        WorldLoad::Terrain | WorldLoad::Dimension => ("Loading terrain...", ""),
+        WorldLoad::Joining | WorldLoad::Other => (title, detail),
     };
-    paint(canvas, unit, size, title, detail, fraction, None)
+    let tile = grid.map_or(Tile::Empty, Tile::Grid);
+    paint(
+        canvas,
+        unit,
+        size,
+        title,
+        detail,
+        world_progress(load, terrain),
+        &tile,
+        None,
+    )
 }
 
 #[cfg(test)]
@@ -255,36 +323,59 @@ mod tests {
     }
 
     #[test]
-    fn the_tile_fills_from_its_middle_outward() {
-        let count = |fraction| {
-            loaded_cells(fraction)
-                .iter()
-                .flatten()
-                .filter(|cell| **cell)
-                .count()
-        };
-        assert_eq!(count(0.0), 0);
-        assert_eq!(count(1.0), CELLS * CELLS);
-        let few = loaded_cells(0.04);
-        assert!(
-            few[CELLS / 2][CELLS / 2],
-            "the first cell is the middle one"
-        );
-        assert!(!few[0][0]);
-        // More terrain never unloads a cell.
-        let (some, more) = (loaded_cells(0.3), loaded_cells(0.6));
-        for row in 0..CELLS {
-            for column in 0..CELLS {
-                assert!(!some[row][column] || more[row][column]);
-            }
+    fn one_bar_runs_through_the_whole_opening_and_never_goes_back() {
+        // A local world starting, then joining, then its terrain loading.
+        let mut last = -1.0_f32;
+        let steps = [
+            local_progress(Stage::StartingServer, None),
+            local_progress(Stage::Connecting, None),
+            world_progress(WorldLoad::Joining, None),
+            world_progress(WorldLoad::Terrain, Some(0.0)),
+            world_progress(WorldLoad::Terrain, Some(0.5)),
+            world_progress(WorldLoad::Terrain, Some(1.0)),
+        ];
+        for step in steps {
+            assert!(step >= last, "{step} follows {last}");
+            assert!((0.0..=1.0).contains(&step));
+            last = step;
         }
+        assert_eq!(last, 1.0);
+        // A server join through its packs stays inside the menu's half.
+        let packs = join_progress(JoinStage::Packs {
+            done: 1,
+            total: 2,
+            received_bytes: 50,
+            total_bytes: 100,
+        });
+        assert!(
+            join_progress(JoinStage::Connecting) < packs
+                && packs < join_progress(JoinStage::Generating)
+        );
+        assert!(join_progress(JoinStage::Generating) <= MENU_PART);
+        // The server being set up fills its own share of the start of the bar.
+        assert!(
+            local_progress(Stage::PullingImage, Some(1.0))
+                <= local_progress(Stage::StartingServer, None)
+        );
+        // A dimension change fills the whole bar by itself.
+        assert_eq!(world_progress(WorldLoad::Dimension, Some(0.5)), 0.5);
     }
 
     #[test]
-    fn an_unknown_amount_sweeps_a_third_of_the_bar_and_stays_inside_it() {
-        for step in 0..100 {
-            let [from, to] = sweep(f64::from(step) * 0.1);
-            assert!(0.0 <= from && to <= 1.0 + 1e-6 && (to - from - 1.0 / 3.0).abs() < 1e-6);
-        }
+    fn the_tile_shows_the_chunk_grid_it_is_given_or_a_waiting_square() {
+        let grid = LoadingGrid {
+            side: 3,
+            cells: vec![0, 1, 2, 1, 2, 2, 0, 1, 2],
+        };
+        assert_eq!(cells(&Tile::Grid(&grid)), (3, grid.cells.clone()));
+        let (side, waiting) = cells(&Tile::Empty);
+        assert_eq!(waiting.len(), side * side);
+        assert!(waiting.iter().all(|cell| *cell == 1));
+        // A grid whose cells do not fill its side is not trusted.
+        let broken = LoadingGrid {
+            side: 3,
+            cells: vec![2; 4],
+        };
+        assert_eq!(cells(&Tile::Grid(&broken)).0, PLACEHOLDER_CELLS);
     }
 }

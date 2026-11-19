@@ -13,6 +13,14 @@ pub const TOAST_SLIDE_IN_MILLIS: u64 = 500;
 pub const TOAST_DISPLAY_MILLIS: u64 = 3_000;
 pub const TOAST_SLIDE_OUT_MILLIS: u64 = 400;
 
+/// The columns round the player the loading screen shows as a square of cells, row by row: 0 for
+/// one the view does not need, 1 for one it needs that has not loaded, 2 for one that has.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LoadingGrid {
+    pub side: usize,
+    pub cells: Vec<u8>,
+}
+
 /// Which world-entry operation the loading screen reports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoadingStage {

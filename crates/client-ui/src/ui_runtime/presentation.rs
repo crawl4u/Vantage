@@ -257,6 +257,11 @@ pub struct UiPresentationRuntime {
     loading_stage: Option<LoadingStage>,
     /// How much of the terrain the loading screen shows as loaded, when it is known.
     loading_fraction: Option<f32>,
+    /// The chunks round the player, for the loading screen's tile.
+    loading_grid: Option<ui::LoadingGrid>,
+    /// Set once the Java menu style has been chosen, holding its GUI scale (none for Auto), and
+    /// kept while no menu shows so the loading screens that follow are Java's too.
+    java_loading: Option<Option<u8>>,
     startup: StartupPresentationState,
 }
 

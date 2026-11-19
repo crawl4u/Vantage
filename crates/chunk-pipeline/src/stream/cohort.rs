@@ -187,6 +187,35 @@ impl WorldStream {
             .then(|| (progress.loaded_target as f32 / progress.expected as f32).clamp(0.0, 1.0))
     }
 
+    /// The columns round the view's centre as a square of cells for a loading screen to draw, at
+    /// most `max_side` across: its side and its cells, row by row. A cell is 0 for a column the
+    /// view does not need, 1 for one it needs that has not loaded, and 2 for one that has.
+    #[must_use]
+    pub fn startup_view_grid(&self, max_side: usize) -> Option<(usize, Vec<u8>)> {
+        let target = self.publisher.cohort?;
+        let classified;
+        let expected = if target.publisher_geometry.is_some() {
+            &self.publisher.required_columns
+        } else {
+            classified = target.classifier_columns();
+            &classified
+        };
+        let reach = target.radius.clamp(0, i32::try_from(max_side / 2).unwrap_or(0));
+        let side = usize::try_from(reach * 2 + 1).ok()?;
+        let mut cells = Vec::with_capacity(side * side);
+        for dz in -reach..=reach {
+            for dx in -reach..=reach {
+                let key = ChunkKey::new(target.dimension, target.center[0] + dx, target.center[1] + dz);
+                cells.push(if self.loaded_columns.contains(&key) {
+                    2
+                } else {
+                    u8::from(expected.contains(&key))
+                });
+            }
+        }
+        Some((side, cells))
+    }
+
     /// How much of `target`'s required terrain has loaded. Agrees with [`Self::cohort_status`]
     /// on every field it shares, reading only the required and loaded columns.
     #[must_use]

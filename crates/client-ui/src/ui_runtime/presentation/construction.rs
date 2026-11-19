@@ -147,6 +147,8 @@ impl UiPresentationRuntime {
             projections: forms::FrameProjections::default(),
             loading_stage: None,
             loading_fraction: None,
+            loading_grid: None,
+            java_loading: None,
             startup: StartupPresentationState::default(),
         })
     }

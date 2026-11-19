@@ -293,6 +293,7 @@ fn loading_nodes(size: [f32; 2], dpi: f32, enabled: i32) -> Vec<UiNode> {
                 artwork: &artwork,
                 dimension: 0,
                 fraction: None,
+                grid: None,
                 java: None,
             },
             &mut frame,

@@ -27,6 +27,11 @@ impl UiPresentationRuntime {
         self.loading_stage = stage;
     }
 
+    /// Sets the chunks round the player the loading screen draws; none when unknown.
+    pub fn set_loading_grid(&mut self, grid: Option<ui::LoadingGrid>) {
+        self.loading_grid = grid;
+    }
+
     /// Sets how much of the terrain the loading screen shows as loaded; none when unknown.
     pub fn set_loading_fraction(&mut self, fraction: Option<f32>) {
         self.loading_fraction = fraction;
@@ -43,6 +48,13 @@ impl UiPresentationRuntime {
             && current.as_ref() == incoming
         {
             return;
+        }
+        if let Some(view) = &view {
+            // The style outlives the menu, so the loading screens after it match.
+            let options = &view.settings_options;
+            self.java_loading = (options.menu_style()
+                == launcher::menu::settings_options::menu_style::MenuStyle::Java)
+                .then(|| options.java_gui_scale());
         }
         self.menu_view = view.map(Arc::new);
     }

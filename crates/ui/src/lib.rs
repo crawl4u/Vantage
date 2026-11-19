@@ -32,9 +32,10 @@ pub use geometry::{
     SafeArea, UiPoint, UiRect, UiScale, gui_scale,
 };
 pub use hud::{
-    BoundedStat, HudExperience, HudPlayerStatus, HudStore, HudViewNode, HudViewRole, LoadingStage,
-    MAX_TOAST_RETAINED_BYTES, MAX_TOASTS, ShownToast, StandingToast, TOAST_DISPLAY_MILLIS,
-    TOAST_SLIDE_IN_MILLIS, TOAST_SLIDE_OUT_MILLIS, TimedText, TitleDurations, Toast, ToastPress,
+    BoundedStat, HudExperience, HudPlayerStatus, HudStore, HudViewNode, HudViewRole, LoadingGrid,
+    LoadingStage, MAX_TOAST_RETAINED_BYTES, MAX_TOASTS, ShownToast, StandingToast,
+    TOAST_DISPLAY_MILLIS, TOAST_SLIDE_IN_MILLIS, TOAST_SLIDE_OUT_MILLIS, TimedText, TitleDurations,
+    Toast, ToastPress,
 };
 pub use icon::IconRef;
 pub use model::{
