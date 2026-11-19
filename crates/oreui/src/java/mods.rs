@@ -79,13 +79,13 @@ fn footer(snapshot: &Snapshot) -> (Vec<Btn<'static>>, Vec<Btn<'static>>) {
     let up = Btn::new(
         "Move Up",
         on.filter(|place| idle && *place > 0)
-            .and_then(|_| chosen)
+            .and(chosen)
             .map(|id| command(Action::MoveUp(id))),
     );
     let down = Btn::new(
         "Move Down",
         on.filter(|place| idle && place + 1 < active.len())
-            .and_then(|_| chosen)
+            .and(chosen)
             .map(|id| command(Action::MoveDown(id))),
     );
     let reload = Btn::new(

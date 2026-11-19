@@ -752,7 +752,7 @@ fn slider(
     let handle_key = crate::images::java::key(HANDLE[lit]);
     let [handle_width, handle_height] = canvas
         .sprite_size(&handle_key)
-        .map_or(HANDLE_SIZE, |[width, height]| [width, height]);
+        .unwrap_or(HANDLE_SIZE);
     let (handle_width, handle_height) = (handle_width * unit, handle_height * unit);
     let travel = (bounds[2] - bounds[0] - handle_width).max(0.0);
     let left = (bounds[0] + fraction * travel).round();

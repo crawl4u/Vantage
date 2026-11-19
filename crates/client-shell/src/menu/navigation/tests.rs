@@ -298,9 +298,11 @@ fn renaming_a_pack_folder_opens_the_field_and_commits_or_cancels_it() {
     use launcher::global_resources::Action;
 
     let mut menu = MenuRuntime::new(true, 2, "Player".into());
-    let mut snapshot = launcher::global_resources::Snapshot::default();
-    snapshot.folders = vec!["PVP".to_owned()];
-    snapshot.folder = "PVP".to_owned();
+    let snapshot = launcher::global_resources::Snapshot {
+        folders: vec!["PVP".to_owned()],
+        folder: "PVP".to_owned(),
+        ..Default::default()
+    };
     menu.global_resources = std::sync::Arc::new(snapshot);
     menu.activate(MenuAction::GlobalResources(Action::RenameFolder));
     assert!(menu.view().pack_renaming);

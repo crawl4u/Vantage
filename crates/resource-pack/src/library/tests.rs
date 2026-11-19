@@ -1065,9 +1065,8 @@ fn a_selected_or_applied_pack_is_not_removed() {
         Err(LibraryError::PackInUse)
     ));
     library.apply().unwrap();
-    library
-        .commit_selection(&library.active().to_vec())
-        .unwrap();
+    let active = library.active().to_vec();
+    library.commit_selection(&active).unwrap();
     // Deselected but the applied selection still names it.
     library.deactivate(Uuid::from_u128(8));
     assert!(matches!(

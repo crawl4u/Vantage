@@ -618,6 +618,6 @@ fn halving_averages_each_two_by_two_block_and_rounds_odd_sides_up() {
     let (half, size) = halved(&rgba, [2, 2]);
     assert_eq!(size, [1, 1]);
     assert_eq!(&half[..], &[85, 85, 85, 85]);
-    let (_, odd) = halved(&vec![0u8; 3 * 5 * 4], [3, 5]);
+    let (_, odd) = halved(&[0u8; 3 * 5 * 4], [3, 5]);
     assert_eq!(odd, [2, 3]);
 }

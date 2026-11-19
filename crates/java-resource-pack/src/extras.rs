@@ -56,8 +56,8 @@ pub(crate) fn is_listed(java: &str) -> bool {
 pub(crate) fn bedrock_path(java: &str, width: u32, height: u32) -> Option<&'static str> {
     let target = TABLE.get(java)?;
     let [vanilla_width, vanilla_height] = target.size;
-    let scaled = width % vanilla_width == 0
-        && height % vanilla_height == 0
+    let scaled = width.is_multiple_of(vanilla_width)
+        && height.is_multiple_of(vanilla_height)
         && width / vanilla_width == height / vanilla_height
         && width >= vanilla_width;
     scaled.then_some(target.bedrock)

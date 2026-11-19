@@ -64,8 +64,7 @@ pub const CONTAINER_SWAPS: [(&str, &str); 9] = [
     ),
 ];
 
-/// The container-only panel's key and file.
-const CONTAINER_PANEL_KEY: &str = CONTAINER_SWAPS[0].1;
+/// The container-only panel's file.
 pub(crate) const CONTAINER_PANEL: &str = "textures/ui/dialog_background_container.png";
 
 /// The panel's sidecar: a four-pixel frame round a flat middle, over the Java panel's own 176 by
