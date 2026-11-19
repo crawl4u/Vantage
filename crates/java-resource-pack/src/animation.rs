@@ -50,14 +50,22 @@ static TILES: LazyLock<HashMap<&'static str, Vec<Tile>>> = LazyLock::new(|| {
 });
 
 /// The terrain atlas tiles the block texture at `path` (relative to `textures/`, no extension)
-/// is the only texture of, each of which a weighted list of textures can stand in for. A block
-/// draws whichever tile its `blocks.json` entry names, so every one is listed.
+/// alone fills, every state variant included, so a weighted list of textures can stand in for the
+/// whole tile. A block draws whichever tile its `blocks.json` entry names, so every one is listed.
 pub(crate) fn solo_tiles(path: &str) -> impl Iterator<Item = &'static str> {
-    TILES
-        .get(path)
-        .into_iter()
-        .flatten()
-        .filter(|tile| tile.index == 0 && tile.variant.is_none() && tile.variants == 1)
+    let tiles = TILES.get(path).map(Vec::as_slice).unwrap_or_default();
+    tiles
+        .iter()
+        .filter(|tile| tile.index == 0 && tile.variant.is_none() && tile.variants >= 1)
+        .filter(|tile| {
+            let filled = tiles
+                .iter()
+                .filter(|other| {
+                    other.name == tile.name && other.variant.is_none() && other.variants > 0
+                })
+                .count();
+            filled == tile.variants as usize
+        })
         .map(|tile| tile.name)
 }
 
@@ -225,6 +233,12 @@ mod tests {
         let patch = patch("blocks/bubble_column_outer_a", &animation(text), 2).remove(0);
         assert_eq!(patch["frames"], json!([0, 1]));
         assert_eq!(patch["atlas_tile_variant"], 0);
+    }
+
+    #[test]
+    fn a_picture_filling_every_variant_of_a_tile_can_be_replaced_whole() {
+        assert!(solo_tiles("blocks/grass_top").any(|tile| tile == "grass_top"));
+        assert!(solo_tiles("blocks/not_a_texture").next().is_none());
     }
 
     #[test]
