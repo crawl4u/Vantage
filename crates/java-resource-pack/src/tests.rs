@@ -1300,3 +1300,18 @@ fn a_modern_square_zombie_fills_bedrocks_half_height_layout_with_its_top_half() 
         ((128, 64), RED)
     );
 }
+
+#[test]
+fn a_huge_hotbar_is_shrunk_so_every_slot_fits_the_clients_texture_pages() {
+    let sprites = "assets/minecraft/textures/gui/sprites/hud/";
+    let files = pack(vec![(
+        &format!("{sprites}hotbar.png"),
+        solid(182 * 32, 22 * 32, WHITE),
+    )]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    for slot in 0..9 {
+        let (size, _) = pixel(&out, &format!("textures/ui/hotbar_{slot}.png"), 0, 0);
+        assert_eq!(size, (20 * 4, 22 * 4), "slot {slot}");
+    }
+}

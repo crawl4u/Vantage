@@ -289,23 +289,56 @@ pub(crate) fn legacy_sprites(icons: &RgbaImage, budget: &Budget) -> BTreeMap<Str
         .collect()
 }
 
-/// Converts HUD sprites, a hotbar strip and a hotbar selection into Bedrock UI textures.
+/// The finest scale (texels per Java pixel) the HUD keeps: far past what a screen shows, while
+/// a 32x pack's HUD pictures at full size would not all fit the client's texture pages.
+const MAX_HUD_SCALE: u32 = 4;
+
+/// `image` shrunk by `MAX_HUD_SCALE / scale`, `scale` being the pack's texels per Java pixel; an
+/// image that is already within the cap is copied as it is. `None` when it would shrink to
+/// nothing.
+fn capped_scale(image: &RgbaImage, scale: u32, budget: &Budget) -> Option<RgbaImage> {
+    if scale <= MAX_HUD_SCALE {
+        return duplicate(image, budget);
+    }
+    let width = image.width() * MAX_HUD_SCALE / scale;
+    let height = image.height() * MAX_HUD_SCALE / scale;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    budget.reserve(width, height).then(|| {
+        image::imageops::resize(image, width, height, image::imageops::FilterType::Triangle)
+    })
+}
+
+/// Converts HUD sprites, a hotbar strip and a hotbar selection into Bedrock UI textures. A pack
+/// finer than [`MAX_HUD_SCALE`], judged by its hotbar, has every picture shrunk to that scale.
 pub(crate) fn hud_textures(
     sprites: &BTreeMap<String, RgbaImage>,
     hotbar: Option<&RgbaImage>,
     selection: Option<&RgbaImage>,
     budget: &Budget,
 ) -> Vec<(String, RgbaImage)> {
+    let scale = hotbar
+        .map(|hotbar| hotbar.width() / 182)
+        .or_else(|| selection.map(|selection| selection.width() / 24))
+        .unwrap_or(1)
+        .max(1);
+    let sprites: BTreeMap<&String, RgbaImage> = sprites
+        .iter()
+        .filter_map(|(name, image)| Some((name, capped_scale(image, scale, budget)?)))
+        .collect();
+    let hotbar = hotbar.and_then(|hotbar| capped_scale(hotbar, scale, budget));
+    let selection = selection.and_then(|selection| capped_scale(selection, scale, budget));
     let mut out: BTreeMap<String, RgbaImage> = BTreeMap::new();
     for (sprite, path) in SPRITE_UI {
         if let Some(image) = sprites
-            .get(sprite)
+            .get(&sprite.to_owned())
             .and_then(|image| duplicate(image, budget))
         {
             out.insert(path.to_owned(), image);
         }
     }
-    if let Some(hotbar) = hotbar {
+    if let Some(hotbar) = hotbar.as_ref() {
         // The 182-pixel Java hotbar is a 1-pixel cap, nine 20-pixel slots and another 1-pixel
         // cap; Bedrock stores each piece separately.
         let scale = (hotbar.width() / 182).max(1);
@@ -329,7 +362,7 @@ pub(crate) fn hud_textures(
             }
         }
     }
-    if let Some(selection) = selection.and_then(|selection| square_selection(selection, budget)) {
+    if let Some(selection) = selection.and_then(|selection| square_selection(&selection, budget)) {
         out.insert("textures/ui/selected_hotbar_slot.png".into(), selection);
     }
     out.into_iter().collect()
