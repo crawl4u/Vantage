@@ -1,18 +1,26 @@
 //! The ownership gate at the start of every packaged launch: play continues only when a proof
 //! source this platform offers finds that the player owns Minecraft.
 
-use std::sync::atomic::AtomicBool;
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    time::Instant,
+};
 
 use launcher::{
     install_layout::InstallLayout,
-    ownership::{self as policy, Check, Sources, Verdict},
+    ownership::{Check, LocalInstall, LocalProbe, Sources, Store, Verdict},
 };
 use launcher_host::{
     native_dialog::{Consent, Prompter},
     ownership as sources,
 };
+use serde::Serialize;
 
-use crate::screen::{Action, refused_actions};
+use crate::{
+    Progress,
+    screen::{Action, Effect, Meter, Screen, refused_actions},
+    status::Status,
+};
 
 /// Why the gate stayed closed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,15 +39,25 @@ pub(crate) enum Answer {
     Denied(Refusal),
 }
 
-/// Whether play may continue without asking the player: the gate is off, the local install was
-/// found, or a valid pass exists (which is then re-checked in the background).
-pub(crate) fn open_without_asking(layout: &InstallLayout) -> bool {
-    let available = policy::sources();
+/// One check's answer and the sources the probe behind it offered.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct Checked {
+    pub(crate) answer: Answer,
+    pub(crate) sources: Sources,
+    /// The app that opens "Get Minecraft" first.
+    pub(crate) store_app: Option<&'static str>,
+}
+
+/// Whether play may continue without asking the player, decided from `local`, this check's one
+/// probe: the gate is off, the local install was found, or a valid pass exists (which is then
+/// re-checked in the background).
+pub(crate) fn open_without_asking(layout: &InstallLayout, local: LocalProbe) -> bool {
+    let available = local.sources();
     if !available.gated() {
-        tracing::info!("ownership gate off: no proof source on this platform in this build");
+        tracing::info!("ownership gate off: no proof source on this device in this build");
         return true;
     }
-    if found_locally(layout, available) || remembered_locally(layout, available) {
+    if found_locally(layout, available, local) || remembered_locally(layout, available) {
         return true;
     }
     let Some(client_id) = available.client_id() else {
@@ -64,10 +82,10 @@ pub(crate) fn open_without_asking(layout: &InstallLayout) -> bool {
     true
 }
 
-/// Whether `available` includes a local install and it was found. A find is remembered, so the
-/// game need not stay installed.
-fn found_locally(layout: &InstallLayout, available: Sources) -> bool {
-    let found = available.local_install && sources::local_install_found();
+/// Whether `available` includes a local install and `local` found it. A find is remembered, so
+/// the game need not stay installed.
+fn found_locally(layout: &InstallLayout, available: Sources, local: LocalProbe) -> bool {
+    let found = available.local_install.is_some() && local.install == LocalInstall::Found;
     if found {
         tracing::info!(source = "local_install", "ownership verified");
         sources::record_local_install(layout);
@@ -78,36 +96,64 @@ fn found_locally(layout: &InstallLayout, available: Sources) -> bool {
 /// Whether `available` includes a local install and a record of finding it on this machine
 /// remains, so the game need not be installed now.
 fn remembered_locally(layout: &InstallLayout, available: Sources) -> bool {
-    let remembered = available.local_install && sources::stored_install_valid(layout);
+    let remembered = available.local_install.is_some() && sources::stored_install_valid(layout);
     if remembered {
         tracing::info!(source = "stored_record", "ownership verified");
     }
     remembered
 }
 
-/// Checks every source once, the local install first. `sign_in` replaces the license account
-/// through a device code, which `on_code` shows.
+/// Checks every source once with a fresh probe of this device; see [`verify_with`].
 pub(crate) fn verify(
     layout: &InstallLayout,
     sign_in: bool,
     cancel: &AtomicBool,
     on_code: &mut dyn FnMut(&str, &str),
-) -> Answer {
-    let available = policy::sources();
-    if !sign_in && (found_locally(layout, available) || remembered_locally(layout, available)) {
-        return Answer::Allowed;
-    }
-    let Some(client_id) = available.client_id() else {
-        tracing::info!(result = "not_installed", "ownership not verified");
-        return Answer::Denied(Refusal::NotInstalled);
+) -> Checked {
+    verify_with(layout, sources::probe_local(), sign_in, cancel, on_code)
+}
+
+/// Checks every source once, the local install from `local` first, deciding as a launch would:
+/// with no source on the device, the gate is off. `sign_in` replaces the license account
+/// through a device code, which `on_code` shows.
+fn verify_with(
+    layout: &InstallLayout,
+    local: LocalProbe,
+    sign_in: bool,
+    cancel: &AtomicBool,
+    on_code: &mut dyn FnMut(&str, &str),
+) -> Checked {
+    let available = local.sources();
+    let answer = if !available.gated() || (!sign_in
+            && (found_locally(layout, available, local) || remembered_locally(layout, available))) {
+        Answer::Allowed
+    } else if let Some(client_id) = available.client_id() {
+        match sources::check_and_record(layout, client_id, sign_in, cancel, on_code) {
+            Verdict::Allow => Answer::Allowed,
+            Verdict::Deny(check) => Answer::Denied(match check {
+                Check::NotOwned => Refusal::NotOwned,
+                Check::SignInRequired => Refusal::SignInRequired,
+                Check::Verified | Check::Unverifiable => Refusal::Unverifiable,
+            }),
+        }
+    } else {
+        let refusal = local_refusal(local);
+        tracing::info!(refusal = ?refusal, "ownership not verified");
+        Answer::Denied(refusal)
     };
-    match sources::check_and_record(layout, client_id, sign_in, cancel, on_code) {
-        Verdict::Allow => Answer::Allowed,
-        Verdict::Deny(check) => Answer::Denied(match check {
-            Check::NotOwned => Refusal::NotOwned,
-            Check::SignInRequired => Refusal::SignInRequired,
-            Check::Verified | Check::Unverifiable => Refusal::Unverifiable,
-        }),
+    Checked {
+        answer,
+        sources: available,
+        store_app: local.store_app,
+    }
+}
+
+/// The refusal the local install alone gives: one it couldn't read is unverifiable, so Try again
+/// probes again.
+pub(crate) const fn local_refusal(local: LocalProbe) -> Refusal {
+    match local.install {
+        LocalInstall::Unreadable => Refusal::Unverifiable,
+        LocalInstall::Found | LocalInstall::NotFound => Refusal::NotInstalled,
     }
 }
 
@@ -127,27 +173,72 @@ pub(crate) const fn title(refusal: Refusal) -> &'static str {
     }
 }
 
+/// Where `store`'s install comes from, for refusals.
+const fn install_text(store: Store) -> &'static str {
+    match store {
+        Store::Microsoft => {
+            concat!(
+                "On Windows, ",
+                launcher::product_name!(),
+                " can use Minecraft installed from the Microsoft Store or the Xbox app. If you bought Minecraft for Windows or Minecraft: Java & Bedrock Edition for PC, it's already in your library there."
+            )
+        }
+        Store::Android => {
+            concat!(
+                "On Android, ",
+                launcher::product_name!(),
+                " can use Minecraft installed from Google Play. A copy bought on another platform or store, such as the Amazon Appstore, doesn't count here. If Google Play already shows it as installed, update it there; if no update is available, back up your worlds, then reinstall it from Google Play."
+            )
+        }
+    }
+}
+
 /// The refusal's explanation for `available` sources, ending with the notice.
 pub(crate) fn body(refusal: Refusal, available: Sources) -> String {
     let name = launcher::PRODUCT_NAME;
-    let install = format!(
-        "On Windows, {name} can use Minecraft installed from the Microsoft Store or the Xbox app. If you bought Minecraft for Windows or Minecraft: Java & Bedrock Edition for PC, it's already in your library there."
-    );
+    let install = available.local_install.map(install_text);
     let mut text = match refusal {
         Refusal::NotInstalled => format!(
-            "{name} is for people who own Minecraft. {install} Install it, then select Try again. Once {name} has found it, it remembers that you own Minecraft, so the game doesn't have to stay installed."
+            "{name} is for people who own Minecraft. {} Install it, then select Try again. Once {name} has found it, it remembers that you own Minecraft, so the game doesn't have to stay installed.",
+            install.unwrap_or_default()
         ),
         Refusal::NotOwned => "The Microsoft account you signed in with doesn't own Minecraft for PC. A copy bought on a phone or console doesn't include PC. Sign in with the account that bought it, or get Minecraft.".to_owned(),
         Refusal::SignInRequired => format!("{name} is for people who own Minecraft. Sign in once with the Microsoft account that owns Minecraft for PC so {name} can confirm it. Afterwards you can play with any of your accounts."),
-        Refusal::Unverifiable => format!("{name} couldn't reach Microsoft to confirm that you own Minecraft. Check your connection, then try again."),
+        Refusal::Unverifiable if available.account => format!("{name} couldn't reach Microsoft to confirm that you own Minecraft. Check your connection, then try again."),
+        Refusal::Unverifiable => format!("{LOCAL_UNREADABLE} Try again."),
     };
-    if available.local_install && refusal != Refusal::NotInstalled {
+    if let Some(install) = install.filter(|_| refusal != Refusal::NotInstalled) {
         text.push('\n');
-        text.push_str(&install);
+        text.push_str(install);
     }
     text.push('\n');
     text.push_str(NOTICE);
     text
+}
+
+/// Why a local install couldn't be checked.
+const LOCAL_UNREADABLE: &str = concat!(
+    launcher::product_name!(),
+    " couldn't read this device's app details to confirm that Minecraft is installed."
+);
+
+/// What a game started without its setup screen shows when the local install keeps the gate
+/// closed, as when Android restores it after the process ended; its only way back is reopening
+/// the app.
+pub(crate) fn restored_refusal(refusal: Refusal, available: Sources) -> String {
+    let reason = if refusal == Refusal::Unverifiable {
+        format!("{LOCAL_UNREADABLE} Close and reopen the app to try again.")
+    } else {
+        let install = available
+            .local_install
+            .map(install_text)
+            .unwrap_or_default();
+        let name = launcher::PRODUCT_NAME;
+        format!(
+            "{name} is for people who own Minecraft. {install} Install it, then close and reopen the app."
+        )
+    };
+    format!("{}\n{reason}\n{NOTICE}", title(refusal))
 }
 
 /// The sign-in prompt's text.
@@ -158,12 +249,11 @@ pub(crate) fn code_prompt(uri: &str, code: &str) -> String {
 }
 
 /// One gate check: whether to sign in, and where to show a sign-in code's URI and code.
-pub(crate) type Verify<'a> = dyn FnMut(bool, &mut dyn FnMut(&str, &str)) -> Answer + 'a;
+pub(crate) type Verify<'a> = dyn FnMut(bool, &mut dyn FnMut(&str, &str)) -> Checked + 'a;
 
 /// Runs the gate with native dialogs when no setup window can open; returns whether play may
 /// continue. `verify` is [`verify`] for this install.
 pub(crate) fn with_dialogs(
-    available: Sources,
     prompter: &dyn Prompter,
     title_text: &str,
     verify: &mut Verify<'_>,
@@ -171,9 +261,11 @@ pub(crate) fn with_dialogs(
     let mut sign_in = false;
     loop {
         // A blocking dialog, so the code stays readable; the check keeps polling meanwhile.
-        let refusal = match verify(sign_in, &mut |uri, code| {
+        let checked = verify(sign_in, &mut |uri, code| {
             prompter.alert(title_text, &code_prompt(uri, code));
-        }) {
+        });
+        let available = checked.sources;
+        let refusal = match checked.answer {
             Answer::Allowed => return true,
             Answer::Denied(refusal) => refusal,
         };
@@ -189,7 +281,10 @@ pub(crate) fn with_dialogs(
         };
         let mut text = format!("{}\n\n{}", title(refusal), body(refusal, available));
         if actions.contains(&Action::GetMinecraft) {
-            text.push_str(&format!("\n\nGet Minecraft: {}", policy::GET_MINECRAFT_URL));
+            text.push_str(&format!(
+                "\n\nGet Minecraft: {}",
+                available.get_minecraft_url()
+            ));
         }
         text.push_str(&format!("\n\n{question}"));
         match prompter.confirm(title_text, &text) {
@@ -213,6 +308,134 @@ pub(crate) fn with_dialogs(
                 return false;
             }
         }
+    }
+}
+
+/// One gate screen for a host that draws its own setup interface.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Prompt {
+    pub title: String,
+    /// Paragraphs split on `\n`.
+    pub body: String,
+    /// In display order; the first is the default.
+    pub buttons: Vec<Button>,
+}
+
+/// One button; one that neither opens a link nor quits answers the host's wait.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Button {
+    pub label: String,
+    /// A link to open, staying on the screen.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open: Option<String>,
+    /// The app to try first for `open`, before any app that handles it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app: Option<String>,
+    /// Closes setup without playing.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub quit: bool,
+}
+
+impl Prompt {
+    /// `store_app` opens "Get Minecraft" first.
+    fn new(screen: &Screen, store_app: Option<&str>) -> Self {
+        let button = |action: Action| Button {
+            label: screen.button_label(action).to_owned(),
+            open: match (action, screen) {
+                (Action::GetMinecraft, Screen::Refused { sources, .. }) => {
+                    Some(sources.get_minecraft_url().to_owned())
+                }
+                (Action::OpenLink, Screen::SignIn { uri, .. }) => Some(uri.clone()),
+                _ => None,
+            },
+            app: store_app
+                .filter(|_| action == Action::GetMinecraft)
+                .map(str::to_owned),
+            quit: action == Action::Quit,
+        };
+        Self {
+            title: screen.title(false).to_owned(),
+            body: screen.body(),
+            buttons: screen.actions().iter().copied().map(button).collect(),
+        }
+    }
+}
+
+/// A setup interface that draws the gate's screens itself, as Android's setup activity does.
+pub trait GateHost {
+    /// Shows a report while a check runs.
+    fn progress(&mut self, update: &Progress);
+    /// Shows `prompt` while a check runs; its buttons only open links or quit.
+    fn show(&mut self, prompt: &Prompt);
+    /// Shows `prompt` and returns the index of the answering button pressed, or `None` once the
+    /// host has closed.
+    fn choose(&mut self, prompt: &Prompt) -> Option<usize>;
+}
+
+/// Runs the gate through `host` for a packaged install; returns whether play may continue.
+/// Setting `cancel` ends it unanswered.
+pub fn verify_with_host(
+    layout: &InstallLayout,
+    cancel: &AtomicBool,
+    host: &mut dyn GateHost,
+) -> bool {
+    if !layout.is_installed() {
+        return true;
+    }
+    // The launch's one probe decides both the silent pass and the first prompted check.
+    let local = sources::probe_local();
+    if open_without_asking(layout, local) {
+        return true;
+    }
+    let mut first = Some(local);
+    with_host(cancel, host, &mut |sign_in, on_code| {
+        let local = first.take().unwrap_or_else(sources::probe_local);
+        verify_with(layout, local, sign_in, cancel, on_code)
+    })
+}
+
+/// [`verify_with_host`] after the silent checks, with `verify` for this install; each check's
+/// screen comes from the sources its own probe offered.
+fn with_host(cancel: &AtomicBool, host: &mut dyn GateHost, verify: &mut Verify<'_>) -> bool {
+    let mut sign_in = false;
+    loop {
+        let checking = Status::awaiting_ownership();
+        if let Some(update) = Progress::new(&checking, &mut Meter::default(), Instant::now(), false)
+        {
+            host.progress(&update);
+        }
+        let checked = verify(sign_in, &mut |uri, code| {
+            let screen = Screen::SignIn {
+                uri: uri.to_owned(),
+                code: code.to_owned(),
+            };
+            host.show(&Prompt::new(&screen, None));
+        });
+        if cancel.load(Ordering::Relaxed) {
+            return false;
+        }
+        let screen = match checked.answer {
+            Answer::Allowed => return true,
+            Answer::Denied(refusal) => Screen::Refused {
+                refusal,
+                sources: checked.sources,
+            },
+        };
+        let prompt = Prompt::new(&screen, checked.store_app);
+        sign_in = loop {
+            let Some(&action) = host
+                .choose(&prompt)
+                .and_then(|index| screen.actions().get(index))
+            else {
+                return false;
+            };
+            match screen.on_action(action).1 {
+                Effect::Verify { sign_in } => break sign_in,
+                Effect::Quit => return false,
+                // The host opens links itself.
+                _ => {}
+            }
+        };
     }
 }
 

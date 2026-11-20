@@ -24,30 +24,101 @@ fn license_files() -> (tempfile::TempDir, PathBuf, PathBuf) {
 fn the_gate_applies_only_where_some_source_exists() {
     let none = Sources::default();
     assert!(!none.gated());
+    for store in [Store::Microsoft, Store::Android] {
+        assert!(
+            Sources {
+                local_install: Some(store),
+                account: false
+            }
+            .gated()
+        );
+    }
     assert!(
         Sources {
-            local_install: true,
-            account: false
-        }
-        .gated()
-    );
-    assert!(
-        Sources {
-            local_install: false,
+            local_install: None,
             account: true
         }
         .gated()
     );
     assert_eq!(
-        sources().local_install,
-        cfg!(windows),
-        "only Windows can find a store install"
-    );
-    assert_eq!(
-        Sources::for_build(false).gated(),
+        Sources::for_build(None).gated(),
         MSA_CLIENT_ID.is_some(),
         "without a local source, only a built-in client ID turns the gate on"
     );
+}
+
+/// A store that can't vouch for installs on the device leaves only the account source.
+#[test]
+fn an_unusable_store_drops_only_the_local_source() {
+    for account in [false, true] {
+        let platform = Sources {
+            local_install: Some(Store::Android),
+            account,
+        };
+        assert_eq!(platform.with_store_usable(true), platform);
+        let unusable = platform.with_store_usable(false);
+        assert_eq!(unusable.local_install, None);
+        assert_eq!(unusable.gated(), account);
+    }
+    assert_eq!(sources(false).local_install, None);
+}
+
+/// Only AtlasOS missing both the game and Gaming Services drops the store source, and then only it.
+#[test]
+fn atlas_os_without_gaming_services_leaves_only_the_account_source() {
+    for atlas_os in [false, true] {
+        for gaming_services in [false, true] {
+            let found = LocalProbe::windows(true, atlas_os, gaming_services);
+            assert!(found.store_usable);
+            assert_eq!(found.install, LocalInstall::Found);
+            let missing = LocalProbe::windows(false, atlas_os, gaming_services);
+            assert_eq!(missing.install, LocalInstall::NotFound);
+            assert_eq!(missing.store_usable, !atlas_os || gaming_services);
+        }
+    }
+    for account in [false, true] {
+        let windows = Sources {
+            local_install: Some(Store::Microsoft),
+            account,
+        };
+        let atlas = windows.with_store_usable(LocalProbe::windows(false, true, false).store_usable);
+        assert_eq!(atlas.local_install, None);
+        assert_eq!(atlas.gated(), account);
+    }
+}
+
+#[test]
+fn atlas_os_is_recognised_by_its_playbook_marker() {
+    for value in [
+        "Atlas Playbook 0.5.0",
+        "Atlas Playbook v0.4.1",
+        "atlas playbook 1.0.0",
+    ] {
+        assert!(is_atlas_os_marker(value), "{value}");
+    }
+    for value in [
+        "",
+        "Atlas Playbook",
+        "Atlas Team",
+        "Dell Inc.",
+        "My Atlas Playbook 0.5.0",
+    ] {
+        assert!(!is_atlas_os_marker(value), "{value}");
+    }
+}
+
+#[test]
+fn get_minecraft_follows_the_local_store() {
+    assert_eq!(
+        Sources::for_build(Some(Store::Android)).get_minecraft_url(),
+        android::STORE_LISTING
+    );
+    for local_install in [Some(Store::Microsoft), None] {
+        assert_eq!(
+            Sources::for_build(local_install).get_minecraft_url(),
+            GET_MINECRAFT_URL
+        );
+    }
 }
 
 #[test]

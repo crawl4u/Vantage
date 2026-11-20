@@ -12,7 +12,7 @@
     <!-- The update helper owns the client relaunch. -->
     <Property Id="MSIDISABLERMRESTART" Value="1" />
 
-    <!-- A custom INSTALLFOLDER from the command line survives elevation, so upgrades stay in place. -->
+    <!-- A custom INSTALLFOLDER from the command line is kept, so upgrades stay in place. -->
     <Property Id="INSTALLFOLDER" Secure="yes" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -21,6 +21,7 @@
       </Directory>
     </StandardDirectory>
 
+    <!-- Each scope keys its shortcuts separately, so removing one product never breaks the other's. -->
     <StandardDirectory Id="DesktopFolder">
       <Component Id="DesktopShortcut" Guid="*">
         <Shortcut Id="DesktopAppShortcut" Name="Vantage" Target="[INSTALLFOLDER]cinnabar.exe"

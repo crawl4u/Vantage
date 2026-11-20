@@ -123,20 +123,26 @@ pub fn dialog(view: &MenuView, dialog: MenuDialog, translate: Translate<'_>) -> 
         ),
         MenuDialog::RemoveLicenseAccount => (
             "Remove ownership account?".into(),
-            if crate::ownership::sources().local_install {
-                concat!(
+            // Only builds with an account source show this, so the platform's store is the one to name.
+            match crate::ownership::LOCAL_STORE {
+                Some(crate::ownership::Store::Microsoft) => concat!(
                     crate::product_name!(),
                     " uses this Microsoft account only to confirm that you own Minecraft. Without it, ",
                     crate::product_name!(),
                     " needs Minecraft installed from the Microsoft Store or the Xbox app, or a new sign-in, the next time it starts."
-                )
-            } else {
-                concat!(
+                ),
+                Some(crate::ownership::Store::Android) => concat!(
+                    crate::product_name!(),
+                    " uses this Microsoft account only to confirm that you own Minecraft. Without it, ",
+                    crate::product_name!(),
+                    " needs Minecraft installed from Google Play, or a new sign-in, the next time it starts."
+                ),
+                None => concat!(
                     crate::product_name!(),
                     " uses this Microsoft account only to confirm that you own Minecraft. Without it, ",
                     crate::product_name!(),
                     " asks you to sign in again the next time it starts."
-                )
+                ),
             }
             .into(),
             "Remove".into(),
