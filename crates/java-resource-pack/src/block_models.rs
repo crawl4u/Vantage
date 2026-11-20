@@ -173,6 +173,18 @@ pub(crate) fn translate(
             let Some(resolved) = java_model::resolve(model, &load) else {
                 return false;
             };
+            // Whole cubes keep the texture pipeline's occluding cubes, and a turned element's
+            // Java rescaling is not translated, so those stay vanilla.
+            if resolved
+                .elements
+                .iter()
+                .any(|element| element.rotation.is_some())
+            {
+                return false;
+            }
+            if is_full_cube(&resolved) {
+                return true;
+            }
             let Some((identifier, materials)) = geometry(layout, model, &resolved) else {
                 return false;
             };
@@ -210,6 +222,12 @@ pub(crate) fn translate(
         files.push((BINDINGS.to_owned(), bytes));
     }
     Output { files }
+}
+
+/// Whether the model is one box filling the block.
+fn is_full_cube(model: &java_model::Model) -> bool {
+    matches!(model.elements.as_slice(), [element]
+        if element.from == [0.0; 3] && element.to == [16.0; 3])
 }
 
 /// The geometry identifier of a model and the Bedrock texture key each variable it draws names;
@@ -327,6 +345,27 @@ mod tests {
         assert!(run(&files).files.is_empty());
     }
 
+    #[test]
+    fn whole_cubes_and_turned_elements_stay_vanilla() {
+        let cube = json!({ "textures": { "all": "block/stone" }, "elements": [{
+            "from": [0, 0, 0], "to": [16, 16, 16],
+            "faces": { "north": { "texture": "#all" } } }] });
+        let files = |model: Value| {
+            vec![
+                (
+                    "assets/minecraft/blockstates/stone.json",
+                    json!({ "variants": { "": [{ "model": "block/stone" }, { "model": "block/stone", "y": 90 }] } }),
+                ),
+                ("assets/minecraft/models/block/stone.json", model),
+            ]
+        };
+        assert!(run(&files(cube)).files.is_empty());
+        let turned = json!({ "textures": { "all": "block/stone" }, "elements": [{
+            "from": [2, 0, 2], "to": [14, 16, 14],
+            "rotation": { "origin": [8, 8, 8], "axis": "y", "angle": 45 },
+            "faces": { "north": { "texture": "#all" } } }] });
+        assert!(run(&files(turned)).files.is_empty());
+    }
     #[test]
     fn only_quarter_turns_of_a_whole_block_are_applied() {
         assert_eq!(rotation(0, 270), Some([0, 270, 0]));

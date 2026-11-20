@@ -470,6 +470,19 @@ impl RuntimeAssets {
         &self.model_templates
     }
 
+    /// Whether a pack may redraw `block` as any plain model: a plain cube, or a model whose
+    /// template carries no special meshing behaviour. The same rule the overlay is validated by.
+    #[must_use]
+    pub fn accepts_plain_model(&self, block: ResolvedBlock) -> bool {
+        template_overrides::accepts_plain_model(
+            block.kind(),
+            block.flags(),
+            block.variant(),
+            block.model_template(),
+            &self.model_templates,
+        )
+    }
+
     /// Returns the separate pot-content model paired with this block's world model.
     #[must_use]
     pub fn potted_model_template(&self, mode: NetworkIdMode, id: u32) -> Option<u32> {

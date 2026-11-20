@@ -83,9 +83,9 @@ impl Builder<'_> {
     /// Redraws every vanilla block state a pack's model bindings name with that Java model.
     pub(super) fn bind_java_models(&mut self, view: &LayeredPackView) {
         let entries = entries(view);
-        if entries.is_empty() || self.base_assets.is_none() {
+        let Some(base) = self.base_assets.filter(|_| !entries.is_empty()) else {
             return;
-        }
+        };
         let wanted: HashSet<&str> = entries.iter().map(|entry| &*entry.geometry).collect();
         let geometries = geometry_catalog(view, &wanted);
         let Ok(records) = assets::read_registry_for_protocol(
@@ -106,6 +106,13 @@ impl Builder<'_> {
                 continue;
             };
             let entry = &entries[index];
+            // A block with special meshing behaviour keeps its vanilla shape; an override it
+            // cannot take would fail the whole overlay.
+            if !base
+                .accepts_plain_model(base.resolve(assets::NetworkIdMode::Sequential, visual as u32))
+            {
+                continue;
+            }
             let Some(geometry) = geometries.get(&*entry.geometry) else {
                 continue;
             };

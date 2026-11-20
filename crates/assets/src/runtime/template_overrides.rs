@@ -85,6 +85,26 @@ pub(super) fn apply(
     Ok(())
 }
 
+/// Whether a visual with these facts may be redrawn as any plain model: a plain cube, or a model
+/// whose template carries no special meshing behaviour.
+pub(super) fn accepts_plain_model(
+    kind: VisualKind,
+    flags: BlockFlags,
+    variant: u32,
+    template: Option<u32>,
+    base_templates: &[ModelTemplate],
+) -> bool {
+    match template {
+        None => kind == VisualKind::Cube && variant == 0 && !flags.contains(BlockFlags::LEAF_MODEL),
+        Some(template) => {
+            matches!(kind, VisualKind::Model | VisualKind::Cross)
+                && base_templates
+                    .get(template as usize)
+                    .is_some_and(|template| template.flags == 0)
+        }
+    }
+}
+
 /// Whether the overlay holds a complete chain of ordinary templates from `first`: none carries a
 /// vanilla meshing behaviour, and each owns quads the overlay stores.
 fn is_plain_chain(templates: &[ModelTemplate], quads: &[ModelQuad], first: u32) -> bool {
@@ -103,5 +123,38 @@ fn is_plain_chain(templates: &[ModelTemplate], quads: &[ModelQuad], first: u32) 
 fn invalid(detail: &str) -> AssetError {
     AssetError::InvalidCompiledAssets {
         detail: detail.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn template(flags: u32) -> ModelTemplate {
+        ModelTemplate {
+            quad_start: 0,
+            quad_count: 1,
+            flags,
+        }
+    }
+
+    #[test]
+    fn only_plain_cubes_and_flag_free_models_accept_any_plain_model() {
+        let templates = [template(0), template(crate::MODEL_TEMPLATE_FLAG_TORCH)];
+        let accepts = |kind, flags, variant, index| {
+            accepts_plain_model(kind, flags, variant, index, &templates)
+        };
+        let cube = BlockFlags::CUBE_GEOMETRY;
+        assert!(accepts(VisualKind::Cube, cube, 0, None));
+        assert!(!accepts(
+            VisualKind::Cube,
+            cube | BlockFlags::LEAF_MODEL,
+            0,
+            None
+        ));
+        assert!(!accepts(VisualKind::Cube, cube, 1, None));
+        assert!(accepts(VisualKind::Model, BlockFlags::empty(), 0, Some(0)));
+        assert!(!accepts(VisualKind::Model, BlockFlags::empty(), 0, Some(1)));
+        assert!(!accepts(VisualKind::Model, BlockFlags::empty(), 0, Some(9)));
     }
 }
