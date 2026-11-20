@@ -247,7 +247,8 @@ fn geometry(
     for variable in variables {
         let texture = resolved.texture(variable)?;
         let name = texture.strip_prefix("block/")?;
-        let path = names::block_path(layout, name);
+        // The translator keeps block textures by file name, whatever folder they sit in.
+        let path = names::block_path(layout, name.rsplit('/').next().unwrap_or(name));
         materials.insert(
             variable.to_owned(),
             json!(path.strip_prefix("blocks/").unwrap_or(&path)),
@@ -365,6 +366,16 @@ mod tests {
             "rotation": { "origin": [8, 8, 8], "axis": "y", "angle": 45 },
             "faces": { "north": { "texture": "#all" } } }] });
         assert!(run(&files(turned)).files.is_empty());
+    }
+
+    #[test]
+    fn a_texture_in_a_subfolder_is_named_by_its_file() {
+        let mut files = lantern_files();
+        files[1].1 = json!({ "textures": { "lantern": "block/extra/lantern" }, "elements": [{
+            "from": [5, 0, 5], "to": [11, 7, 11],
+            "faces": { "north": { "texture": "#lantern" } } }] });
+        let blocks = bindings(&run(&files));
+        assert_eq!(blocks["blocks"][0]["materials"]["lantern"], "lantern");
     }
     #[test]
     fn only_quarter_turns_of_a_whole_block_are_applied() {

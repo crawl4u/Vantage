@@ -452,6 +452,27 @@ pub(crate) fn translate_within(
     // OptiFine `random` and `repeat` rules become weighted or repeated texture lists on the block texture's atlas tile.
     let mut random_files: Vec<(String, Vec<u8>)> = Vec::new();
     let mut random_tiles = serde_json::Map::new();
+    let is_ctm_rule = |path: &&String| {
+        path.ends_with(".properties")
+            && (path.starts_with("assets/minecraft/optifine/ctm/")
+                || path.starts_with("assets/minecraft/mcpatcher/ctm/"))
+    };
+    // A rule matching another rule's tile file rewrites that tile; its first tile stands in.
+    let mut rewrites: HashMap<String, String> = HashMap::new();
+    for rule_path in paths.iter().filter(is_ctm_rule).take(MAX_RANDOM_RULES) {
+        let folder = &rule_path[..=rule_path.rfind('/').unwrap_or(0)];
+        let Some(rule) = source
+            .load(rule_path)
+            .and_then(|text| ctm::parse(folder, &String::from_utf8_lossy(&text)))
+        else {
+            continue;
+        };
+        if let (Some(file), Some((ctm::Choice::File(first), _))) =
+            (rule.matched_file, rule.choices.first())
+        {
+            rewrites.insert(file, first.clone());
+        }
+    }
     for rule_path in paths.iter().filter(|path| {
         path.ends_with(".properties")
             && (path.starts_with("assets/minecraft/optifine/ctm/")
@@ -488,10 +509,10 @@ pub(crate) fn translate_within(
                             .iter()
                             .find(|(name, _)| *name == rule.texture)
                             .map(|(_, bytes)| bytes.clone()),
-                        ctm::Choice::File(path) if known.contains(path.as_str()) => {
-                            source.load(path)
+                        ctm::Choice::File(path) => {
+                            let path = ctm::rewritten(&rewrites, path);
+                            known.contains(path).then(|| source.load(path)).flatten()
                         }
-                        ctm::Choice::File(_) => None,
                     }?;
                     let image = decode(&bytes, budget)?;
                     (strip_frame(image.width(), image.height()).is_none()).then_some(image)

@@ -7,7 +7,7 @@
 //! declares through the Cinnabar `cinnabar_repeat` extension. Rules that depend on neighbours,
 //! biome, height or block state are not translated.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// One texture a rule may pick.
 #[derive(Clone, Debug, PartialEq)]
@@ -52,6 +52,9 @@ pub(crate) struct Rule {
     pub(crate) repeat: Option<(u8, u8)>,
     /// Set for a rule that picks its tile by the neighbouring blocks; the choices are its tiles.
     pub(crate) connected: Option<Connected>,
+    /// The tile file a rule matches instead of a block texture: a rule that rewrites the output
+    /// of another rule, as a placeholder tile is replaced by a pattern.
+    pub(crate) matched_file: Option<String>,
 }
 
 /// Properties that make a rule depend on more than the block position.
@@ -66,6 +69,19 @@ const CONDITIONS: [&str; 9] = [
     "connectTiles",
     "weatherEffects",
 ];
+
+/// The file `path` stands for after the rules that rewrite it, following at most a few links so
+/// a loop cannot spin.
+pub(crate) fn rewritten<'a>(rewrites: &'a HashMap<String, String>, path: &'a str) -> &'a str {
+    let mut path = path;
+    for _ in 0..4 {
+        match rewrites.get(path) {
+            Some(next) => path = next,
+            None => break,
+        }
+    }
+    path
+}
 
 /// Parses a `.properties` file's key/value lines; later duplicates win.
 fn properties(text: &str) -> BTreeMap<String, String> {
@@ -150,7 +166,10 @@ pub(crate) fn parse(folder: &str, text: &str) -> Option<Rule> {
             .filter(|blocks| !blocks.contains(char::is_whitespace) && !blocks.contains(':'))?,
         None => return None,
     };
-    let texture = matched.split_whitespace().next()?.trim_end_matches(".png");
+    let token = matched.split_whitespace().next()?;
+    let matched_file =
+        (token.ends_with(".png") || token.contains('/')).then(|| tile_path(folder, token));
+    let texture = token.trim_end_matches(".png");
     let texture = texture
         .strip_prefix("minecraft:")
         .unwrap_or(texture)
@@ -191,6 +210,7 @@ pub(crate) fn parse(folder: &str, text: &str) -> Option<Rule> {
         choices,
         repeat,
         connected,
+        matched_file,
     })
 }
 
@@ -261,6 +281,35 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn a_rule_matching_a_tile_file_rewrites_that_tile_and_chains_resolve_to_the_end() {
+        let rule = parse(
+            FOLDER,
+            "method=repeat
+matchTiles=./13.png
+width=2
+height=1
+tiles=1 2",
+        )
+        .unwrap();
+        assert_eq!(rule.matched_file, Some(format!("{FOLDER}13.png")));
+        let plain = parse(
+            FOLDER,
+            "method=random
+matchTiles=dirt
+tiles=1-2",
+        )
+        .unwrap();
+        assert_eq!(plain.matched_file, None);
+        let rewrites: HashMap<String, String> =
+            [("a".into(), "b".into()), ("b".into(), "c".into())].into();
+        assert_eq!(rewritten(&rewrites, "a"), "c");
+        let looping: HashMap<String, String> =
+            [("a".into(), "b".into()), ("b".into(), "a".into())].into();
+        assert!(["a", "b"].contains(&rewritten(&looping, "a")));
+        assert_eq!(rewritten(&rewrites, "z"), "z");
     }
 
     #[test]
