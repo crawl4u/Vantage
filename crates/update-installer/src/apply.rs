@@ -294,15 +294,17 @@ fn may_replace(
     .is_gt())
 }
 
-/// Keeps the most recently downloaded previous MSI for manual repair, without copying Program Files.
+/// Keeps only the installer of the version now installed, for manual repair, and deletes every
+/// older one: an update replaces the old build, it does not sit beside it. A leftover copy from
+/// before this rule is deleted too.
 fn remember_installer(root: &Path, artifact: &Path) -> Result<()> {
     let current = root.join("installed.msi");
     let previous = root.join("previous.msi");
+    if previous.exists() {
+        fs::remove_file(&previous)?;
+    }
     if current.exists() {
-        if previous.exists() {
-            fs::remove_file(&previous)?;
-        }
-        fs::rename(&current, &previous)?;
+        fs::remove_file(&current)?;
     }
     fs::copy(artifact, current)?;
     Ok(())

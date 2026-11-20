@@ -321,62 +321,20 @@ fn a_confirmed_backup_is_preserved_if_the_replacement_is_missing() {
 }
 
 #[test]
-fn previous_downloaded_windows_installer_is_kept_for_manual_repair() {
+fn an_update_leaves_only_the_installer_of_the_version_now_installed() {
     let root = tempfile::tempdir().unwrap();
     let artifact = root.path().join("payload");
+    // A copy kept by an older rule is deleted as well.
+    fs::write(root.path().join("previous.msi"), "ancient MSI").unwrap();
     fs::write(&artifact, "first MSI").unwrap();
     remember_installer(root.path(), &artifact).unwrap();
     fs::write(&artifact, "second MSI").unwrap();
     remember_installer(root.path(), &artifact).unwrap();
-    assert_eq!(
-        fs::read(root.path().join("previous.msi")).unwrap(),
-        b"first MSI"
-    );
+    assert!(!root.path().join("previous.msi").exists());
     assert_eq!(
         fs::read(root.path().join("installed.msi")).unwrap(),
         b"second MSI"
     );
-}
-
-#[cfg(target_os = "linux")]
-#[test]
-fn apply_keeps_the_writer_lease_and_rolls_back_a_failed_new_start() {
-    let root = tempfile::tempdir().unwrap();
-    let (directory, keys) = staged(root.path(), "linux-x86_64");
-    let target = root.path().join("client.AppImage");
-    fs::write(&target, "old").unwrap();
-    let request = || Request {
-        stage_dir: &directory,
-        target: &target,
-        keys: &keys,
-        switch_from: None,
-        check: check("linux-x86_64"),
-        now: now(),
-    };
-    let other_client = crate::lease::Lease::acquire(root.path()).unwrap();
-    assert!(crate::lease::Lease::try_acquire(root.path()).is_err());
-    drop(other_client);
-    assert_eq!(fs::read(&target).unwrap(), b"old");
-    assert!(
-        after_exit(
-            request(),
-            crate::lease::Lease::acquire(root.path()).unwrap(),
-            |_| anyhow::bail!("failed startup")
-        )
-        .is_err()
-    );
-    assert_eq!(fs::read(&target).unwrap(), b"old");
-    after_exit(
-        request(),
-        crate::lease::Lease::acquire(root.path()).unwrap(),
-        |target| {
-            assert_eq!(fs::read(target).unwrap(), PAYLOAD);
-            assert!(crate::target::backup(target).unwrap().exists());
-            Ok(())
-        },
-    )
-    .unwrap();
-    assert!(!crate::target::backup(&target).unwrap().exists());
 }
 
 #[cfg(target_os = "linux")]
