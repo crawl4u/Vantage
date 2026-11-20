@@ -211,6 +211,7 @@ pub(crate) fn draw(
         rows: &[&first, &second],
         more: Some(more),
         title_top: None,
+        footer_gap: None,
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
         if let Some(transitions) = canvas.transitions.as_deref_mut() {

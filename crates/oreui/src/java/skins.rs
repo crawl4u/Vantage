@@ -224,6 +224,7 @@ pub(crate) fn draw(
         rows: &[&first, &second],
         more: None,
         title_top: None,
+        footer_gap: None,
     };
     let mut preview = PreviewArea {
         control: [-4.0, -4.0, -2.0, -2.0],
@@ -679,6 +680,7 @@ pub(crate) fn draw_editor(
         rows: &[&done],
         more: None,
         title_top: None,
+        footer_gap: None,
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
         let unit = frame.unit;

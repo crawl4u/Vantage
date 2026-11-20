@@ -29,6 +29,8 @@ const ICON_FILL: [u8; 4] = [38, 38, 38, 255];
 const HEADER: f32 = 48.0;
 const TITLE_TOP: f32 = 8.0;
 const SEARCH_TOP: f32 = 21.0;
+/// Java's footer rows are 308 wide with 8 between buttons: two of 150, four of 71.
+const FOOTER_GAP: f32 = 8.0;
 const SEARCH_HEIGHT: f32 = 20.0;
 const SEARCH_WIDTH: f32 = 200.0;
 /// Java's play arrow over a hovered world's icon, at rest and under the pointer.
@@ -143,6 +145,7 @@ pub(crate) fn draw(
         rows: &[&first, &second],
         more: None,
         title_top: Some(TITLE_TOP),
+        footer_gap: Some(FOOTER_GAP),
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
         let unit = frame.unit;

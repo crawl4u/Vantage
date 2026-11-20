@@ -233,6 +233,7 @@ pub(crate) fn draw(
         rows: &[&first, &second],
         more: None,
         title_top: None,
+        footer_gap: None,
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
         if !signed_in {

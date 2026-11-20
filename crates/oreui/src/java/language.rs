@@ -61,6 +61,7 @@ pub(crate) fn draw(
         rows: &[&done],
         more: Some(more),
         title_top: None,
+        footer_gap: None,
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
         list(canvas, view, frame)

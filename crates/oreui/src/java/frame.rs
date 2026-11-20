@@ -28,6 +28,8 @@ const WIDE_BUTTON_WIDTH: f32 = 200.0;
 const PAIR_BUTTON_WIDTH: f32 = 150.0;
 /// The width a row of buttons shares, as Java's three and four button rows do.
 const ROW_WIDTH: f32 = 310.0;
+/// The width Java's two-column footers share: two 150 buttons and the gap of 8 between them.
+const PAIR_ROW_WIDTH: f32 = 308.0;
 /// Where the rows of buttons start below the footer's top edge, and the distance between rows.
 const FIRST_ROW: f32 = 12.0;
 const ROW_STEP: f32 = 24.0;
@@ -73,6 +75,9 @@ pub(super) struct Spec<'a> {
     /// Where the title's text starts, in Java pixels, when the screen sets it; a header that holds
     /// a search field puts it at the top, as Java does.
     pub title_top: Option<f32>,
+    /// The space between a footer row's buttons when the screen sets it; its rows then share 308
+    /// Java pixels, as Java's two-column footers do, instead of the usual 310 with 5.
+    pub footer_gap: Option<f32>,
 }
 
 /// Where the list sits once the frame is drawn.
@@ -138,18 +143,26 @@ pub(super) fn draw(
     let top = size[1] / unit - FOOTER;
     for (index, row) in spec.rows.iter().enumerate() {
         let count = row.len().max(1) as f32;
+        let gap = spec.footer_gap.unwrap_or(BUTTON_GAP);
+        let shared = if spec.footer_gap.is_some() {
+            PAIR_ROW_WIDTH
+        } else {
+            ROW_WIDTH
+        };
         // A button alone on its row is Java's wide Done.
         let width = if row.len() == 1 {
             WIDE_BUTTON_WIDTH
         } else if row.len() == 2 {
             PAIR_BUTTON_WIDTH
+        } else if spec.footer_gap.is_some() {
+            ((shared - gap * (count - 1.0)) / count).floor()
         } else {
-            BUTTON_WIDTH.min((ROW_WIDTH - BUTTON_GAP * (count - 1.0)) / count)
+            BUTTON_WIDTH.min((shared - gap * (count - 1.0)) / count)
         };
-        let total = count * width + (count - 1.0) * BUTTON_GAP;
+        let total = count * width + (count - 1.0) * gap;
         let y = top + FIRST_ROW + index as f32 * ROW_STEP;
         for (place, item) in row.iter().enumerate() {
-            let x = centre - total / 2.0 + place as f32 * (width + BUTTON_GAP);
+            let x = centre - total / 2.0 + place as f32 * (width + gap);
             let bounds = [x, y, x + width, y + BUTTON_HEIGHT].map(|value| value * unit);
             button::draw_lit(
                 canvas,

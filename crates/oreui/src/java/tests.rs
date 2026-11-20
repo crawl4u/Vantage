@@ -531,3 +531,31 @@ fn the_gallery_shows_each_look_as_a_card_with_a_new_card_and_a_way_back_to_the_l
     // Every card's picture is asked for.
     assert_eq!(area.unwrap().visible_skins.len(), imported + 1);
 }
+
+#[test]
+fn the_java_world_list_footer_has_javas_two_rows_of_308_with_eight_between() {
+    let view = java_view();
+    let size = [1280.0, 720.0];
+    let images = std::collections::HashMap::new();
+    let (hits, _) = paint(true, size, |canvas| {
+        worlds::draw(canvas, &view, size, &images).unwrap();
+    });
+    let unit = unit_for(size, None, 1.0);
+    let bounds = |action| hits.iter().find(|(found, _)| *found == action).unwrap().1;
+    let create = bounds(MenuAction::LocalWorld(
+        launcher::menu::LocalWorldAction::BeginCreate,
+    ));
+    let import = bounds(MenuAction::LocalWorld(
+        launcher::menu::LocalWorldAction::Import,
+    ));
+    let back = bounds(MenuAction::AddBack);
+    // Two buttons of 150 with 8 between them over four of 71 with 8 between, both 308 wide.
+    assert_eq!(create.width(), 150.0 * unit);
+    assert_eq!(import.width(), 71.0 * unit);
+    assert_eq!(back.width(), 71.0 * unit);
+    assert_eq!(
+        back.max().x() - import.min().x(),
+        (71.0 + 8.0 + 71.0) * unit
+    );
+    assert_eq!(create.max().x(), back.max().x());
+}
