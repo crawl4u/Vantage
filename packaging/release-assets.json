@@ -37,5 +37,14 @@
     "windows": {
       "x86_64": "Vantage-x64.msi"
     }
+  },
+  "update_platforms": {},
+  "windows_install": {
+    "parent": "Programs",
+    "folder": "Vantage",
+    "user_key": "Software\\Vantage\\User",
+    "user_folder_value": "folder",
+    "machine_upgrade_code": "A3036D81-6368-4CA1-964B-CC43A2335337",
+    "machine_bundle_upgrade_code": "04A1D0E5-183B-4555-B58B-93F800D3C830"
   }
 }
