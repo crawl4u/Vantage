@@ -1533,3 +1533,18 @@ fn an_optifine_compact_rule_becomes_the_full_declared_tile_set() {
     assert_eq!(colour(26), GREEN);
     assert_eq!(colour(46), WHITE);
 }
+
+#[test]
+fn a_packs_ascii_font_becomes_the_bedrock_sheet_with_its_marker() {
+    let files = pack(vec![(
+        "assets/minecraft/textures/font/ascii.png",
+        solid(128, 128, WHITE),
+    )]);
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    // Rows the font leaves for control characters are cleared, the ASCII rows kept.
+    assert_eq!(pixel(&out, "font/default8.png", 4, 4).1[3], 0);
+    assert_eq!(pixel(&out, "font/default8.png", 4, 40), ((128, 128), WHITE));
+    let marker: serde_json::Value = serde_json::from_slice(out["font/cinnabar_font.json"]).unwrap();
+    assert_eq!(marker["blank_cells_keep_base"], true);
+}

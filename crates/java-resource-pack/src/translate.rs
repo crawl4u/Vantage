@@ -346,6 +346,7 @@ pub(crate) fn translate_within(
     let widgets = optional(&format!("{TEXTURES}gui/widgets.png"));
     let inventory = optional(&format!("{TEXTURES}gui/container/inventory.png"));
     let particles = optional(&format!("{TEXTURES}particle/particles.png"));
+    let ascii_font = optional(&format!("{TEXTURES}font/ascii.png"));
     let progress: Vec<_> = container::SPRITES
         .iter()
         .filter_map(|(java, bedrock, sidecar)| {
@@ -585,6 +586,18 @@ pub(crate) fn translate_within(
             Output::Image(atlas),
         );
         out.insert(particle_atlas::MARKER.into(), Output::Raw(marker));
+    }
+    // The pack's bitmap font replaces the client's glyphs for the characters it draws.
+    if let Some(sheet) = ascii_font
+        .as_deref()
+        .and_then(|bytes| decode(bytes, budget))
+        .and_then(|ascii| crate::font::default8(&ascii, budget))
+    {
+        out.insert(crate::font::SHEET.into(), Output::Image(sheet));
+        out.insert(
+            crate::font::MARKER.into(),
+            Output::Raw(crate::font::MARKER_BYTES.to_vec()),
+        );
     }
     if let Some(bytes) = pack_icon.filter(|bytes| dimensions(bytes).is_some()) {
         out.insert("pack_icon.png".into(), Output::Raw(bytes));

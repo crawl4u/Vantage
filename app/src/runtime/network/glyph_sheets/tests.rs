@@ -360,3 +360,27 @@ fn a_metadata_default_face_keeps_the_emoticons_it_lacks() {
     assert_eq!(cell(&own_page, y).unwrap().size, [8, 8]);
     assert_eq!(cell(&own_page, a).unwrap().size, [0, 0]);
 }
+
+#[test]
+fn a_translated_java_font_leaves_the_clients_glyph_where_it_draws_none() {
+    let size = |sheets: &super::SessionGlyphSheets, codepoint: char| {
+        sheets
+            .cells()
+            .iter()
+            .find(|cell| cell.codepoint == codepoint)
+            .map(|cell| cell.size)
+    };
+    // The sheet's only drawn cell is index 65; every other cell is empty.
+    let font = ("font/default8.png", sheet_png(8, 65));
+    let plain = compile_session_glyphs(&view(vec![archive(1, &[font.clone()])])).expect("sheets");
+    assert_eq!(size(&plain, 'B'), Some([0, 0]), "a Bedrock pack blanks it");
+
+    let marker = (
+        "font/cinnabar_font.json",
+        br#"{"blank_cells_keep_base":true}"#.to_vec(),
+    );
+    let translated =
+        compile_session_glyphs(&view(vec![archive(1, &[font, marker])])).expect("sheets");
+    assert_eq!(size(&translated, 'B'), None, "the client's own B stays");
+    assert_eq!(size(&translated, ' '), Some([0, 0]));
+}

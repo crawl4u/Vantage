@@ -22,7 +22,10 @@ const DEFAULT_UNICODE_PREFIX: &str = "font/glyph_";
 /// where no pack replaces it, or `None` when the stack has no sheets. Each sheet is dropped
 /// once cropped so a large one is not retained for the session.
 pub(crate) fn compile_session_glyphs(view: &LayeredPackView) -> Option<Arc<SessionGlyphSheets>> {
-    let cells = bitmap(view, Some("font/default8"), Some(DEFAULT_UNICODE_PREFIX));
+    let mut cells = bitmap(view, Some("font/default8"), Some(DEFAULT_UNICODE_PREFIX));
+    if declares_blank_cells_keep_base(view) {
+        keep_base_where_blank(&mut cells);
+    }
     let mut named = std::collections::BTreeMap::new();
     named.insert("rune".into(), bitmap(view, Some("font/ascii_sga"), None));
     named.insert(
@@ -41,6 +44,21 @@ pub(crate) fn compile_session_glyphs(view: &LayeredPackView) -> Option<Arc<Sessi
         .chain(named.values().flatten())
         .any(|cell| !builtin.contains(cell))
         .then(|| Arc::new(SessionGlyphSheets::with_named(cells, named)))
+}
+
+/// Whether a pack's `font/cinnabar_font.json` says its blank cells are glyphs it does not draw,
+/// as a translated Java font does, rather than glyphs that draw nothing.
+fn declares_blank_cells_keep_base(view: &LayeredPackView) -> bool {
+    view.read_layers_capped("font/cinnabar_font.json", 4096)
+        .any(|bytes| {
+            serde_json::from_slice::<serde_json::Value>(&bytes)
+                .is_ok_and(|json| json["blank_cells_keep_base"] == true)
+        })
+}
+
+/// Drops the cells that draw nothing, except the space, so the client's own glyph stays for them.
+fn keep_base_where_blank(cells: &mut Vec<CellGlyph>) {
+    cells.retain(|cell| cell.size != [0, 0] || cell.codepoint == ' ');
 }
 
 /// `resolved`, a default face that font metadata declared, plus the emoticon code points it

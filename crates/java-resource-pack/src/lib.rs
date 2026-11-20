@@ -17,6 +17,7 @@ mod container;
 mod ctm;
 mod ctm_tiles;
 mod extras;
+mod font;
 pub use container::CONTAINER_SWAPS;
 mod hud;
 mod items;
