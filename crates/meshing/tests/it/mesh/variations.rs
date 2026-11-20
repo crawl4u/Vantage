@@ -193,6 +193,14 @@ fn connected_texture_faces_record_which_neighbours_continue_them() {
     assert_eq!(tile_at([0, 0, 15]), Some(37));
     assert_eq!(tile_at([15, 0, 15]), Some(39));
     assert_eq!(tile_at([5, 15, 15]), Some(14));
+    // Seen from below, +X is to the right and -Z is down, so the corner at the origin keeps its
+    // +X neighbour to the right and its +Z neighbour above.
+    let bottom = mesh
+        .quads()
+        .iter()
+        .find(|quad| quad.face() == meshing::Face::NegativeY && quad.origin() == [0, 0, 0])
+        .map(|quad| quad.connection());
+    assert_eq!(bottom, Some(37));
 
     // Loaded sections beside the face continue it across the boundary, and a diagonal section
     // decides the corner dot.

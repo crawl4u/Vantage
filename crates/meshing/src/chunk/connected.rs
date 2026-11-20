@@ -16,12 +16,14 @@ use pack_json::connected_layout::{
 };
 
 /// The block-grid direction a viewer in front of `face` sees as right and as down, matching the
-/// texture orientation the chunk shader draws.
+/// texture orientation the chunk shader draws: west +Z/-Y, east -Z/-Y, north -X/-Y, south +X/-Y,
+/// down +X/-Z and up +X/+Z (`greedy_uv` in `chunk.wesl`, and the model cuboids' UVs).
 const fn screen_axes(face: Face) -> ([i32; 3], [i32; 3]) {
     match face {
         Face::NegativeX => ([0, 0, 1], [0, -1, 0]),
         Face::PositiveX => ([0, 0, -1], [0, -1, 0]),
-        Face::NegativeY | Face::PositiveY => ([1, 0, 0], [0, 0, 1]),
+        Face::NegativeY => ([1, 0, 0], [0, 0, -1]),
+        Face::PositiveY => ([1, 0, 0], [0, 0, 1]),
         Face::NegativeZ => ([-1, 0, 0], [0, -1, 0]),
         Face::PositiveZ => ([1, 0, 0], [0, -1, 0]),
     }
