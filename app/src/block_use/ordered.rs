@@ -13,7 +13,9 @@ pub(crate) fn press(
     mut item_use: ResMut<client_interaction::item_use::ItemUseRuntime>,
     mut movement: ResMut<MovementTicker>,
 ) -> bool {
-    let pressed = input.edge.pressed && !context.use_edge_is_pulse();
+    let pressed = input.edge.pressed;
+    // A pulse is a fresh edge that forgets the last resolution, but it never builds or uses.
+    let attempts = pressed && !context.use_edge_is_pulse();
     let now = u64::try_from(context.time.elapsed().as_millis()).unwrap_or(u64::MAX);
     runtime.synchronize(movement.interaction_authority_identity());
     if pressed {
@@ -25,7 +27,7 @@ pub(crate) fn press(
         {
             return false;
         }
-        if !pressed || context.melee.blocks_use_at(now) {
+        if !attempts || context.melee.blocks_use_at(now) {
             return true;
         }
         if !movement.accepts_block_interactions()

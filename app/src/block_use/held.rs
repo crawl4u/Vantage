@@ -27,7 +27,6 @@ pub(super) fn maintain_block_use(
         Vec::new()
     };
     if context.input.phase(Action::Use).pressed
-        && !context.use_edge_is_pulse()
         && !context
             .input
             .snapshot()
