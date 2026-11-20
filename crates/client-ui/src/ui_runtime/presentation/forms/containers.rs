@@ -336,6 +336,32 @@ pub fn observe_station_block(
     }
 }
 
+/// Draws a screen-wide dim the way the Java menus do, as a solid fill. Bedrock's dim is a one
+/// pixel texture stretched over the whole window, whose sampling leaves a strip at the right and
+/// bottom edges undimmed; a black fill of the same opacity covers every pixel.
+fn solid_screen_dim(nodes: &mut [UiNode], [width, height]: [f32; 2], solid_page: u16) {
+    for node in nodes {
+        let bounds = node.bounds();
+        let covers = bounds.min().x() <= 0.0
+            && bounds.min().y() <= 0.0
+            && bounds.width() >= width
+            && bounds.height() >= height;
+        if !covers {
+            continue;
+        }
+        if let ui::UiVisual::Sprite { uv, color, .. } = *node.visual()
+            && uv[2].saturating_sub(uv[0]) == 1
+            && uv[3].saturating_sub(uv[1]) == 1
+        {
+            *node = node.clone().with_visual(ui::UiVisual::Solid {
+                texture_page: solid_page,
+                // Bedrock's dim is a black texel under a white tint.
+                color: [0, 0, 0, color[3]],
+            });
+        }
+    }
+}
+
 impl UiPresentationRuntime {
     /// Draw the open inventory or container through the engine. `Ok(false)`
     /// leaves the screen to the Java-styled path.
@@ -361,6 +387,7 @@ impl UiPresentationRuntime {
             return Ok(false);
         };
         let size = [width, height];
+        let first_node = nodes.len();
         match self.render_container(
             player_runtime,
             runtime,
@@ -374,6 +401,7 @@ impl UiPresentationRuntime {
         ) {
             Some(frame) => {
                 self.projections.container = Some((frame, layout));
+                solid_screen_dim(&mut nodes[first_node..], size, self.solid_texture_page);
                 Ok(true)
             }
             // A screen the engine cannot draw hands containers back to the Java path.
@@ -682,3 +710,43 @@ mod book_order_tests;
 
 #[cfg(test)]
 mod beacon_level_tests;
+
+#[cfg(test)]
+mod dim_tests {
+    use super::*;
+    use ui::{UiNode, UiNodeId, UiPoint, UiRect, UiVisual};
+
+    fn node(id: u32, size: [f32; 2], visual: UiVisual) -> UiNode {
+        let bounds = UiRect::new(
+            UiPoint::new(0.0, 0.0).unwrap(),
+            UiPoint::new(size[0], size[1]).unwrap(),
+        )
+        .unwrap();
+        UiNode::new(UiNodeId::new(id), None, bounds).with_visual(visual)
+    }
+
+    #[test]
+    fn a_screen_wide_one_texel_dim_becomes_a_black_fill_of_its_opacity() {
+        let sprite = |uv| UiVisual::Sprite {
+            texture_page: 3,
+            uv,
+            color: [255, 255, 255, 102],
+        };
+        let mut nodes = vec![
+            node(1, [200.0, 100.0], sprite([5, 5, 6, 6])),
+            // Not screen wide, or more than one texel: left alone.
+            node(2, [50.0, 50.0], sprite([5, 5, 6, 6])),
+            node(3, [200.0, 100.0], sprite([0, 0, 16, 16])),
+        ];
+        solid_screen_dim(&mut nodes, [200.0, 100.0], 9);
+        assert_eq!(
+            *nodes[0].visual(),
+            UiVisual::Solid {
+                texture_page: 9,
+                color: [0, 0, 0, 102]
+            }
+        );
+        assert!(matches!(nodes[1].visual(), UiVisual::Sprite { .. }));
+        assert!(matches!(nodes[2].visual(), UiVisual::Sprite { .. }));
+    }
+}
