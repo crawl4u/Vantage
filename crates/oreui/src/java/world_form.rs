@@ -313,6 +313,7 @@ pub(crate) fn draw(
         header: frame::HEADER,
         rows: &[&row],
         more: None,
+        title_top: None,
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
         let unit = frame.unit;

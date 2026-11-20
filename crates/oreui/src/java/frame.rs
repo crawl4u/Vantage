@@ -70,6 +70,9 @@ pub(super) struct Spec<'a> {
     pub rows: &'a [&'a [Btn<'a>]],
     /// Opens the Bedrock-style page of the same settings, which keeps what the screen leaves out.
     pub more: Option<MenuAction>,
+    /// Where the title's text starts, in Java pixels, when the screen sets it; a header that holds
+    /// a search field puts it at the top, as Java does.
+    pub title_top: Option<f32>,
 }
 
 /// Where the list sits once the frame is drawn.
@@ -125,7 +128,12 @@ pub(super) fn draw(
             line(canvas, spec.title, TITLE_TOP - 4.0, TEXT)?;
             line(canvas, subtitle, TITLE_TOP + 6.0, SUBTITLE)?;
         }
-        None => line(canvas, spec.title, TITLE_TOP + 4.0, TEXT)?,
+        None => line(
+            canvas,
+            spec.title,
+            spec.title_top.unwrap_or(TITLE_TOP + 4.0),
+            TEXT,
+        )?,
     }
     let top = size[1] / unit - FOOTER;
     for (index, row) in spec.rows.iter().enumerate() {

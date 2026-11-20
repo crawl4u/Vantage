@@ -27,6 +27,9 @@ const STYLE_REPEAT_Y: u32 = UI_STYLE_REPEAT_Y;
 
 const STYLE_REPEAT_PAGE: u32 = UI_STYLE_REPEAT_PAGE;
 
+// A texel fraction added to nearest-sampled sprite coordinates; see the sampling below.
+const NEAREST_TIE_BIAS: f32 = 0.0078125;
+
 struct PageRegion {
     content: vec4<f32>,
     size: vec4<f32>,
@@ -275,7 +278,11 @@ fn shade_ui(input: UiVertexOutput, direct: bool, front_facing: bool) -> vec4<f32
     } else if sdf_font || (input.style_flags & STYLE_BILINEAR) != 0u {
         sample = textureSampleLevel(ui_pages, ui_linear_sampler, normalized_uv, i32(input.texture_page), 0.0);
     } else {
-        sample = textureSampleLevel(ui_pages, ui_sampler, normalized_uv, i32(input.texture_page), 0.0);
+        // At a magnification such as 1.5 pixels per texel a pixel centre lands exactly on a texel
+        // edge, and interpolation noise decides which texel it takes, differently in each quad of
+        // a nine-slice. A bias far below a texel settles every tie the same way, so outlines come
+        // out even.
+        sample = textureSampleLevel(ui_pages, ui_sampler, normalized_uv + vec2<f32>(NEAREST_TIE_BIAS) / dimensions, i32(input.texture_page), 0.0);
     }
     if ui_page_format.format.x != 0u {
         sample = vec4<f32>(1.0, 1.0, 1.0, sample.r);

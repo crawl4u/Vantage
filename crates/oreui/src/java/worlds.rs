@@ -25,8 +25,10 @@ const BAR_OFFSET: f32 = 164.0;
 const GREY: [u8; 4] = [128, 128, 128, 255];
 const BLACK: [u8; 4] = [0, 0, 0, 255];
 const ICON_FILL: [u8; 4] = [38, 38, 38, 255];
-const HEADER: f32 = 50.0;
-const SEARCH_TOP: f32 = 24.0;
+/// Java's header of the world list: the title from 8, the search field from 21, ending at 48.
+const HEADER: f32 = 48.0;
+const TITLE_TOP: f32 = 8.0;
+const SEARCH_TOP: f32 = 21.0;
 const SEARCH_HEIGHT: f32 = 20.0;
 const SEARCH_WIDTH: f32 = 200.0;
 /// Java's play arrow over a hovered world's icon, at rest and under the pointer.
@@ -140,6 +142,7 @@ pub(crate) fn draw(
         header: HEADER,
         rows: &[&first, &second],
         more: None,
+        title_top: Some(TITLE_TOP),
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
         let unit = frame.unit;

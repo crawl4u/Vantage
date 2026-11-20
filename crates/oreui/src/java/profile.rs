@@ -232,6 +232,7 @@ pub(crate) fn draw(
         header: if ready { HEADER } else { frame::HEADER },
         rows: &[&first, &second],
         more: None,
+        title_top: None,
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
         if !signed_in {

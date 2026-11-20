@@ -115,6 +115,7 @@ pub(crate) fn draw(
         header: frame::HEADER,
         rows: &[&first, &second],
         more: Some(more),
+        title_top: None,
     };
     frame::draw(canvas, view, size, &spec, |canvas, frame| {
         let (active, available) = snapshot.library.groups();
