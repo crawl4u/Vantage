@@ -340,7 +340,9 @@ pub(crate) fn hud_textures(
     }
     if let Some(hotbar) = hotbar.as_ref() {
         // The 182-pixel Java hotbar is a 1-pixel cap, nine 20-pixel slots and another 1-pixel
-        // cap; Bedrock stores each piece separately.
+        // cap, which Bedrock stores as separate pieces. Java draws it whole, outline included, so
+        // the whole picture goes out too and the pieces are left blank under it: the pieces'
+        // layout loses the outline at both ends.
         let scale = (hotbar.width() / 182).max(1);
         let height = hotbar.height();
         let pieces = std::iter::once(("hotbar_start_cap".to_owned(), 0, scale))
@@ -356,10 +358,13 @@ pub(crate) fn hud_textures(
                 181 * scale,
                 scale,
             )));
-        for (name, x, width) in pieces {
-            if let Some(piece) = crop(hotbar, x, 0, width, height, budget) {
-                out.insert(format!("textures/ui/{name}.png"), piece);
+        for (name, _, width) in pieces {
+            if let Some(blank) = canvas(width, height, budget) {
+                out.insert(format!("textures/ui/{name}.png"), blank);
             }
+        }
+        if let Some(whole) = duplicate(hotbar, budget) {
+            out.insert("textures/ui/java_hotbar.png".into(), whole);
         }
     }
     if let Some(selection) = selection.and_then(|selection| square_selection(&selection, budget)) {

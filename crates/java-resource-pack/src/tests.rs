@@ -203,15 +203,22 @@ fn a_legacy_pack_translates_textures_hud_potions_and_sky() {
         "empty atlas region exported"
     );
 
+    // The hotbar goes out whole, as Java draws it, with its pieces blank beneath.
     assert_eq!(
-        pixel(&out, "textures/ui/hotbar_start_cap.png", 0, 0),
-        ((1, 22), RED)
+        pixel(&out, "textures/ui/java_hotbar.png", 0, 0),
+        ((182, 22), RED)
     );
-    assert_eq!(
-        pixel(&out, "textures/ui/hotbar_0.png", 0, 0),
-        ((20, 22), GREEN)
-    );
-    assert_eq!(pixel(&out, "textures/ui/hotbar_8.png", 19, 21).1, BLUE);
+    assert_eq!(pixel(&out, "textures/ui/java_hotbar.png", 1, 0).1, GREEN);
+    assert_eq!(pixel(&out, "textures/ui/java_hotbar.png", 180, 21).1, BLUE);
+    for (piece, size) in [
+        ("hotbar_start_cap", (1, 22)),
+        ("hotbar_0", (20, 22)),
+        ("hotbar_8", (20, 22)),
+        ("hotbar_end_cap", (1, 22)),
+    ] {
+        let (found, color) = pixel(&out, &format!("textures/ui/{piece}.png"), 0, 0);
+        assert_eq!((found, color[3]), (size, 0), "{piece}");
+    }
     assert_eq!(
         pixel(&out, "textures/ui/selected_hotbar_slot.png", 0, 0).0,
         (24, 24)
@@ -271,8 +278,8 @@ fn a_current_pack_translates_flattened_names_strips_sprites_and_equipment() {
     );
     assert_eq!(pixel(&out, "textures/ui/heart.png", 0, 0), ((9, 9), RED));
     assert_eq!(
-        pixel(&out, "textures/ui/hotbar_4.png", 0, 0),
-        ((20, 22), GREEN)
+        pixel(&out, "textures/ui/java_hotbar.png", 90, 10),
+        ((182, 22), GREEN)
     );
     let (size, top) = pixel(&out, "textures/ui/selected_hotbar_slot.png", 0, 23);
     assert_eq!(

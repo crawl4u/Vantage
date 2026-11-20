@@ -62,10 +62,14 @@ pub const JAVA_HUD_PACK: [(&str, &str, &[u8]); 4] = [
 ];
 
 /// The built-in Java HUD pack's original images, by extensionless pack path.
-pub const JAVA_HUD_IMAGES: [(&str, &[u8]); 3] = [
+pub const JAVA_HUD_IMAGES: [(&str, &[u8]); 4] = [
     (
         crate::player_list::CINNABAR_BADGE,
         crate::player_list::CINNABAR_BADGE_PNG,
+    ),
+    (
+        "textures/ui/java_hotbar",
+        include_bytes!("../../../assets/java-hud/textures/ui/java_hotbar.png"),
     ),
     (
         "textures/ui/hotbar_offhand_left",

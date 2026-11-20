@@ -96,6 +96,7 @@
         }
       },
       { "java_level@hud.java_level_number": {} },
+      { "java_hotbar_background@hud.java_hotbar_image": {} },
       { "hotbar_panel@hud.hotbar_panel": {} },
       { "java_offhand@hud.java_offhand_slot": {} },
       {
@@ -189,6 +190,24 @@
       {
         "binding_name": "#level_number",
         "binding_type": "global"
+      }
+    ]
+  },
+
+  // The whole 182 by 22 hotbar as Java draws it, outline included, which a pack supplies as
+  // `java_hotbar`; its slot pieces are then blank. Without one the built-in picture is empty and
+  // the Bedrock hotbar pieces show.
+  "java_hotbar_image": {
+    "type": "image",
+    "texture": "textures/ui/java_hotbar",
+    "size": [ "$cinnabar_hotbar_width", 22 ],
+    "anchor_from": "bottom_middle",
+    "anchor_to": "bottom_middle",
+    "layer": 0,
+    "bindings": [
+      {
+        "binding_name": "#hotbar_visible",
+        "binding_name_override": "#visible"
       }
     ]
   },
