@@ -13,7 +13,7 @@ pub(crate) fn press(
     mut item_use: ResMut<client_interaction::item_use::ItemUseRuntime>,
     mut movement: ResMut<MovementTicker>,
 ) -> bool {
-    let pressed = input.edge.pressed;
+    let pressed = input.edge.pressed && !context.use_edge_is_pulse();
     let now = u64::try_from(context.time.elapsed().as_millis()).unwrap_or(u64::MAX);
     runtime.synchronize(movement.interaction_authority_identity());
     if pressed {

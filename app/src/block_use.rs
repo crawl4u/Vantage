@@ -48,6 +48,8 @@ use gameplay::block_use::{LocalUse, RepeatClock, UseSurroundings, placement_cell
 pub(crate) struct BlockUseContext<'w, 's> {
     input: Res<'w, SemanticInputSnapshot>,
     ordered: Option<Res<'w, crate::ordered_interactions::InteractionRuntime>>,
+    /// Set when this frame's use edge is a mod's pulse rather than a physical press.
+    pulse: Option<Res<'w, crate::item_use::ModItemUsePolicy>>,
     frame: Res<'w, bevy::diagnostic::FrameCount>,
     origin: Res<'w, InteractionOriginSnapshot>,
     view: Res<'w, LocalViewPose>,
@@ -66,6 +68,14 @@ pub(crate) struct BlockUseContext<'w, 's> {
     physics: Option<Res<'w, client_interaction::movement::LocalPhysicsController>>,
     /// Dust from the local brush's strokes on blocks.
     brush_dust: bevy::prelude::MessageWriter<'w, crate::particles::LocalBrushDust>,
+}
+
+impl BlockUseContext<'_, '_> {
+    /// Whether this frame's use edge is a mod's pulse. A pulse skips item use's rearm delay and
+    /// is never a click on a block, which has already built or used for the click it follows.
+    fn use_edge_is_pulse(&self) -> bool {
+        self.pulse.as_ref().is_some_and(|policy| policy.pulse)
+    }
 }
 
 /// Drains physical interactions before physics, then evaluates the buffered held picks.

@@ -291,3 +291,24 @@ fn a_written_release_does_not_hold_later_inputs_for_another_frame() {
         .expect("the next input must leave in the frame that admits the release");
     assert!(release < input);
 }
+
+/// A mod's use pulse is a synthetic press for item use; it must never place or use a block, or a
+/// click that already built would build twice.
+#[test]
+fn a_use_pulse_does_not_place_a_block() {
+    let (mut world, mut captured) = fixture();
+    world.insert_resource(crate::item_use::ModItemUsePolicy { pulse: true });
+    world.run_system_cached(produce_block_use).unwrap();
+    let transactions = captured.drain().iter().filter_map(super::item_use).count();
+    assert_eq!(transactions, 0);
+    assert!(!world.resource::<BlockUseRuntime>().press_pending());
+}
+
+/// The same frame places when its press is physical, so the test above is not vacuous.
+#[test]
+fn a_physical_use_press_places_a_block_in_the_same_fixture() {
+    let (mut world, mut captured) = fixture();
+    world.run_system_cached(produce_block_use).unwrap();
+    let transactions = captured.drain().iter().filter_map(super::item_use).count();
+    assert_eq!(transactions, 1);
+}

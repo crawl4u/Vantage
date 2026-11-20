@@ -27,6 +27,7 @@ pub(super) fn maintain_block_use(
         Vec::new()
     };
     if context.input.phase(Action::Use).pressed
+        && !context.use_edge_is_pulse()
         && !context
             .input
             .snapshot()
@@ -61,6 +62,9 @@ pub(super) fn maintain_block_use(
     let input_authority = (input.authority_generation, input.frame_sequence);
     let has_ordered_input = input.ordered.is_some();
     let mut use_phase = context.input.phase(Action::Use);
+    if context.use_edge_is_pulse() {
+        use_phase.pressed = false;
+    }
     if has_ordered_input {
         use_phase.held = crate::ordered_interactions::build_held(
             context.ordered.as_deref(),
