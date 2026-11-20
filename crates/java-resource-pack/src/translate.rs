@@ -620,6 +620,11 @@ pub(crate) fn translate_within(
         out.insert("textures/particle/particles.png".into(), Output::Raw(bytes));
     }
     out.extend(block_outputs);
+    for (path, bytes) in
+        crate::block_models::translate(layout, &paths, |path| source.load(path)).files
+    {
+        out.insert(path, Output::Raw(bytes));
+    }
     if !random_tiles.is_empty() {
         let atlas = serde_json::json!({
             "resource_pack_name": "java-translation",

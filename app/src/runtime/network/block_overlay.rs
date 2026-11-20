@@ -7,6 +7,7 @@ use assets::material_keys::MaterialKeys;
 mod bindings;
 mod condition;
 mod items;
+mod java_models;
 pub(super) use items::compile_block_item_overlay;
 mod geometry_inputs;
 use pack_compiler::block_geometry as geometry;
@@ -261,6 +262,7 @@ pub(super) fn compile_block_overlay_with_textures(
         builder.override_vanilla_bindings(keys, &legacy);
         builder.override_marker_bindings(keys, &legacy);
         builder.bind_vanilla_blocks(keys, &bindings);
+        builder.bind_java_models(view);
     }
     builder.gaps.unmatched_material_bindings = bindings.unmatched();
     builder.gaps.unresolved_binding_masks = builder.unresolved_masks.len() as u32;

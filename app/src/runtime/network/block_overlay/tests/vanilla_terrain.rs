@@ -30,7 +30,7 @@ fn stack(layers: &[PackLayer<'_>]) -> LayeredPackView {
 }
 
 /// Two block states keep different material ids even when they share one terrain key.
-fn base() -> RuntimeAssets {
+pub(super) fn base() -> RuntimeAssets {
     let diagnostic = RuntimeAssets::diagnostic();
     let mut cube = super::super::diagnostic_visual();
     cube.kind = VisualKind::Cube;
@@ -61,7 +61,7 @@ fn base() -> RuntimeAssets {
 }
 
 /// Synthetic carrier metadata retains state and block binding facts after packing.
-fn keys() -> MaterialKeys {
+pub(super) fn keys() -> MaterialKeys {
     MaterialKeys::from_entries([(1, "state"), (2, "state")])
         .with_aliases([("state", "textures/base_a")])
         .with_sources(
@@ -126,7 +126,7 @@ fn material_color(runtime: &RuntimeAssets, material: u32) -> [u8; 4] {
 }
 
 /// Compiles against the explicit immutable base instead of process-global fixtures.
-fn compile(
+pub(super) fn compile(
     view: &LayeredPackView,
     base: &RuntimeAssets,
     keys: &MaterialKeys,

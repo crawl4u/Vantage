@@ -157,7 +157,7 @@ fn a_blended_vanilla_cube_draws_a_non_occluding_model() {
 }
 
 #[test]
-fn a_promoted_cube_rejects_a_template_with_changed_geometry() {
+fn a_promoted_cube_rejects_a_template_that_draws_no_quads() {
     let base = base();
     let mut compiled = compile(
         &model_binding(json!({"material":{"states":["Blending"]}})),
@@ -165,8 +165,7 @@ fn a_promoted_cube_rejects_a_template_with_changed_geometry() {
         &keys(),
     );
     let (_, head) = compiled.overlay.template_overrides[0];
-    let start = compiled.overlay.model_templates[head as usize].quad_start as usize;
-    compiled.overlay.model_quads[start].positions[0][0] += 1;
+    compiled.overlay.model_templates[head as usize].quad_count = 0;
     assert!(base.with_block_overlay(2, &compiled.overlay).is_err());
 }
 

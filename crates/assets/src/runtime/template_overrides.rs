@@ -5,11 +5,12 @@ use crate::{
     ModelTemplate, VisualKind,
 };
 
-/// Points base model visuals at overlay templates. Each replacement must copy the base
-/// template's complete selectable span (topology group or compound chain) with the same flags and
-/// quad counts, and keep a pot-content template directly before it exactly when the base has one,
-/// so neighbour-selected offsets and potted contents stay inside the copy. Plain cubes may
-/// instead select six full-block model faces, losing cube occlusion.
+/// Points base visuals at overlay templates. A model with special meshing behaviour (a flag on
+/// its template) must be replaced by a copy of its complete selectable span (topology group or
+/// compound chain) with the same flags and quad counts, and keep a pot-content template directly
+/// before it exactly when the base has one, so neighbour-selected offsets and potted contents stay
+/// inside the copy. A flag-free model, and a plain cube, may instead be redrawn as any plain
+/// model; a cube then loses its occlusion.
 pub(super) fn apply(
     replacements: &[(u32, u32)],
     visuals: &mut [BlockVisual],
@@ -31,25 +32,8 @@ pub(super) fn apply(
             && visual.variant == 0
             && !visual.flags.contains(BlockFlags::LEAF_MODEL)
         {
-            let template = overlay_templates
-                .get(replacement as usize)
-                .ok_or_else(|| invalid("cube template override is out of bounds"))?;
-            let quads = overlay_quads
-                .get(template.quad_start as usize..)
-                .and_then(|quads| quads.get(..6));
-            if template.flags != 0
-                || template.quad_count != 6
-                || quads.is_none_or(|quads| {
-                    quads.iter().enumerate().any(|(face, quad)| {
-                        !crate::model::unit_cube_quad_geometry_is_valid(
-                            face,
-                            quad.positions,
-                            quad.flags & crate::MODEL_QUAD_FLAG_FACE_MASK,
-                        )
-                    })
-                })
-            {
-                return Err(invalid("cube template override is not a full-block model"));
+            if !is_plain_chain(overlay_templates, overlay_quads, replacement) {
+                return Err(invalid("cube template override is not a plain model"));
             }
             visual.kind = VisualKind::Model;
             visual
@@ -64,6 +48,15 @@ pub(super) fn apply(
             return Err(invalid("base template override targets no model visual"));
         }
         let original = visual.model_template;
+        // A model with no special meshing behaviour may be redrawn as any plain model.
+        if base_templates
+            .get(original as usize)
+            .is_some_and(|template| template.flags == 0)
+            && is_plain_chain(overlay_templates, overlay_quads, replacement)
+        {
+            visual.model_template = template_base + replacement;
+            continue;
+        }
         let span = crate::model_template_span(base_templates, original)
             .ok_or_else(|| invalid("base template override targets an unbounded template"))?;
         let copied = overlay_templates
@@ -90,6 +83,20 @@ pub(super) fn apply(
         visual.model_template = template_base + replacement;
     }
     Ok(())
+}
+
+/// Whether the overlay holds a complete chain of ordinary templates from `first`: none carries a
+/// vanilla meshing behaviour, and each owns quads the overlay stores.
+fn is_plain_chain(templates: &[ModelTemplate], quads: &[ModelQuad], first: u32) -> bool {
+    crate::model_template_parts(templates, first).is_some_and(|parts| {
+        parts.iter().all(|part| {
+            part.flags & !crate::MODEL_TEMPLATE_FLAG_COMPOUND_NEXT == 0
+                && part.quad_count != 0
+                && quads
+                    .get(part.quad_start as usize..)
+                    .is_some_and(|rest| rest.len() >= part.quad_count as usize)
+        })
+    })
 }
 
 /// Names rejected overrides without exposing unchecked runtime references.

@@ -35,6 +35,7 @@ mod connection;
 mod empty_geometry;
 mod flipbooks;
 mod hd_textures;
+mod java_models;
 mod legacy;
 mod lighting;
 mod material_bindings;
