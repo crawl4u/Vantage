@@ -66,6 +66,9 @@ fn push_new(list: &mut Vec<String>, keys: &[String]) {
 pub struct Mod;
 
 /// A hasher for runtime IDs: the default SipHash costs hundreds of fuel per lookup.
+/// Seconds after a use or a swing within which the game would hold back the next use (200 ms, with margin).
+const ITEM_DELAY_WINDOW: f64 = 0.25;
+
 #[derive(Clone, Copy, Default)]
 struct IdHash;
 
@@ -444,6 +447,8 @@ struct State {
     fullbright_refused: bool,
     /// The item delay fix was refused for want of the permission (said once).
     item_fix_refused: bool,
+    /// When the player last pressed use or attack, for the item delay fix.
+    last_use_or_swing: Option<f64>,
     /// Whether the host has been told to hide the scoreboard and the game's crosshair, and whether it refused.
     hidden_sent: (bool, bool, bool, bool),
     /// The host has been told the list at least once since this copy of the mod started: the host
@@ -2610,6 +2615,7 @@ impl State {
         // The item delay fix reacts to a fresh use press.
         if item_fix && !cps_on {
             push_new(&mut bound, self.binds.keys(crate::binds::USE));
+            push_new(&mut bound, self.binds.keys(crate::binds::ATTACK));
         }
         // Markers: a middle click takes a mark off.
         if self.settings.gameplay.mk_on && self.settings.gameplay.mk_middle {
@@ -2762,18 +2768,27 @@ impl State {
         // The player's bindings are read after the controls, so a refused read (the callback's
         // allowance) never costs the frame its keys.
         self.poll_binds();
-        // Item delay fix: a fresh right-click in the world skips the game's wait between item uses
-        // (the 200 ms after a use and the hold-off after a swing). The host still applies cooldowns,
-        // block rules, one use per tick and the server's checks. A refusal (no permission, or no
-        // gameplay frame) is said once in chat.
-        if item_fix && controls.focused && !controls.panel_open && !capturing && self.binds.presses(crate::binds::USE, &controls.keys_pressed) > 0 {
-            match item_use::pulse_use() {
-                Ok(()) => self.item_fix_refused = false,
-                Err(error) if error.contains("denied") && !self.item_fix_refused => {
-                    self.item_fix_refused = true;
-                    let _ = host_hud::local_message("Vantage: item delay fix is off. Allow \"Item use\" for this mod.");
+        // Item delay fix: a fresh right-click soon after a use or a swing skips the game's wait between
+        // item uses (the 200 ms after a use and the hold-off after a swing). A click with no recent use
+        // or swing is never held back, so it is left alone: a pulse then would place or use twice. The
+        // host still applies cooldowns, block rules, one use per tick and the server's checks. A refusal
+        // (no permission, or no gameplay frame) is said once in chat.
+        if item_fix && controls.focused && !controls.panel_open && !capturing {
+            let used = self.binds.presses(crate::binds::USE, &controls.keys_pressed) > 0;
+            let swung = self.binds.presses(crate::binds::ATTACK, &controls.keys_pressed) > 0;
+            let held_back = self.last_use_or_swing.is_some_and(|at| self.clock - at < ITEM_DELAY_WINDOW);
+            if used && held_back {
+                match item_use::pulse_use() {
+                    Ok(()) => self.item_fix_refused = false,
+                    Err(error) if error.contains("denied") && !self.item_fix_refused => {
+                        self.item_fix_refused = true;
+                        let _ = host_hud::local_message("Vantage: item delay fix is off. Allow \"Item use\" for this mod.");
+                    }
+                    Err(_) => {}
                 }
-                Err(_) => {}
+            }
+            if used || swung {
+                self.last_use_or_swing = Some(self.clock);
             }
         }
         // The touch buttons' taps are read here, before the menu hand-over below: the Menu button is the menu key on
