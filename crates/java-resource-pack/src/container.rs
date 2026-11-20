@@ -26,7 +26,7 @@ pub(crate) const SLOT_HIGHLIGHT: &str = "textures/ui/pocket_ui_highlight_selecte
 /// container's progress and error marks, which Java draws the empty halves of into the
 /// container's own atlas, and the backgrounds behind a status effect. Each has its Bedrock
 /// texture and, for a nine-slice one, the sidecar describing it.
-pub(crate) const SPRITES: [(&str, &str, Option<&[u8]>); 10] = [
+pub(crate) const SPRITES: [(&str, &str, Option<&[u8]>); 15] = [
     (
         "container/furnace/lit_progress",
         "textures/ui/flame_full_image",
@@ -50,6 +50,32 @@ pub(crate) const SPRITES: [(&str, &str, Option<&[u8]>); 10] = [
     (
         "container/brewing_stand/fuel_length",
         "textures/ui/brewing_fuel_bar_full",
+        None,
+    ),
+    // The faint pictures an empty armor or offhand slot shows.
+    (
+        "container/slot/helmet",
+        "textures/ui/empty_armor_slot_helmet",
+        None,
+    ),
+    (
+        "container/slot/chestplate",
+        "textures/ui/empty_armor_slot_chestplate",
+        None,
+    ),
+    (
+        "container/slot/leggings",
+        "textures/ui/empty_armor_slot_leggings",
+        None,
+    ),
+    (
+        "container/slot/boots",
+        "textures/ui/empty_armor_slot_boots",
+        None,
+    ),
+    (
+        "container/slot/shield",
+        "textures/ui/empty_armor_slot_shield",
         None,
     ),
     ("container/anvil/error", "textures/ui/crossout", None),
