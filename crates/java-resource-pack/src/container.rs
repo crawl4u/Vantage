@@ -239,9 +239,14 @@ pub(crate) fn panel(atlas: &RgbaImage, budget: &Budget, filled: bool) -> Option<
     } else {
         [0; 4]
     };
+    // The fill goes under everything but the clear pixels that reach the panel's outer edge:
+    // under a frame with rounded or notched corners it would show as square corners behind them.
+    let outside = clear_outside(&region, frame);
     let mut panel = canvas(width, height, budget)?;
-    for pixel in panel.pixels_mut() {
-        pixel.0 = fill;
+    for (x, y, pixel) in panel.enumerate_pixels_mut() {
+        if !outside[(y * width + x) as usize] {
+            pixel.0 = fill;
+        }
     }
     // Only the frame is kept; the middle stays the flat fill.
     let mut ring = duplicate(&region, budget)?;
@@ -251,6 +256,42 @@ pub(crate) fn panel(atlas: &RgbaImage, budget: &Budget, filled: bool) -> Option<
         }
     }
     over(&panel, &ring, budget)
+}
+
+/// Which pixels of `image` are fully clear and joined to its edge through clear pixels within
+/// `frame` pixels of it, row by row. The middle never counts, so a panel with no frame art along an
+/// edge still has its fill.
+fn clear_outside(image: &RgbaImage, frame: u32) -> Vec<bool> {
+    let (width, height) = image.dimensions();
+    let mut outside = vec![false; (width * height) as usize];
+    let mut pending: Vec<(u32, u32)> = Vec::new();
+    for x in 0..width {
+        pending.extend([(x, 0), (x, height - 1)]);
+    }
+    for y in 0..height {
+        pending.extend([(0, y), (width - 1, y)]);
+    }
+    while let Some((x, y)) = pending.pop() {
+        let slot = (y * width + x) as usize;
+        let in_frame = x < frame || y < frame || x + frame >= width || y + frame >= height;
+        if !in_frame || outside[slot] || image.get_pixel(x, y).0[3] != 0 {
+            continue;
+        }
+        outside[slot] = true;
+        if x > 0 {
+            pending.push((x - 1, y));
+        }
+        if y > 0 {
+            pending.push((x, y - 1));
+        }
+        if x + 1 < width {
+            pending.push((x + 1, y));
+        }
+        if y + 1 < height {
+            pending.push((x, y + 1));
+        }
+    }
+    outside
 }
 
 /// The container-only copies a Java container atlas yields, each with its path and, for the nine-slice
@@ -285,20 +326,37 @@ pub(crate) fn container_swaps(
         }
     }
     // The box the player stands in: its middle decides what Black becomes, its edge is the frame.
+    // Bedrock draws Black 52 by 70 inside the box, but a Java box may be narrower (vanilla's is 49
+    // wide), so Black is as big as Bedrock draws it and filled only where the pack's box is.
     let [box_x, box_y, box_width, box_height] = PLAYER_BOX.map(|value| value * scale);
     if let Some(player) = crop(atlas, box_x, box_y, box_width, box_height, budget) {
         let middle = *player.get_pixel(box_width / 2, box_height / 2);
-        if let Some(mut black) = canvas(1, 1, budget) {
-            black.put_pixel(
-                0,
-                0,
-                if middle.0[3] >= 250 {
-                    middle
-                } else {
-                    image::Rgba([0; 4])
-                },
-            );
+        let (inner_width, inner_height) = (box_width - 2 * scale, box_height - 2 * scale);
+        // A see-through box makes Black clear; otherwise it is the middle where the pack's box is.
+        let size = if middle.0[3] >= 250 {
+            (inner_width, inner_height)
+        } else {
+            (1, 1)
+        };
+        if let Some(mut black) = canvas(size.0, size.1, budget) {
+            if middle.0[3] >= 250 {
+                for y in 0..inner_height {
+                    for x in 0..inner_width {
+                        if *player.get_pixel(x + scale, y + scale) == middle {
+                            black.put_pixel(x, y, middle);
+                        }
+                    }
+                }
+            }
             found.push((paths(3), black, None));
+        }
+        // The offhand slot's cell begins inside this crop's bottom right corner; it is not the
+        // box's frame, and the player's Black no longer covers it.
+        let mut player = player;
+        for y in OFFHAND_CELL[1].saturating_sub(PLAYER_BOX[1]) * scale..box_height {
+            for x in OFFHAND_CELL[0].saturating_sub(PLAYER_BOX[0]) * scale..box_width {
+                player.put_pixel(x, y, image::Rgba([0; 4]));
+            }
         }
         if !is_empty(&player) {
             found.push((paths(4), player, Some(PLAYER_BOX_SIDECAR)));
@@ -310,6 +368,8 @@ pub(crate) fn container_swaps(
 /// The player's box in a 256-pixel container atlas: its left, top, width and height, and the
 /// sidecar of its frame.
 const PLAYER_BOX: [u32; 4] = [25, 7, 54, 72];
+/// Where the offhand slot's cell starts in the atlas, which the player box's crop overlaps.
+const OFFHAND_CELL: [u32; 2] = [76, 61];
 const PLAYER_BOX_SIDECAR: &[u8] = br#"{"nineslice_size":1,"base_size":[54,72]}"#;
 
 /// Rewrites the colour of every opaque pixel with `map`, keeping alpha.
@@ -469,6 +529,69 @@ mod tests {
         for pixel in panel.pixels() {
             assert_eq!(pixel.0[3], 255, "a dialog behind text is never see-through");
         }
+    }
+
+    #[test]
+    fn rounded_corners_stay_clear_instead_of_showing_the_fill_square() {
+        let budget = Budget::new();
+        let mut atlas = panelled([150, 160, 170, 255]);
+        // Round the top left corner: the corner pixel and its neighbours are clear.
+        for (x, y) in [(0, 0), (1, 0), (0, 1)] {
+            atlas.put_pixel(x, y, Rgba([0; 4]));
+        }
+        // An opaque panel and the container's own copy both keep the corner clear.
+        for filled in [true, false] {
+            let panel = panel(&atlas, &budget, filled).unwrap();
+            assert_eq!(panel.get_pixel(0, 0).0[3], 0, "corner, filled {filled}");
+            assert_eq!(panel.get_pixel(1, 0).0[3], 0);
+            assert_eq!(panel.get_pixel(2, 2).0, [150, 160, 170, 255]);
+            assert_eq!(panel.get_pixel(5, 0).0, [0, 0, 0, 255]);
+        }
+    }
+
+    #[test]
+    fn a_player_box_narrower_than_bedrocks_draws_black_only_where_it_is() {
+        let budget = Budget::new();
+        let mut atlas = RgbaImage::new(256, 256);
+        // Vanilla's box: black 49 wide and 70 tall at 26, 8, inside a lighter frame.
+        for y in 6..80 {
+            for x in 24..80 {
+                atlas.put_pixel(x, y, Rgba([198, 198, 198, 255]));
+            }
+        }
+        for y in 8..78 {
+            for x in 26..75 {
+                atlas.put_pixel(x, y, Rgba([0, 0, 0, 255]));
+            }
+        }
+        // The offhand slot's cell, whose corner the box's crop overlaps.
+        atlas.put_pixel(77, 70, Rgba([90, 90, 90, 255]));
+        let swaps = container_swaps(&atlas, &budget);
+        let frame = swaps
+            .iter()
+            .find(|(path, ..)| path.ends_with("player_preview_border_container.png"))
+            .map(|(_, image, _)| image)
+            .unwrap();
+        assert_eq!(
+            frame.get_pixel(77 - 25, 70 - 7).0[3],
+            0,
+            "not part of the frame"
+        );
+        assert_eq!(
+            frame.get_pixel(1, 1).0,
+            [0, 0, 0, 255],
+            "the box's own pixels stay"
+        );
+        let black = swaps
+            .iter()
+            .find(|(path, ..)| path.ends_with("black_container.png"))
+            .map(|(_, image, _)| image)
+            .unwrap();
+        assert_eq!(black.dimensions(), (52, 70));
+        assert_eq!(black.get_pixel(0, 0).0, [0, 0, 0, 255]);
+        assert_eq!(black.get_pixel(48, 69).0, [0, 0, 0, 255]);
+        assert_eq!(black.get_pixel(49, 30).0[3], 0, "past the pack's own box");
+        assert_eq!(black.get_pixel(51, 69).0[3], 0);
     }
 
     #[test]
