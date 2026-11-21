@@ -87,7 +87,11 @@ pub(crate) fn connected(
         };
         let turn = |axis: &str| apply.get(axis).and_then(Value::as_i64).unwrap_or(0);
         let model = java_model::resolve(apply.get("model")?.as_str()?, load)?
-            .turned(turn("x"), turn("y"))?
+            .turned(
+                turn("x"),
+                turn("y"),
+                apply.get("uvlock").and_then(Value::as_bool).unwrap_or(false),
+            )?
             .flattened()?;
         match part.get("when") {
             None => always.push(model),

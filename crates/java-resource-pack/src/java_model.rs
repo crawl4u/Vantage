@@ -35,6 +35,8 @@ pub struct Face {
     /// `[u1, v1, u2, v2]` in Java texture pixels, or `None` for the face's own box.
     pub uv: Option<[f64; 4]>,
     pub tint: bool,
+    /// Quarter turns the texture is turned clockwise seen from outside the face (Java `rotation`).
+    pub rotation: u8,
 }
 
 /// A model with its parents followed.
@@ -203,6 +205,11 @@ fn element(value: &Value) -> Option<Element> {
                 texture: texture.trim_start_matches('#').to_owned(),
                 uv,
                 tint: face.get("tintindex").is_some(),
+                rotation: face
+                    .get("rotation")
+                    .and_then(Value::as_i64)
+                    .filter(|degrees| degrees % 90 == 0)
+                    .map_or(0, |degrees| (degrees / 90).rem_euclid(4) as u8),
             },
         );
     }
@@ -269,26 +276,11 @@ impl Model {
     }
 }
 
-/// Where a face lands after one quarter turn about the vertical axis (Java's `y`, clockwise
-/// seen from above) and one about the east-west axis (Java's `x`).
-const TURN_Y: [(&str, &str); 4] = [
-    ("north", "east"),
-    ("east", "south"),
-    ("south", "west"),
-    ("west", "north"),
-];
-const TURN_X: [(&str, &str); 4] = [
-    ("north", "down"),
-    ("down", "south"),
-    ("south", "up"),
-    ("up", "north"),
-];
-
 impl Model {
     /// The model after Java's blockstate turns: `x` then `y` degrees, each a multiple of 90.
     /// `None` for other angles and for models with element rotations, whose rescaling is not
-    /// translated. Faces keep their UVs, as with Java's `uvlock` off for side faces.
-    pub fn turned(&self, x: i64, y: i64) -> Option<Model> {
+    /// translated. Each face's texture turns with it, unless `uvlock` keeps it as it was.
+    pub fn turned(&self, x: i64, y: i64, uvlock: bool) -> Option<Model> {
         if x % 90 != 0 || y % 90 != 0 || self.elements.iter().any(|e| e.rotation.is_some()) {
             return None;
         }
@@ -300,16 +292,12 @@ impl Model {
                 face.uv.get_or_insert_with(|| default_uv(name, from, to));
             }
         }
-        for _ in 0..(x.rem_euclid(360) / 90) {
-            for element in &mut model.elements {
-                // (y, z) -> (z, -y) about the block centre; x is untouched.
-                turn_element(element, |[px, py, pz]| [px, pz, 16.0 - py], &TURN_X);
-            }
-        }
-        for _ in 0..(y.rem_euclid(360) / 90) {
-            for element in &mut model.elements {
-                // (x, z) -> (-z, x) about the block centre; y is untouched.
-                turn_element(element, |[px, py, pz]| [16.0 - pz, py, px], &TURN_Y);
+        let quarter_turns = [(x, false), (y, true)];
+        for (degrees, about_y) in quarter_turns {
+            for _ in 0..(degrees.rem_euclid(360) / 90) {
+                for element in &mut model.elements {
+                    turn_element(element, about_y, uvlock);
+                }
             }
         }
         Some(model)
@@ -333,22 +321,79 @@ impl Model {
     }
 }
 
-/// Moves one element's box through `map` and renames its faces by `faces`.
-fn turn_element(
-    element: &mut Element,
-    map: impl Fn([f64; 3]) -> [f64; 3],
-    faces: &[(&str, &'static str); 4],
-) {
-    let (a, b) = (map(element.from), map(element.to));
+/// A face's outward normal.
+fn normal(face: &str) -> [i32; 3] {
+    match face {
+        "north" => [0, 0, -1],
+        "east" => [1, 0, 0],
+        "south" => [0, 0, 1],
+        "west" => [-1, 0, 0],
+        "up" => [0, 1, 0],
+        _ => [0, -1, 0],
+    }
+}
+
+/// The face with outward normal `normal`.
+fn face_named(normal: [i32; 3]) -> &'static str {
+    FACES
+        .into_iter()
+        .find(|face| self::normal(face) == normal)
+        .unwrap_or("north")
+}
+
+/// The direction the top of an unturned texture points on a face: up for the sides, north on the
+/// up face (its `v` runs south) and south on the down face (its `v` runs north).
+fn texture_top(face: &str) -> [i32; 3] {
+    match face {
+        "up" => [0, 0, -1],
+        "down" => [0, 0, 1],
+        _ => [0, 1, 0],
+    }
+}
+
+/// One quarter turn of a direction: about the vertical axis clockwise seen from above (north to
+/// east), or about the east-west axis tipping north down.
+fn turn_vector([x, y, z]: [i32; 3], about_y: bool) -> [i32; 3] {
+    if about_y { [-z, y, x] } else { [x, z, -y] }
+}
+
+/// Turns one element a quarter turn about the block centre, renaming its faces and turning each
+/// face's texture with it: by the quarter turns between where the texture's top pointed and
+/// where an unturned texture's top points on the face it lands on, unless `uvlock`.
+fn turn_element(element: &mut Element, about_y: bool, uvlock: bool) {
+    let point = |[x, y, z]: [f64; 3]| {
+        if about_y {
+            [16.0 - z, y, x]
+        } else {
+            [x, z, 16.0 - y]
+        }
+    };
+    let (a, b) = (point(element.from), point(element.to));
     element.from = std::array::from_fn(|axis| a[axis].min(b[axis]));
     element.to = std::array::from_fn(|axis| a[axis].max(b[axis]));
     let mut turned = BTreeMap::new();
-    for (name, face) in std::mem::take(&mut element.faces) {
-        let name = faces
-            .iter()
-            .find(|(from, _)| *from == name)
-            .map_or(name, |(_, to)| to);
-        turned.insert(name, face);
+    for (name, mut face) in std::mem::take(&mut element.faces) {
+        let landed_normal = turn_vector(normal(name), about_y);
+        let landed = face_named(landed_normal);
+        if !uvlock {
+            // Clockwise seen from outside takes a direction `v` to `v x normal`.
+            let cross = |v: [i32; 3], n: [i32; 3]| {
+                [
+                    v[1] * n[2] - v[2] * n[1],
+                    v[2] * n[0] - v[0] * n[2],
+                    v[0] * n[1] - v[1] * n[0],
+                ]
+            };
+            let wanted = turn_vector(texture_top(name), about_y);
+            let mut top = texture_top(landed);
+            let mut quarters = 0;
+            while top != wanted && quarters < 4 {
+                top = cross(top, landed_normal);
+                quarters += 1;
+            }
+            face.rotation = (face.rotation + quarters % 4) % 4;
+        }
+        turned.insert(landed, face);
     }
     element.faces = turned;
 }
@@ -379,20 +424,21 @@ pub fn to_geometry(identifier: &str, model: &Model) -> Value {
                 let [u1, v1, u2, v2] = data
                     .uv
                     .unwrap_or_else(|| default_uv(face, element.from, element.to));
-                uv.insert(
-                    (*face).to_owned(),
-                    json!({
-                        "uv": [u1, v1],
-                        "uv_size": [u2 - u1, v2 - v1],
-                        "material_instance": data.texture,
-                    }),
-                );
+                // Bedrock starts the up and down textures from the opposite corner to Java.
+                let turns =
+                    (data.rotation + if matches!(*face, "up" | "down") { 2 } else { 0 }) % 4;
+                let mut entry = json!({
+                    "uv": [u1, v1],
+                    "uv_size": [u2 - u1, v2 - v1],
+                    "material_instance": data.texture,
+                });
+                if turns != 0 {
+                    entry["uv_rotation"] = json!(u32::from(turns) * 90);
+                }
+                uv.insert((*face).to_owned(), entry);
             }
-            let origin = [
-                element.from[0] - 8.0,
-                element.from[1],
-                element.from[2] - 8.0,
-            ];
+            // Geometry X runs the opposite way to the block's: the cube starts at its far edge.
+            let origin = [8.0 - element.to[0], element.from[1], element.from[2] - 8.0];
             let size = [
                 element.to[0] - element.from[0],
                 element.to[1] - element.from[1],
@@ -525,7 +571,7 @@ mod tests {
     #[test]
     fn quarter_turns_move_boxes_and_rename_faces_keeping_their_uvs() {
         let side = resolve("block/fence_side", &none).unwrap();
-        let east = side.turned(0, 90).unwrap();
+        let east = side.turned(0, 90, false).unwrap();
         let bar = &east.elements[0];
         // A bar reaching north reaches east after a clockwise quarter turn.
         assert_eq!((bar.from, bar.to), ([7.0, 12.0, 7.0], [16.0, 15.0, 9.0]));
@@ -534,9 +580,12 @@ mod tests {
             ["down", "east", "north", "south", "up"]
         );
         assert_eq!(bar.faces["east"].uv, Some([7.0, 1.0, 9.0, 4.0]));
-        assert_eq!(side.turned(0, 360).unwrap(), side.turned(0, 0).unwrap());
-        assert!(side.turned(0, 45).is_none());
-        let down = side.turned(90, 0).unwrap();
+        assert_eq!(
+            side.turned(0, 360, false).unwrap(),
+            side.turned(0, 0, false).unwrap()
+        );
+        assert!(side.turned(0, 45, false).is_none());
+        let down = side.turned(90, 0, false).unwrap();
         assert!(down.elements[0].faces.contains_key("down"));
     }
 
@@ -553,5 +602,21 @@ mod tests {
         let flat = model.flattened().unwrap();
         assert_eq!(flat.elements[0].faces["north"].texture, "block_glass");
         assert_eq!(flat.texture("block_glass"), Some("block/glass"));
+    }
+
+    #[test]
+    fn a_turned_faces_texture_turns_with_it_unless_the_model_locks_its_uvs() {
+        let side = resolve("block/template_glass_pane_side", &none).unwrap();
+        let top = |model: &Model| model.elements[0].faces["up"].rotation;
+        // The up face's texture follows a clockwise quarter turn of the block.
+        assert_eq!(top(&side.turned(0, 90, false).unwrap()), 1);
+        assert_eq!(top(&side.turned(0, 270, false).unwrap()), 3);
+        assert_eq!(top(&side.turned(0, 90, true).unwrap()), 0);
+        // The down face is seen from the other side, so it turns the other way.
+        let bottom = |model: &Model| model.elements[0].faces["down"].rotation;
+        assert_eq!(bottom(&side.turned(0, 90, false).unwrap()), 3);
+        // A side face tipped onto the down face has its top pointing north: half a turn off.
+        let tipped = side.turned(90, 0, false).unwrap();
+        assert_eq!(tipped.elements[0].faces["down"].rotation, 2);
     }
 }

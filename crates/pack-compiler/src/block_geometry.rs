@@ -23,6 +23,8 @@ pub const FACE_NAMES: [&str; 6] = ["west", "east", "down", "up", "north", "south
 pub struct FaceUv {
     pub uv: [f32; 2],
     pub size: [f32; 2],
+    /// Quarter turns the texture is turned clockwise as seen from outside the face.
+    pub turns: u8,
     pub material_instance: Option<String>,
 }
 
@@ -69,6 +71,7 @@ impl Geometry {
                     Some(FaceUv {
                         uv,
                         size,
+                        turns: 0,
                         material_instance: None,
                     })
                 }),
@@ -229,20 +232,19 @@ fn parse_cube(cube: &Value) -> Option<Cube> {
         Value::Object(faces) => FACE_NAMES.map(|name| {
             let face = faces.get(name)?;
             let uv = face["uv"].as_array()?;
-            let mut uv = [number(uv.first()?)?, number(uv.get(1)?)?];
-            let mut size = face["uv_size"]
+            let uv = [number(uv.first()?)?, number(uv.get(1)?)?];
+            let size = face["uv_size"]
                 .as_array()
                 .and_then(|size| Some([number(size.first()?)?, number(size.get(1)?)?]))
                 .unwrap_or([0.0, 0.0]);
-            if number(&face["uv_rotation"]) == Some(180.0) {
-                for axis in 0..2 {
-                    uv[axis] += size[axis];
-                    size[axis] = -size[axis];
-                }
-            }
+            // Quarter turns only; any other angle shows the face unturned.
+            let turns = number(&face["uv_rotation"])
+                .filter(|degrees| degrees % 90.0 == 0.0)
+                .map_or(0, |degrees| (degrees / 90.0).rem_euclid(4.0) as u8);
             Some(FaceUv {
                 uv,
                 size,
+                turns,
                 material_instance: face["material_instance"].as_str().map(str::to_owned),
             })
         }),
@@ -267,6 +269,7 @@ fn box_uv(offset: [f32; 2], size: [f32; 3]) -> [Option<FaceUv>; 6] {
         Some(FaceUv {
             uv,
             size,
+            turns: 0,
             material_instance: None,
         })
     };
@@ -321,6 +324,10 @@ impl Cube {
                 4 => [[u1, v1], [u1, v0], [u0, v0], [u0, v1]],
                 _ => [[u0, v1], [u1, v1], [u1, v0], [u0, v0]],
             };
+            // Each quarter turn hands every corner the texture of the next one: the corners
+            // run counter-clockwise seen from outside, so the texture turns clockwise.
+            let uvs: [[f32; 2]; 4] =
+                std::array::from_fn(|corner| uvs[(corner + usize::from(uv.turns)) % 4]);
             quads.push((
                 FaceQuad {
                     face,

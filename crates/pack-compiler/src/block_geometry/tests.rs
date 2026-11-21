@@ -101,3 +101,18 @@ fn displaced_full_block_samples_like_the_cube_path() {
         [[16.0, 0.0], [16.0, 16.0], [0.0, 16.0], [0.0, 0.0]],
     );
 }
+
+#[test]
+fn quarter_turns_hand_each_corner_the_texture_of_the_next_one() {
+    let turned = |degrees: i32| {
+        let cube = full_cube(json!({
+            "up": { "uv": [4, 8], "uv_size": [2, 3], "uv_rotation": degrees },
+        }));
+        corners(&face(&cube, 3))
+    };
+    assert_eq!(turned(0), [[4.0, 8.0], [4.0, 11.0], [6.0, 11.0], [6.0, 8.0]]);
+    assert_eq!(turned(90), [[4.0, 11.0], [6.0, 11.0], [6.0, 8.0], [4.0, 8.0]]);
+    assert_eq!(turned(270), [[6.0, 8.0], [4.0, 8.0], [4.0, 11.0], [6.0, 11.0]]);
+    assert_eq!(turned(-90), turned(270));
+    assert_eq!(turned(45), turned(0));
+}

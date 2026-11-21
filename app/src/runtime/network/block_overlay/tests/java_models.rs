@@ -17,6 +17,7 @@ fn model_pack(block: &str) -> LayeredPackView {
                     texture: "side".to_owned(),
                     uv: None,
                     tint: false,
+                    rotation: 0,
                 },
             )]
             .into(),
@@ -184,6 +185,7 @@ fn bound_connected(family: u32) -> super::super::CompiledBlockOverlay {
                     texture: "state".to_owned(),
                     uv: None,
                     tint: false,
+                    rotation: 0,
                 },
             )]
             .into(),
