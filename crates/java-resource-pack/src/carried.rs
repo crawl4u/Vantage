@@ -55,7 +55,7 @@ const CARRIED: &[(&str, &str, Tint)] = &[
 ];
 
 /// Java's default grass colour when the pack's colour map names none.
-const GRASS_FALLBACK: [u8; 3] = [0x79, 0xC0, 0x5A];
+const GRASS_FALLBACK: [u8; 3] = [0x7C, 0xBD, 0x6B];
 /// Java's default foliage colour.
 const FOLIAGE_DEFAULT: [u8; 3] = [0x48, 0xB5, 0x18];
 
