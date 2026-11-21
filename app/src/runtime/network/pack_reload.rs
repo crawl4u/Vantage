@@ -403,7 +403,7 @@ pub(crate) fn reload_resource_packs(
     mut world: ResMut<ClientWorld>,
     mut ui: ResMut<UiRuntimeResource>,
     mut textures: Option<ResMut<render_scene::ChunkTextureAssets>>,
-    presentation: Option<Res<UiPresentationResource>>,
+    mut presentation: Option<ResMut<UiPresentationResource>>,
     mut environment: EnvironmentPublication,
     mut block_entity_scene: Option<ResMut<render_scene::BlockEntitySceneResource>>,
     mut entity_artwork: Option<ResMut<render_scene::ActorArtworkResource>>,
@@ -603,6 +603,16 @@ pub(crate) fn reload_resource_packs(
                             icons: packs.item_icons.clone(),
                         },
                     ));
+                }
+                // Held and inventory block models are built from the world's materials, so the
+                // pack's textures reach them only when they are built again from the new assets.
+                if let (Some(presentation), Some(entities)) = (
+                    presentation.as_deref_mut(),
+                    super::entity_texture_reload::base_entity_assets(),
+                ) && !Arc::ptr_eq(&world.runtime_assets, &prepared.assets)
+                    && let Err(error) = presentation.set_gui_models(&prepared.assets, entities)
+                {
+                    bevy::log::warn!(?error, "held and inventory block models keep their old art");
                 }
                 ui.set_server_lang(packs.server_lang);
                 ui.set_session_icons(packs.item_icons);

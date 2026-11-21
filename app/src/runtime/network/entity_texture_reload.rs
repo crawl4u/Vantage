@@ -12,6 +12,11 @@ pub(crate) fn set_base_actor_artwork(pages: ActorArtworkPages, entities: Arc<Run
     let _ = BASE.set((pages, entities));
 }
 
+/// The carrier's entity and item assets every session starts from, once installed.
+pub(crate) fn base_entity_assets() -> Option<&'static Arc<RuntimeEntityAssets>> {
+    BASE.get().map(|(_, entities)| entities)
+}
+
 /// The carrier artwork every session starts from, once installed.
 pub(crate) fn startup_actor_artwork() -> Option<&'static ActorArtworkPages> {
     BASE.get().map(|(pages, _)| pages)
