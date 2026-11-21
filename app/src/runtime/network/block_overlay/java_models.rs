@@ -5,17 +5,17 @@ use std::{collections::HashSet, sync::Arc};
 use protocol::{CustomMaterialInstance, CustomTransformation, CustomVisualComponents};
 use protocol_ids::BlockRenderMethod;
 use resource_pack::LayeredPackView;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use super::{Builder, geometry_inputs::geometry_catalog};
 
 /// The largest bindings document read.
 const MAX_BINDINGS_BYTES: u64 = 8 << 20;
 
-/// One vanilla block state's Java model.
+/// One Java block state's model.
 struct Entry {
     block: String,
-    states: Map<String, Value>,
+    properties: Vec<(String, String)>,
     geometry: Arc<str>,
     rotation: [i32; 3],
     materials: Vec<(Arc<str>, Arc<str>)>,
@@ -44,7 +44,12 @@ fn entries(view: &LayeredPackView) -> Vec<Entry> {
             let turn = |index: usize| i32::try_from(rotation.get(index)?.as_i64()?).ok();
             Some(Entry {
                 block: entry.get("block")?.as_str()?.to_owned(),
-                states: entry.get("states")?.as_object()?.clone(),
+                properties: entry
+                    .get("properties")?
+                    .as_object()?
+                    .iter()
+                    .map(|(name, value)| Some((name.clone(), value.as_str()?.to_owned())))
+                    .collect::<Option<_>>()?,
                 geometry: entry.get("geometry")?.as_str()?.into(),
                 rotation: [turn(0)?, turn(1)?, turn(2)?],
                 materials: entry
@@ -58,25 +63,14 @@ fn entries(view: &LayeredPackView) -> Vec<Entry> {
         .collect()
 }
 
-/// Whether the vanilla `record` is in the state `entry` names.
-fn matches(entry: &Entry, record: &assets::RegistryRecord) -> bool {
-    entry.states.iter().all(|(name, expected)| {
-        let Some(value) = assets::facts::BlockProperty::from_name(name)
-            .and_then(|property| record.property(property))
-        else {
-            return false;
-        };
-        match (value, expected) {
-            (assets::facts::StateValue::String(value), Value::String(expected)) => {
-                value.as_ref() == expected
-            }
-            (assets::facts::StateValue::Int(value), Value::Number(expected)) => {
-                expected.as_i64() == Some(i64::from(*value))
-            }
-            (assets::facts::StateValue::Bool(value), Value::Bool(expected)) => value == expected,
-            _ => false,
-        }
-    })
+/// Whether the Java state `java` is the one `entry` names; properties the entry leaves out
+/// never change the model.
+fn matches(entry: &Entry, java: assets::facts::java_mapping::JavaBlockState<'_>) -> bool {
+    entry.block == java.name()
+        && entry
+            .properties
+            .iter()
+            .all(|(name, value)| java.property(name) == Some(value.as_str()))
 }
 
 impl Builder<'_> {
@@ -98,11 +92,14 @@ impl Builder<'_> {
         let mut templates: std::collections::HashMap<(usize, usize), Option<u32>> =
             std::collections::HashMap::new();
         for (visual, record) in records.iter().enumerate() {
-            // The last matching entry wins, as the pack's own order decides.
-            let Some(index) = entries
-                .iter()
-                .rposition(|entry| entry.block == record.name.as_ref() && matches(entry, record))
+            // Every Bedrock state takes the Java state the game's mapping gives it, so Java names
+            // and properties need no table of their own. The last matching entry wins, as the
+            // pack's own order decides.
+            let Some(java) = assets::facts::java_mapping::java_block_state(record.sequential_id)
             else {
+                continue;
+            };
+            let Some(index) = entries.iter().rposition(|entry| matches(entry, java)) else {
                 continue;
             };
             let entry = &entries[index];
@@ -158,5 +155,40 @@ impl Builder<'_> {
                     .push((visual as u32, template));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A block whose Java name differs from its Bedrock name is found by the Java name and its
+    /// Java properties, with no table of names kept here.
+    #[test]
+    fn entries_name_java_blocks_and_properties_whatever_the_bedrock_name_is() {
+        let records = assets::read_registry_for_protocol(
+            assets::pinned_block_registry_bytes(),
+            assets::active_content_registry_protocol(),
+        )
+        .unwrap();
+        let (record, java) = records
+            .iter()
+            .find_map(|record| {
+                let java = assets::facts::java_mapping::java_block_state(record.sequential_id)?;
+                (java.name() != record.name.as_ref() && java.properties().len() > 0)
+                    .then_some((record, java))
+            })
+            .expect("some Bedrock block is named differently in Java");
+        let (property, value) = java.properties().next().unwrap();
+        let entry = |value: &str| Entry {
+            block: java.name().to_owned(),
+            properties: vec![(property.to_owned(), value.to_owned())],
+            geometry: "geometry.java.stub".into(),
+            rotation: [0; 3],
+            materials: Vec::new(),
+        };
+        assert_ne!(record.name.as_ref(), java.name());
+        assert!(matches(&entry(value), java));
+        assert!(!matches(&entry("no such value"), java));
     }
 }

@@ -24,7 +24,7 @@ fn model_pack(block: &str) -> LayeredPackView {
     };
     let geometry = java_resource_pack::java_model::to_geometry("geometry.java.stub", &model);
     let bindings = json!({ "format_version": 1, "blocks": [{
-        "block": block, "states": {}, "geometry": "geometry.java.stub",
+        "block": block, "properties": {}, "geometry": "geometry.java.stub",
         "rotation": [0, 0, 0], "materials": { "side": "state" } }] });
     let terrain = json!({"texture_data":{"state":{"textures":"textures/base_a"}}});
     let id = "00000000-0000-0000-0000-000000000001";
@@ -65,16 +65,23 @@ fn model_pack(block: &str) -> LayeredPackView {
 }
 
 #[test]
-fn a_bound_java_model_redraws_the_vanilla_block_it_names_and_no_other() {
+fn a_bound_java_model_redraws_the_states_that_map_to_its_java_block_and_no_other() {
     let records = assets::read_registry_for_protocol(
         assets::pinned_block_registry_bytes(),
         assets::active_content_registry_protocol(),
     )
     .unwrap();
-    let (named, other) = (&records[0].name, &records[1].name);
-    assert_ne!(named, other, "the fixture needs two distinct blocks");
+    let java = |index: usize| {
+        assets::facts::java_mapping::java_block_state(records[index].sequential_id)
+            .map(|state| state.name().to_owned())
+    };
+    let named = java(0).expect("the first block maps to a Java block");
+    assert!(
+        java(1).is_none_or(|other| other != named),
+        "the fixture needs a second state of another Java block"
+    );
     let base = base();
-    let overlay = compile(&model_pack(named), &base, &keys());
+    let overlay = compile(&model_pack(&named), &base, &keys());
     let runtime = base.with_block_overlay(2, &overlay.overlay).unwrap();
     let drawn = runtime.resolve(NetworkIdMode::Sequential, 0);
     assert_eq!(drawn.kind(), VisualKind::Model);

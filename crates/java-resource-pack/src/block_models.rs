@@ -1,10 +1,11 @@
 //! Java blockstates and block models as the pack file that rebinds vanilla block geometry.
 //!
 //! [`translate`] reads a flattened pack's `blockstates/*.json` and the models they name and writes
-//! one Bedrock geometry file per model plus [`BINDINGS`], which lists for each vanilla block
-//! state the geometry, its texture variables and its whole-block turn. Only what maps to Bedrock
-//! exactly is written: a block whose variants name a property with no Bedrock equivalent, and a
-//! block built from `multipart`, keep their vanilla shape.
+//! one Bedrock geometry file per model plus [`BINDINGS`], which lists for each Java block state
+//! the geometry, its texture variables and its whole-block turn. Entries name the Java block and
+//! its Java properties; the client finds the Bedrock states that map to them through the game's
+//! Java mapping, so no name or state table is kept here. A block built from `multipart` keeps
+//! its vanilla shape.
 
 use crate::{Layout, java_model, names};
 use serde_json::{Map, Value, json};
@@ -26,71 +27,14 @@ const MODELS: &str = "assets/minecraft/models/";
 const MAX_BLOCKS: usize = 4096;
 const MAX_ENTRIES: usize = 16384;
 
-/// Java block properties and the Bedrock block state each one is, with the Java values the
-/// Bedrock state accepts. A property absent here has no exact Bedrock equivalent.
-pub const STATE_ALIASES: &[(&str, &str, StateKind)] = &[
-    ("axis", "pillar_axis", StateKind::Text),
-    ("half", "minecraft:vertical_half", StateKind::Text),
-    (
-        "facing",
-        "minecraft:cardinal_direction",
-        StateKind::Cardinal,
-    ),
-    ("open", "open_bit", StateKind::Flag),
-    ("lit", "lit", StateKind::Flag),
-    ("hanging", "hanging", StateKind::Flag),
-    ("powered", "powered_bit", StateKind::Flag),
-];
-
-/// Java properties that carry no Bedrock state and never change which model draws.
-const IGNORED: &[&str] = &["waterlogged"];
-
-/// How a Java property's value becomes the Bedrock state's value.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum StateKind {
-    /// The same string.
-    Text,
-    /// `true` and `false` as booleans.
-    Flag,
-    /// The four horizontal directions only; `up` and `down` have no cardinal value.
-    Cardinal,
-}
-
-/// Maps one `property=value` of a Java variant key to its Bedrock state, `Ok(None)` for a
-/// property that never changes the model, and `Err` when Bedrock has no equivalent.
-fn bedrock_state(property: &str, value: &str) -> Result<Option<(&'static str, Value)>, ()> {
-    if IGNORED.contains(&property) {
-        return Ok(None);
-    }
-    let (_, name, kind) = STATE_ALIASES
-        .iter()
-        .find(|(java, ..)| *java == property)
-        .ok_or(())?;
-    let value = match kind {
-        StateKind::Text => json!(value),
-        StateKind::Flag => json!(match value {
-            "true" => true,
-            "false" => false,
-            _ => return Err(()),
-        }),
-        StateKind::Cardinal => match value {
-            "north" | "south" | "east" | "west" => json!(value),
-            _ => return Err(()),
-        },
-    };
-    Ok(Some((name, value)))
-}
-
-/// Parses a variant key such as `facing=north,half=top` into Bedrock states.
-fn variant_states(key: &str) -> Result<Map<String, Value>, ()> {
-    let mut states = Map::new();
+/// Parses a variant key such as `facing=north,half=top` into Java properties.
+fn variant_properties(key: &str) -> Result<Map<String, Value>, ()> {
+    let mut properties = Map::new();
     for pair in key.split(',').filter(|pair| !pair.is_empty()) {
         let (property, value) = pair.split_once('=').ok_or(())?;
-        if let Some((name, value)) = bedrock_state(property, value)? {
-            states.insert(name.to_owned(), value);
-        }
+        properties.insert(property.to_owned(), json!(value));
     }
-    Ok(states)
+    Ok(properties)
 }
 
 /// A blockstate's variant: the first of a weighted list, as a model name and Java `x`/`y` turns.
@@ -167,7 +111,7 @@ pub(crate) fn translate(
             let Some((model, x, y)) = variant(value) else {
                 return false;
             };
-            let (Ok(states), Some(turn)) = (variant_states(key), rotation(x, y)) else {
+            let (Ok(properties), Some(turn)) = (variant_properties(key), rotation(x, y)) else {
                 return false;
             };
             let Some(resolved) = java_model::resolve(model, &load) else {
@@ -193,7 +137,7 @@ pub(crate) fn translate(
                 .or_insert_with(|| java_model::to_geometry(&identifier, &resolved));
             block_entries.push(json!({
                 "block": format!("minecraft:{block}"),
-                "states": states,
+                "properties": properties,
                 "geometry": identifier,
                 "rotation": turn,
                 "materials": materials,
@@ -307,14 +251,14 @@ mod tests {
     }
 
     #[test]
-    fn variants_become_bedrock_states_with_their_geometry_and_turn() {
+    fn variants_keep_their_java_properties_with_their_geometry_and_turn() {
         let output = run(&lantern_files());
         let document = bindings(&output);
         let blocks = document["blocks"].as_array().unwrap();
         assert_eq!(blocks.len(), 2);
         let hanging = blocks
             .iter()
-            .find(|entry| entry["states"]["hanging"] == json!(true))
+            .find(|entry| entry["properties"]["hanging"] == "true")
             .unwrap();
         assert_eq!(hanging["block"], "minecraft:lantern");
         assert_eq!(hanging["rotation"], json!([0, 90, 0]));
@@ -329,12 +273,11 @@ mod tests {
     }
 
     #[test]
-    fn a_block_with_a_property_bedrock_lacks_keeps_its_vanilla_shape() {
+    fn an_unmapped_looking_property_is_passed_through_for_the_client_to_match() {
         let mut files = lantern_files();
-        files[0].1 = json!({ "variants": {
-            "hanging=false": { "model": "block/lantern" },
-            "damage=3": { "model": "block/lantern" } } });
-        assert!(run(&files).files.is_empty());
+        files[0].1 = json!({ "variants": { "damage=3": { "model": "block/lantern" } } });
+        let blocks = bindings(&run(&files));
+        assert_eq!(blocks["blocks"][0]["properties"]["damage"], "3");
     }
 
     #[test]
@@ -382,19 +325,5 @@ mod tests {
         assert_eq!(rotation(0, 270), Some([0, 270, 0]));
         assert_eq!(rotation(-90, 0), Some([270, 0, 0]));
         assert_eq!(rotation(0, 45), None);
-    }
-
-    #[test]
-    fn every_state_alias_is_a_distinct_java_property_and_converts_its_values() {
-        let mut seen = BTreeSet::new();
-        for (java, _, _) in STATE_ALIASES {
-            assert!(seen.insert(*java), "{java} listed twice");
-        }
-        assert_eq!(
-            bedrock_state("open", "true").unwrap(),
-            Some(("open_bit", json!(true)))
-        );
-        assert!(bedrock_state("facing", "up").is_err());
-        assert_eq!(bedrock_state("waterlogged", "true").unwrap(), None);
     }
 }
