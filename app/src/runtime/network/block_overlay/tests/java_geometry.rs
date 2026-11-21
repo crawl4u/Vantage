@@ -113,3 +113,116 @@ fn texture_corners_land_where_java_puts_them() {
         assert!(sits, "{name} lies inside the Java box");
     }
 }
+
+/// Turns `point` right-handed by `degrees` about `axis` through `origin`, in the block's frame
+/// (east, up, south), which is how Java turns an element.
+fn java_turn(point: Vector, origin: Vector, axis: usize, degrees: f32) -> Vector {
+    let (sin, cos) = degrees.to_radians().sin_cos();
+    let [x, y, z]: Vector = std::array::from_fn(|index| point[index] - origin[index]);
+    let turned = match axis {
+        0 => [x, y * cos - z * sin, y * sin + z * cos],
+        1 => [x * cos + z * sin, y, -x * sin + z * cos],
+        _ => [x * cos - y * sin, x * sin + y * cos, z],
+    };
+    std::array::from_fn(|index| turned[index] + origin[index])
+}
+
+#[test]
+fn turned_elements_end_up_where_java_turns_them() {
+    let (from, to): (Vector, Vector) = ([3.0, 2.0, 5.0], [10.0, 12.0, 9.0]);
+    let origin: Vector = [6.0, 4.0, 11.0];
+    let names = ["north", "east", "south", "west", "up", "down"];
+    for (axis_name, angle, rescale) in [
+        ('x', 22.5, false),
+        ('y', 45.0, false),
+        ('z', -22.5, false),
+        ('y', 45.0, true),
+        ('x', -45.0, true),
+    ] {
+        let axis = "xyz".find(axis_name).unwrap();
+        let model = Model {
+            textures: [("t".to_owned(), "block/t".to_owned())].into(),
+            elements: vec![Element {
+                from: from.map(f64::from),
+                to: to.map(f64::from),
+                rotation: Some(java_resource_pack::java_model::ElementRotation {
+                    origin: origin.map(f64::from),
+                    axis: axis_name,
+                    angle,
+                    rescale,
+                }),
+                faces: names
+                    .into_iter()
+                    .map(|name| {
+                        (
+                            name,
+                            Face {
+                                texture: "t".to_owned(),
+                                uv: Some([0.0, 0.0, 4.0, 4.0]),
+                                tint: false,
+                                rotation: 0,
+                            },
+                        )
+                    })
+                    .collect(),
+            }],
+        };
+        let document = to_geometry("geometry.test", &model).to_string();
+        let geometry = parse_geometry_file(document.as_bytes()).remove(0).1;
+        // Java scales the box about the turn's origin across the axis before turning it.
+        let scale = if rescale {
+            1.0 / (angle as f32).to_radians().cos().abs()
+        } else {
+            1.0
+        };
+        let scaled = |value: f32, index: usize| {
+            if index == axis {
+                value
+            } else {
+                origin[index] + (value - origin[index]) * scale
+            }
+        };
+        let (low, high): (Vector, Vector) = (
+            std::array::from_fn(|index| scaled(from[index], index)),
+            std::array::from_fn(|index| scaled(to[index], index)),
+        );
+        let quads = geometry.cubes[0].quads();
+        assert_eq!(quads.len(), 6, "{axis_name} {angle}");
+        for (quad, _) in quads {
+            let name = FACE_NAMES[quad.face];
+            // The face's corners in the unturned box, turned the way Java turns them.
+            let at = |side: Vector| -> Vector { side };
+            let corners: Vec<Vector> = [low, high]
+                .into_iter()
+                .flat_map(|a| [low, high].into_iter().map(move |b| (a, b)))
+                .flat_map(|(a, b)| [low, high].into_iter().map(move |c| [a[0], b[1], c[2]]))
+                .filter(|corner| match name {
+                    "north" => corner[2] == low[2],
+                    "south" => corner[2] == high[2],
+                    "west" => corner[0] == low[0],
+                    "east" => corner[0] == high[0],
+                    "down" => corner[1] == low[1],
+                    _ => corner[1] == high[1],
+                })
+                .map(at)
+                .collect();
+            let expected: Vec<Vector> = corners
+                .into_iter()
+                .map(|corner| java_turn(corner, origin, axis, angle as f32))
+                .collect();
+            for position in quad.positions {
+                // Quad corners are in 0..16 block pixels like the Java ones.
+                assert!(
+                    expected.iter().any(|corner| {
+                        corner
+                            .iter()
+                            .zip(position)
+                            .all(|(a, b)| (a - b).abs() < 1e-2)
+                    }),
+                    "{name} of a {angle} degree turn about {axis_name} (rescale {rescale}) has a \
+                     corner at {position:?}, Java has {expected:?}",
+                );
+            }
+        }
+    }
+}

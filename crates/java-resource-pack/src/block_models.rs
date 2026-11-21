@@ -130,15 +130,7 @@ pub(crate) fn translate(
             let Some(resolved) = java_model::resolve(model, &load) else {
                 return false;
             };
-            // Whole cubes keep the texture pipeline's occluding cubes, and a turned element's
-            // Java rescaling is not translated, so those stay vanilla.
-            if resolved
-                .elements
-                .iter()
-                .any(|element| element.rotation.is_some())
-            {
-                return false;
-            }
+            // Whole cubes keep the texture pipeline's occluding cubes.
             if is_full_cube(&resolved) {
                 return true;
             }
@@ -347,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn whole_cubes_and_turned_elements_stay_vanilla() {
+    fn whole_cubes_stay_vanilla_and_turned_elements_are_translated() {
         let cube = json!({ "textures": { "all": "block/stone" }, "elements": [{
             "from": [0, 0, 0], "to": [16, 16, 16],
             "faces": { "north": { "texture": "#all" } } }] });
@@ -365,7 +357,15 @@ mod tests {
             "from": [2, 0, 2], "to": [14, 16, 14],
             "rotation": { "origin": [8, 8, 8], "axis": "y", "angle": 45 },
             "faces": { "north": { "texture": "#all" } } }] });
-        assert!(run(&files(turned)).files.is_empty());
+        let output = run(&files(turned));
+        let geometry = output
+            .files
+            .iter()
+            .find(|(path, _)| path.ends_with(".geo.json"))
+            .expect("a turned element is translated");
+        let document: Value = serde_json::from_slice(&geometry.1).unwrap();
+        let cube = &document["minecraft:geometry"][0]["bones"][0]["cubes"][0];
+        assert_eq!(cube["rotation"], json!([0.0, -45.0, 0.0]));
     }
 
     #[test]

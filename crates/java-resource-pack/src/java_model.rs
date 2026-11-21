@@ -21,10 +21,20 @@ const FACES: [&str; 6] = ["north", "east", "south", "west", "up", "down"];
 pub struct Element {
     pub from: [f64; 3],
     pub to: [f64; 3],
-    /// The rotation, as its origin, axis and angle in degrees.
-    pub rotation: Option<([f64; 3], char, f64)>,
+    pub rotation: Option<ElementRotation>,
     /// Each present face: its texture variable, UV rectangle and optional cull face.
     pub faces: BTreeMap<&'static str, Face>,
+}
+
+/// A turn of one element about an axis through `origin`, as Java's right-handed degrees.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ElementRotation {
+    pub origin: [f64; 3],
+    /// `x`, `y` or `z`.
+    pub axis: char,
+    pub angle: f64,
+    /// Whether the element is scaled across the axis so the turn keeps its extent.
+    pub rescale: bool,
 }
 
 /// One face of an element.
@@ -177,11 +187,12 @@ fn element(value: &Value) -> Option<Element> {
     let rotation = value.get("rotation").and_then(|rotation| {
         let axis = rotation.get("axis")?.as_str()?.chars().next()?;
         ("xyz".contains(axis)).then_some(())?;
-        Some((
-            triple(rotation.get("origin")?)?,
+        Some(ElementRotation {
+            origin: triple(rotation.get("origin")?)?,
             axis,
-            number(rotation.get("angle")?)?,
-        ))
+            angle: number(rotation.get("angle")?)?,
+            rescale: rotation.get("rescale").and_then(Value::as_bool) == Some(true),
+        })
     });
     let mut faces = BTreeMap::new();
     for name in FACES {
@@ -412,6 +423,21 @@ fn default_uv(face: &str, from: [f64; 3], to: [f64; 3]) -> [f64; 4] {
     }
 }
 
+/// The element's box before its turn: scaled about the turn's origin across the axis when the
+/// turn rescales, as Java keeps a turned plane's reach.
+fn rescaled(element: &Element) -> ([f64; 3], [f64; 3]) {
+    let (mut from, mut to) = (element.from, element.to);
+    if let Some(turn) = element.rotation.filter(|turn| turn.rescale) {
+        let scale = 1.0 / turn.angle.to_radians().cos().abs().max(1e-3);
+        let axis = "xyz".find(turn.axis).unwrap_or(0);
+        for other in (0..3).filter(|&other| other != axis) {
+            let at = |value: f64| turn.origin[other] + (value - turn.origin[other]) * scale;
+            (from[other], to[other]) = (at(from[other]), at(to[other]));
+        }
+    }
+    (from, to)
+}
+
 /// The model as a Bedrock `minecraft:geometry` document named `identifier`. Every face names a
 /// `material_instance` after its texture variable, so the block binds each variable to a texture.
 pub fn to_geometry(identifier: &str, model: &Model) -> Value {
@@ -437,18 +463,18 @@ pub fn to_geometry(identifier: &str, model: &Model) -> Value {
                 }
                 uv.insert((*face).to_owned(), entry);
             }
+            let (from, to) = rescaled(element);
             // Geometry X runs the opposite way to the block's: the cube starts at its far edge.
-            let origin = [8.0 - element.to[0], element.from[1], element.from[2] - 8.0];
-            let size = [
-                element.to[0] - element.from[0],
-                element.to[1] - element.from[1],
-                element.to[2] - element.from[2],
-            ];
+            let origin = [8.0 - to[0], from[1], from[2] - 8.0];
+            let size = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
             let mut cube = json!({ "origin": origin, "size": size, "uv": uv });
-            if let Some((pivot, axis, angle)) = element.rotation {
+            if let Some(turn) = element.rotation {
+                // Java turns right-handed about each axis of the block's frame; geometry turns
+                // X and Y the other way round and mirrors the pivot's X.
                 let mut rotation = [0.0; 3];
-                rotation["xyz".find(axis).unwrap_or(0)] = angle;
-                cube["pivot"] = json!([pivot[0] - 8.0, pivot[1], pivot[2] - 8.0]);
+                let axis = "xyz".find(turn.axis).unwrap_or(0);
+                rotation[axis] = if axis == 2 { turn.angle } else { -turn.angle };
+                cube["pivot"] = json!([8.0 - turn.origin[0], turn.origin[1], turn.origin[2] - 8.0]);
                 cube["rotation"] = json!(rotation);
             }
             cube
@@ -547,7 +573,7 @@ mod tests {
         assert_eq!(cube["origin"], json!([-2.0, 0.0, -2.0]));
         assert_eq!(cube["size"], json!([4.0, 16.0, 4.0]));
         assert_eq!(cube["pivot"], json!([0.0, 8.0, 0.0]));
-        assert_eq!(cube["rotation"], json!([0.0, 45.0, 0.0]));
+        assert_eq!(cube["rotation"], json!([0.0, -45.0, 0.0]));
         assert_eq!(cube["uv"]["north"]["uv"], json!([6.0, 0.0]));
         assert_eq!(cube["uv"]["north"]["uv_size"], json!([4.0, 16.0]));
         assert_eq!(cube["uv"]["north"]["material_instance"], "side");
