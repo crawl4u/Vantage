@@ -23,9 +23,10 @@ pub const UI_DYNAMIC_PAGE_SIDE: u32 = 256;
 pub const UI_PLAYER_SKIN_PAGE_OFFSET: usize = 1;
 pub const UI_MODEL_ATLAS_PAGE_OFFSET: usize = UI_PLAYER_SKIN_PAGE_OFFSET + 1;
 /// Model-source pages for item cubes, equipment, held artwork and actor flames. Version-matched
-/// vanilla carriers fill nine pages with mip-aligned item sources and a tenth with flames; the
-/// remainder is headroom for optional block meshes before they fall back to thumbnails.
-pub const MAX_UI_MODEL_ATLAS_PAGES: usize = 16;
+/// vanilla carriers fill nine pages with mip-aligned item sources and a tenth with flames; a
+/// 128-texel pack fills about thirty, so the rest is headroom for finer art and optional block
+/// meshes before they fall back to thumbnails. Pages upload only once a source occupies them.
+pub const MAX_UI_MODEL_ATLAS_PAGES: usize = 48;
 pub const UI_SESSION_ICON_PAGE_OFFSET: usize =
     UI_MODEL_ATLAS_PAGE_OFFSET + MAX_UI_MODEL_ATLAS_PAGES;
 /// Bounded session-font allocation, shared by the default and named bitmap fonts.

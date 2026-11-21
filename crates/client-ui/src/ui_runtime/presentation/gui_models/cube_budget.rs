@@ -421,3 +421,28 @@ fn oversized_pack_keeps_fallback_artwork_instead_of_failing_gui_startup() {
     assert!(presentation.gui_models.fire.frames.is_empty());
     assert_eq!(presentation.gui_models.sources.pages.len(), MODEL_PAGES);
 }
+
+/// The atlas holds more than the sixteen pages vanilla art needs, so a high-resolution pack's
+/// sources all keep their native geometry rather than the thumbnails a full atlas leaves.
+#[test]
+fn the_model_atlas_holds_a_high_resolution_packs_sources() {
+    let pages = 24;
+    assert!(pages <= MODEL_PAGES);
+    let (entities, icons) = catalog(sheets_at_capacity(1));
+    let mut presentation = UiPresentationRuntime::with_hud_and_icons(
+        ui_engine::test_support::fixture_font(),
+        crate::test_support::fixture_hud(),
+        Arc::new(icons),
+    )
+    .unwrap();
+    presentation.set_equipment_catalog(Some(equipment(&entities, pages)));
+    presentation
+        .set_gui_models(&RuntimeAssets::diagnostic(), &entities)
+        .unwrap();
+    assert_eq!(
+        presentation.gui_models.sources.fallbacks,
+        AtlasFallbacks::default(),
+        "no source is left on its fallback artwork"
+    );
+    assert!(presentation.gui_models.sources.pages.len() >= pages);
+}
