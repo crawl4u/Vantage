@@ -199,8 +199,15 @@ impl Builder<'_> {
     }
 }
 
+/// Java's blockstate turns in degrees about each axis as Bedrock quarter turns. Java turns
+/// clockwise seen from above (`y`: north to east) and downward about the east-west axis
+/// (`x`: north to down); a Bedrock quarter turn about an axis is the opposite way round.
+fn bedrock_turns(java_degrees: [i32; 3]) -> [i32; 3] {
+    java_degrees.map(|degrees| (-degrees / 90).rem_euclid(4))
+}
+
 /// The components drawing `geometry` with each variable bound to its terrain key and the model
-/// turned about the block centre.
+/// turned about the block centre; `rotation` is Java's turns in degrees.
 fn components(
     geometry: &Arc<str>,
     materials: &[(Arc<str>, Arc<str>)],
@@ -222,7 +229,7 @@ fn components(
                 .collect(),
         ),
         transformation: Some(CustomTransformation {
-            rotation,
+            rotation: bedrock_turns(rotation),
             scale: [1.0; 3],
             translation: [0.0; 3],
         }),
@@ -337,6 +344,35 @@ impl Builder<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Where the block transformation takes a point a Java turn takes it, for both axes Java
+    /// turns about, so a bound model faces the way the pack's blockstate says.
+    #[test]
+    fn java_turns_move_points_the_way_java_moves_them() {
+        let turn = |degrees: [i32; 3], point: [f32; 3]| {
+            CustomTransformation {
+                rotation: bedrock_turns(degrees),
+                scale: [1.0; 3],
+                translation: [0.0; 3],
+            }
+            .apply(point)
+        };
+        let (north, east, south, west) = (
+            [0.0, 0.0, -8.0],
+            [8.0, 0.0, 0.0],
+            [0.0, 0.0, 8.0],
+            [-8.0, 0.0, 0.0],
+        );
+        let close = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-4);
+        // y turns clockwise seen from above.
+        assert!(close(turn([0, 90, 0], north), east));
+        assert!(close(turn([0, 180, 0], north), south));
+        assert!(close(turn([0, 270, 0], north), west));
+        assert!(close(turn([0, 360, 0], north), north));
+        // x tips the north face down.
+        assert!(close(turn([90, 0, 0], north), [0.0, -8.0, 0.0]));
+        assert!(close(turn([270, 0, 0], north), [0.0, 8.0, 0.0]));
+    }
 
     /// A block whose Java name differs from its Bedrock name is found by the Java name and its
     /// Java properties, with no table of names kept here.
