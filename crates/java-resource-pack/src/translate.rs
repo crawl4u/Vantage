@@ -2,7 +2,7 @@
 
 use crate::menu_files;
 use crate::{
-    Layout, TranslateError, Translation, animation, container, ctm, extras, hud, items, manifest,
+    Layout, beds, TranslateError, Translation, animation, container, ctm, extras, hud, items, manifest,
     meta::{TEXTURES, detect_layout, read_meta},
     names, particle_atlas, sky,
     texture::{Budget, crop, decode, dimensions, duplicate, encode, strip_frame},
@@ -726,6 +726,17 @@ pub(crate) fn translate_within(
             && let Some(top) = crop(&image, 0, 0, width, height / 2, budget)
         {
             out.insert(format!("textures/{bedrock}.png"), Output::Image(top));
+        }
+    }
+    // Java 1.21.5+ beds are block models of per-face textures; Bedrock draws one entity texture.
+    for (java, bedrock) in beds::COLORS {
+        let compose = beds::compose(java, budget, |name| {
+            let path = format!("{TEXTURES}{block_folder}{name}.png");
+            known.contains(path.as_str()).then_some(())?;
+            decode(&source.load(&path)?, budget)
+        });
+        if let Some(image) = compose {
+            out.insert(format!("textures/entity/bed/{bedrock}.png"), Output::Image(image));
         }
     }
     let mut composed = HashMap::new();

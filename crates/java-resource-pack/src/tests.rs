@@ -1612,3 +1612,35 @@ fn grey_grass_art_also_becomes_the_coloured_texture_a_held_grass_block_draws() {
         "the grey top in the colour map's default colour"
     );
 }
+
+#[test]
+fn per_face_java_beds_become_bedrock_bed_entity_textures() {
+    let block = "assets/minecraft/textures/block/";
+    let mut files = vec![
+        (format!("{block}stone.png"), solid(16, 16, WHITE)),
+        (format!("{block}bed_down.png"), solid(16, 16, BLUE)),
+        (format!("{block}bed_head_north.png"), solid(16, 16, BLUE)),
+    ];
+    for face in [
+        "head_up",
+        "head_east",
+        "head_west",
+        "foot_up",
+        "foot_east",
+        "foot_west",
+        "foot_south",
+    ] {
+        files.push((format!("{block}red_bed_{face}.png"), solid(16, 16, RED)));
+    }
+    let files: BTreeMap<String, Vec<u8>> = files.into_iter().collect();
+    let translation = run(&files, "Pack").unwrap();
+    let out = output(&translation);
+    let (size, top) = pixel(&out, "textures/entity/bed/red.png", 10, 10);
+    assert_eq!(size, (64, 64));
+    assert_eq!(top, RED, "the mattress top comes from the head's top face");
+    assert_eq!(pixel(&out, "textures/entity/bed/red.png", 30, 10).1, BLUE);
+    assert!(
+        !out.contains_key("textures/entity/bed/white.png"),
+        "a colour without its faces keeps Bedrock's bed"
+    );
+}
