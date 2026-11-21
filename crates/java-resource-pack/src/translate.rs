@@ -342,6 +342,8 @@ pub(crate) fn translate_within(
     let mut optional = |path: &str| has(path).then(|| source.load(path)).flatten();
     let meta = read_meta(optional("pack.mcmeta").as_deref());
     let pack_icon = optional("pack.png");
+    let grass_map =
+        optional(&format!("{TEXTURES}colormap/grass.png")).and_then(|bytes| decode(&bytes, budget));
     let icons = optional(&format!("{TEXTURES}gui/icons.png"));
     let widgets = optional(&format!("{TEXTURES}gui/widgets.png"));
     let inventory = optional(&format!("{TEXTURES}gui/container/inventory.png"));
@@ -590,6 +592,12 @@ pub(crate) fn translate_within(
         }
     }
     let masks = tint_mask_outputs(layout, &blocks, budget);
+    // Blocks Java colours when drawn also need Bedrock's coloured copy for hands and inventory.
+    let carried = crate::carried::outputs(
+        &blocks,
+        crate::carried::default_grass(grass_map.as_ref()),
+        budget,
+    );
     let sources = blocks.len() + item_files.len();
     let block_outputs: Vec<_> = blocks
         .into_par_iter()
@@ -654,6 +662,9 @@ pub(crate) fn translate_within(
         out.insert("textures/particle/particles.png".into(), Output::Raw(bytes));
     }
     out.extend(block_outputs);
+    for (path, image) in carried {
+        out.entry(path).or_insert(Output::Image(image));
+    }
     // A pack that draws its own water gets Java's biome water colours and opacity with it.
     if has(&format!("{TEXTURES}{block_folder}water_still.png")) {
         out.insert(

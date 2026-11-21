@@ -13,6 +13,7 @@
 //! derived by matching Java Edition textures against Mojang/bedrock-samples.
 
 mod animation;
+mod carried;
 pub mod block_models;
 mod container;
 mod ctm;

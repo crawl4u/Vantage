@@ -598,7 +598,8 @@ fn generated_textures_over_the_runtime_limit_are_left_out() {
         out.contains_key("textures/blocks/stone.png"),
         "copied sources are kept"
     );
-    assert_eq!(translation.skipped, 1);
+    // The leaf tint mask and the coloured copy for hands and inventory.
+    assert_eq!(translation.skipped, 2);
 
     let only_oversized = pack(vec![(
         "assets/minecraft/textures/block/oak_leaves.png",
@@ -1587,5 +1588,27 @@ fn an_item_model_decides_which_texture_the_item_draws() {
         pixel(&out, "textures/items/diamond_sword.png", 8, 8).1,
         [200, 20, 40, 255],
         "the model's texture, not the file with the item's own name"
+    );
+}
+
+#[test]
+fn grey_grass_art_also_becomes_the_coloured_texture_a_held_grass_block_draws() {
+    let blocks = "assets/minecraft/textures/block/";
+    let files = pack(vec![
+        (
+            &format!("{blocks}grass_block_top.png"),
+            solid(16, 16, [200, 200, 200, 255]),
+        ),
+        (
+            "assets/minecraft/textures/colormap/grass.png",
+            solid(256, 256, [100, 150, 50, 255]),
+        ),
+    ]);
+    let translation = run(&files, "Current").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(&out, "textures/blocks/grass_carried.png", 4, 4).1,
+        [78, 117, 39, 255],
+        "the grey top in the colour map's default colour"
     );
 }
