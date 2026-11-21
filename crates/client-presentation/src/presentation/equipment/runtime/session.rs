@@ -55,10 +55,10 @@ impl StagedSessionIcons {
                 rgba8: Arc::from(&icon.rgba8[..]),
             });
         }
-        let [width, height] = assets::BLOCK_ITEM_SHEET_SIZE;
         for sheet in &icons.block_sheets {
+            let [width, height] = [sheet.width, sheet.height];
             if sprites.len() >= MAX_SESSION_MESHES
-                || [sheet.width, sheet.height] != [u32::from(width), u32::from(height)]
+                || assets::block_item_face_side(width, height).is_none()
                 || block_sheets.contains_key(sheet.identifier.as_ref())
             {
                 continue;
@@ -77,8 +77,8 @@ impl StagedSessionIcons {
                 render_model::equipment::blocks::mode_for_material_flags(flags),
             );
             sprites.push(IconSprite {
-                width,
-                height,
+                width: width as u16,
+                height: height as u16,
                 rgba8: Arc::from(&sheet.rgba8[..]),
             });
         }

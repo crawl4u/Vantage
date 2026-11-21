@@ -41,8 +41,8 @@ pub(super) fn gui_cube_sheet(
     sprite: &IconSprite,
     render_kind: assets::facts::BlockRenderKind,
 ) -> Option<IconSprite> {
-    let [width, height] = assets::BLOCK_ITEM_SHEET_SIZE;
-    if [sprite.width, sprite.height] != [width, height]
+    let [width, height] = [sprite.width, sprite.height];
+    if assets::block_item_face_side(u32::from(width), u32::from(height)).is_none()
         || sprite.rgba8.len() != usize::from(width) * usize::from(height) * 4
     {
         return None;
@@ -71,9 +71,12 @@ pub(super) fn gui_cube_sheet(
 /// Matches the block GUI baker's cutoff independently for each non-blended material face.
 /// Blended faces keep their source alpha; RGB and unsupported material references stay unchanged.
 pub(super) fn normalize_sheet_alpha(sprite: &mut assets::IconSprite, flags: [Option<u32>; 6]) {
-    if [sprite.width, sprite.height] != assets::BLOCK_ITEM_SHEET_SIZE
-        || sprite.rgba8.len() != usize::from(sprite.width) * usize::from(sprite.height) * 4
-    {
+    let Some(face_side) =
+        assets::block_item_face_side(u32::from(sprite.width), u32::from(sprite.height))
+    else {
+        return;
+    };
+    if sprite.rgba8.len() != usize::from(sprite.width) * usize::from(sprite.height) * 4 {
         return;
     }
     let cutoff = flags
@@ -81,7 +84,7 @@ pub(super) fn normalize_sheet_alpha(sprite: &mut assets::IconSprite, flags: [Opt
     if !cutoff.contains(&true) {
         return;
     }
-    let side = usize::from(assets::BLOCK_ITEM_FACE_SIDE);
+    let side = face_side as usize;
     let columns = usize::from(assets::BLOCK_ITEM_SHEET_GRID[0]);
     let width = usize::from(sprite.width);
     for (pixel, texel) in Arc::make_mut(&mut sprite.rgba8)
@@ -102,8 +105,9 @@ pub(super) fn normalize_sheet_alpha(sprite: &mut assets::IconSprite, flags: [Opt
 }
 
 pub(in crate::ui_runtime::presentation) fn sheet_faces(icon: IconRef) -> [IconRef; 6] {
-    let side = assets::BLOCK_ITEM_FACE_SIDE;
     let columns = usize::from(assets::BLOCK_ITEM_SHEET_GRID[0]);
+    // The sheet's reference spans its three face columns.
+    let side = (icon.uv[2] - icon.uv[0]) / assets::BLOCK_ITEM_SHEET_GRID[0];
     std::array::from_fn(|face| {
         let left = icon.uv[0] + (face % columns) as u16 * side;
         let top = icon.uv[1] + (face / columns) as u16 * side;

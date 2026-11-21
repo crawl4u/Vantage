@@ -14,6 +14,13 @@ use crate::HandItemAlphaMode;
 
 const TILE: usize = BLOCK_ITEM_FACE_SIDE as usize;
 
+/// The face side a carried sheet gives faces whose sources are `source_side` texels across: the
+/// next power of two, from the base side up to the largest a sheet holds.
+fn sheet_side(source_side: u32) -> usize {
+    (source_side.max(1).next_power_of_two() as usize)
+        .clamp(TILE, usize::from(assets::MAX_BLOCK_ITEM_FACE_SIDE))
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -581,6 +588,15 @@ fn cube_materials(world: &RuntimeAssets, visual: u32) -> Option<[u32; 6]> {
 
 /// Composes the six admitted face materials into their shared sheet layout.
 fn compose_sheet(world: &RuntimeAssets, materials: &[u32; 6]) -> Option<IconSprite> {
+    let mut sources = Vec::with_capacity(BlockFace::ALL.len());
+    for id in materials {
+        let material = world.materials().get(*id as usize)?;
+        sources.push(*world.texture_source_size(material.texture).iter().max()?);
+    }
+    let side = sources
+        .iter()
+        .map(|source| sheet_side(u32::from(*source)))
+        .max()?;
     let mut tiles = Vec::with_capacity(BlockFace::ALL.len());
     for id in materials {
         let material = world.materials().get(*id as usize)?;
@@ -592,6 +608,7 @@ fn compose_sheet(world: &RuntimeAssets, materials: &[u32; 6]) -> Option<IconSpri
             &page.texture,
             *world.texture_source_size(material.texture).iter().max()?,
             world.texture_source_grid(material.texture),
+            side,
         )?);
     }
     compose_block_item_sheet(&tiles.try_into().ok()?)
@@ -812,6 +829,16 @@ fn overlay_face_sheet_tinted(
     base: Option<&RuntimeAssets>,
     tint: &dyn Fn(u32) -> Option<[u8; 3]>,
 ) -> Option<IconSprite> {
+    let mut side = TILE;
+    for id in faces {
+        let material = overlay
+            .materials
+            .get(id as usize)
+            .filter(|_| id != DIAGNOSTIC_MATERIAL)?;
+        side = side.max(sheet_side(overlay_face_source_side(
+            overlay, material, base,
+        )?));
+    }
     let mut tiles = Vec::with_capacity(BlockFace::ALL.len());
     for id in faces {
         let material = overlay
@@ -832,7 +859,7 @@ fn overlay_face_sheet_tinted(
         if rotated {
             material.flags &= !assets::MATERIAL_FLAG_UV_MASK;
         }
-        let mut tile = overlay_face_tile(overlay, &material, base)?;
+        let mut tile = overlay_face_tile(overlay, &material, base, side)?;
         if rotated {
             Arc::make_mut(&mut tile.rgba8)
                 .as_chunks_mut::<4>()
@@ -851,24 +878,40 @@ fn overlay_face_sheet_tinted(
     compose_block_item_sheet(&tiles.try_into().ok()?)
 }
 
-/// Selects mips in exposed source pixels and resamples the admitted grid into a held face.
+/// How many texels across a face's source art is, before any filtering.
+fn overlay_face_source_side(
+    overlay: &BlockOverlay,
+    material: &Material,
+    base: Option<&RuntimeAssets>,
+) -> Option<u32> {
+    let texture = overlay.texture_page(material.texture.page(), base)?;
+    if material.texture.page() < overlay.base_texture_pages {
+        return Some(texture.mips.first()?.size);
+    }
+    let flat = overlay.flat_texture_layer(material.texture)?;
+    let grid = overlay.texture_source_grids.get(flat).copied().unwrap_or(0);
+    match overlay.texture_source_sizes.get(flat) {
+        Some(size) => Some(u32::from(*size.iter().max()?)),
+        None => texture.mips.first()?.size.checked_shr(u32::from(grid)),
+    }
+}
+
+/// Selects mips in exposed source pixels and resamples the admitted grid into a held face of
+/// `target` texels across.
 fn overlay_face_tile(
     overlay: &BlockOverlay,
     material: &Material,
     base: Option<&RuntimeAssets>,
+    target: usize,
 ) -> Option<IconSprite> {
     let texture = overlay.texture_page(material.texture.page(), base)?;
     if material.texture.page() < overlay.base_texture_pages {
-        return face_tile(material, texture, texture.mips.first()?.size, 0);
+        return face_tile(material, texture, texture.mips.first()?.size, 0, target);
     }
     let flat = overlay.flat_texture_layer(material.texture)?;
-    let base = texture.mips.first()?;
     let grid = overlay.texture_source_grids.get(flat).copied().unwrap_or(0);
-    let source_side = match overlay.texture_source_sizes.get(flat) {
-        Some(size) => u32::from(*size.iter().max()?),
-        None => base.size.checked_shr(u32::from(grid))?,
-    };
-    face_tile(material, texture, source_side, grid)
+    let source_side = overlay_face_source_side(overlay, material, base)?;
+    face_tile(material, texture, source_side, grid, target)
 }
 
 /// Unresolved tint and animation need authored carried faces instead of a static sheet.
@@ -883,6 +926,7 @@ fn face_tile(
     texture: &TextureArray,
     source_side: u32,
     grid: u8,
+    target: usize,
 ) -> Option<IconSprite> {
     if !face_material_is_admitted(material)
         || source_side == 0
@@ -892,7 +936,7 @@ fn face_tile(
     }
     let level = source_side
         .ilog2()
-        .saturating_sub(TILE.ilog2())
+        .saturating_sub(target.ilog2())
         .min(assets::VANILLA_TERRAIN_MIP_COUNT - 1);
     let mip = texture.mips.get(level as usize)?;
     if mip.size == 0 || mip.size > assets::MAX_TILE_SIZE {
@@ -906,16 +950,16 @@ fn face_tile(
     let bytes = side.checked_mul(side)?.checked_mul(4)?;
     let start = (material.texture.layer() as usize).checked_mul(bytes)?;
     let tile = mip.rgba8.get(start..start.checked_add(bytes)?)?;
-    let mut pixels = Vec::with_capacity(TILE * TILE * 4);
-    for y in 0..TILE {
-        for x in 0..TILE {
-            let offset = ((y * exposed / TILE) * side + x * exposed / TILE) * 4;
+    let mut pixels = Vec::with_capacity(target * target * 4);
+    for y in 0..target {
+        for x in 0..target {
+            let offset = ((y * exposed / target) * side + x * exposed / target) * 4;
             pixels.extend_from_slice(&tile[offset..offset + 4]);
         }
     }
     Some(IconSprite {
-        width: BLOCK_ITEM_FACE_SIDE,
-        height: BLOCK_ITEM_FACE_SIDE,
+        width: target as u16,
+        height: target as u16,
         rgba8: pixels.into(),
     })
 }

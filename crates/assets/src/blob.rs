@@ -736,7 +736,8 @@ pub(crate) fn compiled_connected_bases(
             };
             if group.iter().any(|template| {
                 template.flags != flag
-                    || !(authored && template.quad_count as usize <= crate::MAX_MODEL_TEMPLATE_QUADS
+                    || !(authored
+                        && template.quad_count as usize <= crate::MAX_MODEL_TEMPLATE_QUADS
                         || crate::model::PANE_TEMPLATE_QUADS.contains(&template.quad_count))
             }) {
                 return Err(invalid("pane template group is noncanonical"));
@@ -759,7 +760,8 @@ pub(crate) fn compiled_connected_bases(
                     ((offset - 1) as u32).count_ones() * 8
                 };
                 template.flags != flag
-                    || !(authored && template.quad_count as usize <= crate::MAX_MODEL_TEMPLATE_QUADS
+                    || !(authored
+                        && template.quad_count as usize <= crate::MAX_MODEL_TEMPLATE_QUADS
                         || template.quad_count == expected)
             }) {
                 return Err(invalid("fence template group is noncanonical"));

@@ -10,6 +10,34 @@ pub const BLOCK_ITEM_SHEET_SIZE: [u16; 2] = [
     BLOCK_ITEM_FACE_SIDE * BLOCK_ITEM_SHEET_GRID[1],
 ];
 pub const MAX_ICON_BLOCK_SHEETS: usize = 2048;
+/// The largest face a carried sheet holds; a pack's finer faces are filtered down to it.
+pub const MAX_BLOCK_ITEM_FACE_SIDE: u16 = 64;
+
+/// The face side of a carried sheet of `width` by `height` texels: three faces across and two
+/// down, each a power of two from the base side up to [`MAX_BLOCK_ITEM_FACE_SIDE`].
+#[must_use]
+pub const fn block_item_face_side(width: u32, height: u32) -> Option<u32> {
+    let side = width / BLOCK_ITEM_SHEET_GRID[0] as u32;
+    if side >= BLOCK_ITEM_FACE_SIDE as u32
+        && side <= MAX_BLOCK_ITEM_FACE_SIDE as u32
+        && side.is_power_of_two()
+        && width == side * BLOCK_ITEM_SHEET_GRID[0] as u32
+        && height == side * BLOCK_ITEM_SHEET_GRID[1] as u32
+    {
+        Some(side)
+    } else {
+        None
+    }
+}
+
+/// The size of a carried sheet whose faces are `side` texels across.
+#[must_use]
+pub const fn block_item_sheet_size(side: u16) -> [u16; 2] {
+    [
+        side * BLOCK_ITEM_SHEET_GRID[0],
+        side * BLOCK_ITEM_SHEET_GRID[1],
+    ]
+}
 
 /// A six-face carried sheet in the ordinary sprite pool, indexed by compiled block visual.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -69,7 +97,7 @@ pub(super) fn validate(
         let sprite = sprites
             .get(sheet.sprite as usize)
             .ok_or_else(|| invalid("carried block sheet references a missing sprite"))?;
-        if [sprite.width, sprite.height] != BLOCK_ITEM_SHEET_SIZE {
+        if block_item_face_side(u32::from(sprite.width), u32::from(sprite.height)).is_none() {
             return Err(invalid("carried block sheet has invalid dimensions"));
         }
         previous = Some(sheet.visual.0);
@@ -77,19 +105,21 @@ pub(super) fn validate(
     Ok(())
 }
 
-/// Packs faces in `BlockFace::ALL` order without tinting, reshading or changing alpha.
-/// Color/mask resolution belongs to the authored carried-texture compiler.
+/// Packs faces in `BlockFace::ALL` order without tinting, reshading or changing alpha. Every
+/// face is the same valid square side. Color/mask resolution belongs to the authored
+/// carried-texture compiler.
 #[must_use]
 pub fn compose_block_item_sheet(tiles: &[IconSprite; 6]) -> Option<IconSprite> {
-    let side = usize::from(BLOCK_ITEM_FACE_SIDE);
-    if tiles.iter().any(|tile| {
-        tile.width != BLOCK_ITEM_FACE_SIDE
-            || tile.height != BLOCK_ITEM_FACE_SIDE
-            || tile.rgba8.len() != side * side * 4
-    }) {
+    let side16 = tiles[0].width;
+    let side = usize::from(side16);
+    if block_item_face_side(u32::from(side16) * 3, u32::from(side16) * 2).is_none()
+        || tiles.iter().any(|tile| {
+            tile.width != side16 || tile.height != side16 || tile.rgba8.len() != side * side * 4
+        })
+    {
         return None;
     }
-    let [width, height] = BLOCK_ITEM_SHEET_SIZE;
+    let [width, height] = block_item_sheet_size(side16);
     let mut rgba8 = vec![0; usize::from(width) * usize::from(height) * 4];
     let columns = usize::from(BLOCK_ITEM_SHEET_GRID[0]);
     for (face, tile) in tiles.iter().enumerate() {

@@ -21,7 +21,8 @@ pub use sources::IconSource;
 pub mod dial;
 pub use block::{
     BLOCK_ITEM_FACE_SIDE, BLOCK_ITEM_SHEET_GRID, BLOCK_ITEM_SHEET_SIZE, IconBlockModel,
-    IconBlockSheet, MAX_ICON_BLOCK_SHEETS, compose_block_item_sheet,
+    IconBlockSheet, MAX_BLOCK_ITEM_FACE_SIDE, MAX_ICON_BLOCK_SHEETS, block_item_face_side,
+    block_item_sheet_size, compose_block_item_sheet,
 };
 
 pub const ICON_CARRIER_MAGIC: [u8; 8] = *b"MCBEICO1";

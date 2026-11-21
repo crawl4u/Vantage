@@ -70,9 +70,7 @@ impl UiPresentationRuntime {
                 }
                 render_model::equipment::blocks::dropped_vertex_count(&vertices)?
             } else {
-                if [source.width, source.height] != assets::BLOCK_ITEM_SHEET_SIZE.map(u32::from) {
-                    return None;
-                }
+                assets::block_item_face_side(source.width, source.height)?;
                 36
             };
         ItemModelCost::new(
@@ -90,12 +88,10 @@ impl UiPresentationRuntime {
         source_manifest_sha256: [u8; 32],
     ) -> Option<ItemModelCost> {
         let sprite = self.carried_block_sheet(visual, source_manifest_sha256)?;
-        if [sprite.width, sprite.height] != assets::BLOCK_ITEM_SHEET_SIZE
-            || sprite.rgba8.len() != usize::from(sprite.width) * usize::from(sprite.height) * 4
-        {
+        if sprite.rgba8.len() != usize::from(sprite.width) * usize::from(sprite.height) * 4 {
             return None;
         }
-        let side = u32::from(assets::BLOCK_ITEM_FACE_SIDE);
+        let side = assets::block_item_face_side(u32::from(sprite.width), u32::from(sprite.height))?;
         ItemModelCost::new(
             side,
             assets::BlockFace::ALL.len(),
@@ -191,13 +187,12 @@ fn carried_cube_pixels(
     height: u32,
     rgba8: &[u8],
 ) -> Option<render_model::DroppedItemCube> {
-    use assets::{BLOCK_ITEM_FACE_SIDE, BLOCK_ITEM_SHEET_GRID, BLOCK_ITEM_SHEET_SIZE};
-    if [width, height] != BLOCK_ITEM_SHEET_SIZE.map(u32::from)
-        || rgba8.len() != width as usize * height as usize * 4
-    {
+    use assets::BLOCK_ITEM_SHEET_GRID;
+    let face_side = assets::block_item_face_side(width, height)?;
+    if rgba8.len() != width as usize * height as usize * 4 {
         return None;
     }
-    let side = usize::from(BLOCK_ITEM_FACE_SIDE);
+    let side = face_side as usize;
     let columns = usize::from(BLOCK_ITEM_SHEET_GRID[0]);
     let faces = std::array::from_fn(|face| {
         let (x, y) = (face % columns * side, face / columns * side);
@@ -209,7 +204,7 @@ fn carried_cube_pixels(
         std::sync::Arc::from(pixels)
     });
     Some(render_model::DroppedItemCube {
-        tile: u32::from(BLOCK_ITEM_FACE_SIDE),
+        tile: face_side,
         faces,
         tints: [render_model::OPAQUE_WHITE; 6],
     })

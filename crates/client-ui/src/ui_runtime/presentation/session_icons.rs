@@ -493,7 +493,6 @@ fn block_cubes(icons: &SessionIcons, packed: &PackedIcons) -> BTreeMap<IconKey, 
 
 /// Selects valid first occurrences and sorts them tallest first for every packing plan.
 fn ordered_icons(icons: &SessionIcons, policy: TexturePolicy) -> Vec<(&SessionIcon, bool)> {
-    let sheet_size = assets::BLOCK_ITEM_SHEET_SIZE.map(u32::from);
     // Tallest first keeps shelves dense; ties keep input order.
     // Invalid entries and later duplicates are dropped before sorting so they cannot size the page.
     let mut seen = std::collections::HashSet::new();
@@ -505,7 +504,7 @@ fn ordered_icons(icons: &SessionIcons, policy: TexturePolicy) -> Vec<(&SessionIc
             icons
                 .block_sheets
                 .iter()
-                .filter(|sheet| [sheet.width, sheet.height] == sheet_size)
+                .filter(|sheet| assets::block_item_face_side(sheet.width, sheet.height).is_some())
                 .map(|sheet| (sheet, true)),
         )
         .filter(|(icon, _)| valid_icon(icon, policy))

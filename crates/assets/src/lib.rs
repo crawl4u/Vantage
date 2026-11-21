@@ -200,11 +200,11 @@ pub use hud::{
 };
 pub use icon::{
     BLOCK_ITEM_FACE_SIDE, BLOCK_ITEM_SHEET_GRID, BLOCK_ITEM_SHEET_SIZE, IconBlockModel,
-    IconBlockSheet, IconEntry, IconSprite, MAX_ICON_BLOCK_SHEETS, MAX_ICON_CARRIER_BYTES,
-    MAX_ICON_ENTRIES, MAX_ICON_KEY_BYTES, MAX_ICON_SIDE, MAX_ICON_SPRITES, RuntimeIconCatalog,
-    compose_block_item_sheet, encode_icon_catalog, encode_icon_catalog_with_block_sheets,
-    encode_icon_catalog_with_blocks, encode_icon_catalog_with_gui_cube_sheets,
-    encode_icon_catalog_with_sources,
+    IconBlockSheet, IconEntry, IconSprite, MAX_BLOCK_ITEM_FACE_SIDE, MAX_ICON_BLOCK_SHEETS,
+    MAX_ICON_CARRIER_BYTES, MAX_ICON_ENTRIES, MAX_ICON_KEY_BYTES, MAX_ICON_SIDE, MAX_ICON_SPRITES,
+    RuntimeIconCatalog, block_item_face_side, block_item_sheet_size, compose_block_item_sheet,
+    encode_icon_catalog, encode_icon_catalog_with_block_sheets, encode_icon_catalog_with_blocks,
+    encode_icon_catalog_with_gui_cube_sheets, encode_icon_catalog_with_sources,
 };
 pub use item::{
     BlockVisualId, ItemActionPhase, ItemDisplayScalar, ItemDisplayTransform, ItemIconRef,

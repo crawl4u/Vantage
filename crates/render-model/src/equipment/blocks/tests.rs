@@ -85,7 +85,11 @@ fn carried_face_sheets_sample_every_overlay_shard() {
             .expect("a carried face may reference any available overlay shard");
         let visual = overlay_sheet(&source, 0, None).unwrap();
         assert_eq!(faces.rgba8, visual.rgba8);
-        assert_eq!([faces.width, faces.height], assets::BLOCK_ITEM_SHEET_SIZE);
+        // The shards hold 32-texel art, so the sheet's faces are 32 across, not the base 16.
+        assert_eq!(
+            assets::block_item_face_side(u32::from(faces.width), u32::from(faces.height)),
+            Some(32)
+        );
         assert!(
             faces
                 .rgba8
