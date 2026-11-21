@@ -53,7 +53,7 @@ pub(super) fn raster(
     metadata: u32,
     geometries: &[EntityGeometry],
 ) -> Result<Option<IconSprite>, AssetError> {
-    raster_with(name, metadata, geometries, &mut |path| {
+    raster_with(name, metadata, geometries, super::model::SIDE, &mut |path| {
         IconBlocks::model_texture(root, path)
     })
 }
@@ -101,11 +101,13 @@ fn chest(texture: &str) -> Part {
 }
 
 /// [`raster`] with the textures supplied by `texture`, which resolves a pack-relative path such
-/// as `textures/entity/chest/normal` to its pixels, so a session can draw from its own pack.
+/// as `textures/entity/chest/normal` to its pixels, so a session can draw from its own pack. The
+/// sprite is `side` pixels across.
 pub(super) fn raster_with(
     name: &str,
     metadata: u32,
     geometries: &[EntityGeometry],
+    side: usize,
     texture: &mut dyn FnMut(&str) -> Result<Option<IconSprite>, AssetError>,
 ) -> Result<Option<IconSprite>, AssetError> {
     let mut projection: fn([f32; 3]) -> [f32; 3] = assets::gui_item::project_cube;
@@ -256,7 +258,7 @@ pub(super) fn raster_with(
         } else {
             model
         }
-        .raster(),
+        .raster_at(side),
     ))
 }
 
@@ -433,14 +435,14 @@ mod chest_icon_tests {
             ),
         ] {
             let mut asked = Vec::new();
-            let red = raster_with(name, 0, &[], &mut |path| {
+            let red = raster_with(name, 0, &[], 32, &mut |path| {
                 asked.push(path.to_owned());
                 Ok(Some(unwrap_of([200, 20, 20, 255])))
             })
             .unwrap()
             .unwrap_or_else(|| panic!("{name} has an inventory model"));
             assert_eq!(asked, [texture], "{name}");
-            let blue = raster_with(name, 0, &[], &mut |_| {
+            let blue = raster_with(name, 0, &[], 32, &mut |_| {
                 Ok(Some(unwrap_of([20, 20, 200, 255])))
             })
             .unwrap()
@@ -453,14 +455,14 @@ mod chest_icon_tests {
                 "{name} is only the red texture, shaded"
             );
             assert!(
-                raster_with(name, 0, &[], &mut |_| Ok(None))
+                raster_with(name, 0, &[], 32, &mut |_| Ok(None))
                     .unwrap()
                     .is_none(),
                 "a pack without the texture keeps the vanilla icon"
             );
         }
         assert!(
-            raster_with("minecraft:stone", 0, &[], &mut |_| Ok(Some(unwrap_of(
+            raster_with("minecraft:stone", 0, &[], 32, &mut |_| Ok(Some(unwrap_of(
                 [1; 4]
             ))))
             .unwrap()

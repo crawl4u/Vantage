@@ -315,9 +315,10 @@ pub fn overlay_cube_icon(
         .map(|model| model.raster())
 }
 
-/// Draws a carried cube like [`overlay_cube_icon`], colouring faces that carry a tint with
-/// `tint`'s colour for their flags.
-#[must_use]
+/// Pixels across a session's entity-drawn block icon: finer than the startup icons, which share a
+/// bounded carrier, since a session holds far fewer.
+const SESSION_ICON_SIDE: usize = 64;
+
 /// The inventory icon of an entity-drawn block item (chests, shulker boxes, banners and the like)
 /// drawn from the textures `texture` resolves, so a pack's own entity art reaches the slot.
 /// `texture` takes a pack-relative path without extension. `None` when the block has no such
@@ -327,11 +328,16 @@ pub fn block_entity_icon(
     metadata: u32,
     mut texture: impl FnMut(&str) -> Option<assets::IconSprite>,
 ) -> Option<assets::IconSprite> {
-    block_entity::raster_with(name, metadata, &[], &mut |path| Ok(texture(path)))
-        .ok()
-        .flatten()
+    block_entity::raster_with(name, metadata, &[], SESSION_ICON_SIDE, &mut |path| {
+        Ok(texture(path))
+    })
+    .ok()
+    .flatten()
 }
 
+/// Draws a carried cube like [`overlay_cube_icon`], colouring faces that carry a tint with
+/// `tint`'s colour for their flags.
+#[must_use]
 pub fn overlay_cube_icon_with_tint(
     overlay: &assets::BlockOverlay,
     faces: [u32; 6],

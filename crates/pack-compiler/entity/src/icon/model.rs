@@ -14,7 +14,7 @@ use assets::{
 
 use super::cube::Reject;
 
-pub(super) const SIDE: usize = 64;
+pub(super) const SIDE: usize = 32;
 
 struct Face<'a> {
     corners: [[f32; 3]; 4],
@@ -305,9 +305,14 @@ impl<'a> Model<'a> {
     }
 
     pub(super) fn raster(&self) -> IconSprite {
-        let mut pixels = vec![0u8; SIDE * SIDE * 4];
-        let mut depth = vec![f32::INFINITY; SIDE * SIDE];
-        let mut fragments = vec![Vec::new(); SIDE * SIDE];
+        self.raster_at(SIDE)
+    }
+
+    /// Rasterizes the model into a square sprite `side` pixels across.
+    pub(super) fn raster_at(&self, side: usize) -> IconSprite {
+        let mut pixels = vec![0u8; side * side * 4];
+        let mut depth = vec![f32::INFINITY; side * side];
+        let mut fragments = vec![Vec::new(); side * side];
         for (index, face) in self.faces.iter().enumerate() {
             let brightness = if self.face_lighting && face.face_dimming {
                 self.shading.brightness(face.corners)
@@ -316,7 +321,7 @@ impl<'a> Model<'a> {
             } * self.light;
             let points = face.corners.map(|point| {
                 let [x, y, z] = (self.projection)(point);
-                let scale = SIDE as f32 / GUI_ITEM_SIDE;
+                let scale = side as f32 / GUI_ITEM_SIDE;
                 // Ordered faces use successive depths so cutouts and blending retain paint order.
                 let depth = if self.order == BlockModelOrder::Paint {
                     -(index as f32)
@@ -327,6 +332,7 @@ impl<'a> Model<'a> {
             });
             for indices in [[0, 1, 2], [0, 2, 3]] {
                 triangle(
+                    side,
                     &mut pixels,
                     &mut depth,
                     &mut fragments,
@@ -339,8 +345,8 @@ impl<'a> Model<'a> {
         }
         composite_fragments(&mut pixels, &depth, &mut fragments);
         IconSprite {
-            width: SIDE as u16,
-            height: SIDE as u16,
+            width: side as u16,
+            height: side as u16,
             rgba8: Arc::from(pixels),
         }
     }
@@ -434,6 +440,7 @@ fn edge(a: [f32; 3], b: [f32; 3], p: [f32; 2]) -> f32 {
 }
 
 fn triangle(
+    side: usize,
     pixels: &mut [u8],
     depth: &mut [f32],
     fragments: &mut [Vec<(f32, [u8; 4])>],
@@ -451,8 +458,8 @@ fn triangle(
     if !area.is_finite() || area == 0. {
         return;
     }
-    for y in 0..SIDE {
-        for x in 0..SIDE {
+    for y in 0..side {
+        for x in 0..side {
             let sample = [x as f32 + 0.5, y as f32 + 0.5];
             let weights = [
                 edge(p[1], p[2], sample) / area,
@@ -467,7 +474,7 @@ fn triangle(
                 continue;
             }
             let z = (0..3).map(|i| weights[i] * p[i][2]).sum::<f32>();
-            let target = y * SIDE + x;
+            let target = y * side + x;
             if z >= depth[target] {
                 continue;
             }
@@ -648,6 +655,7 @@ mod review_tests {
             let mut fragments = vec![Vec::new(); SIDE * SIDE];
             for (face, z) in layers {
                 triangle(
+                    SIDE,
                     &mut pixels,
                     &mut depth,
                     &mut fragments,
