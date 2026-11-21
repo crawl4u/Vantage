@@ -258,7 +258,7 @@ pub(super) fn raster_with(
         } else {
             model
         }
-        .raster_at(side),
+        .raster_filled(side),
     ))
 }
 
@@ -468,5 +468,28 @@ mod chest_icon_tests {
             .unwrap()
             .is_none()
         );
+    }
+
+    #[test]
+    fn an_entity_drawn_block_icon_fills_its_slot_like_a_full_block() {
+        for name in ["minecraft:chest", "minecraft:red_shulker_box", "minecraft:ender_chest"] {
+            let icon = raster_with(name, 0, &[], 64, &mut |_| {
+                Ok(Some(unwrap_of([200, 20, 20, 255])))
+            })
+            .unwrap()
+            .unwrap();
+            let side = usize::from(icon.width);
+            let covered = |index: usize| icon.rgba8[index * 4 + 3] != 0;
+            let (mut low, mut high) = ([side; 2], [0usize; 2]);
+            for index in (0..side * side).filter(|&index| covered(index)) {
+                for (axis, value) in [index % side, index / side].into_iter().enumerate() {
+                    low[axis] = low[axis].min(value);
+                    high[axis] = high[axis].max(value);
+                }
+            }
+            let extent = (high[0] - low[0]).max(high[1] - low[1]) + 1;
+            assert!(extent >= side * 7 / 8, "{name} spans {extent} of {side}");
+            assert!(low.iter().all(|&edge| edge > 0) && high.iter().all(|&edge| edge < side - 1));
+        }
     }
 }

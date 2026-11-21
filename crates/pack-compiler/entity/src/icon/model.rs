@@ -310,6 +310,40 @@ impl<'a> Model<'a> {
 
     /// Rasterizes the model into a square sprite `side` pixels across.
     pub(super) fn raster_at(&self, side: usize) -> IconSprite {
+        self.raster_view(side, false)
+    }
+
+    /// Like [`Self::raster_at`], scaled and centred so the model's outline fills the sprite, the
+    /// way a model smaller than a full block still fills its slot.
+    pub(super) fn raster_filled(&self, side: usize) -> IconSprite {
+        self.raster_view(side, true)
+    }
+
+    fn raster_view(&self, side: usize, fill: bool) -> IconSprite {
+        let base = side as f32 / GUI_ITEM_SIDE;
+        let (scale, offset) = if fill {
+            let mut low = [f32::INFINITY; 2];
+            let mut high = [f32::NEG_INFINITY; 2];
+            for point in self.faces.iter().flat_map(|face| face.corners) {
+                let [x, y, _] = (self.projection)(point);
+                for (axis, value) in [x, y].into_iter().enumerate() {
+                    low[axis] = low[axis].min(value * base);
+                    high[axis] = high[axis].max(value * base);
+                }
+            }
+            let extent = (high[0] - low[0]).max(high[1] - low[1]);
+            if extent.is_finite() && extent > 0.0 {
+                // A one-sixteenth margin keeps the outline off the slot's edge.
+                let grow = side as f32 * 15.0 / 16.0 / extent;
+                let centre = [(low[0] + high[0]) / 2.0, (low[1] + high[1]) / 2.0];
+                let half = side as f32 / 2.0;
+                (base * grow, [half - centre[0] * grow, half - centre[1] * grow])
+            } else {
+                (base, [0.0; 2])
+            }
+        } else {
+            (base, [0.0; 2])
+        };
         let mut pixels = vec![0u8; side * side * 4];
         let mut depth = vec![f32::INFINITY; side * side];
         let mut fragments = vec![Vec::new(); side * side];
@@ -321,14 +355,13 @@ impl<'a> Model<'a> {
             } * self.light;
             let points = face.corners.map(|point| {
                 let [x, y, z] = (self.projection)(point);
-                let scale = side as f32 / GUI_ITEM_SIDE;
                 // Ordered faces use successive depths so cutouts and blending retain paint order.
                 let depth = if self.order == BlockModelOrder::Paint {
                     -(index as f32)
                 } else {
                     z
                 };
-                [scale * x, scale * y, depth]
+                [scale * x + offset[0], scale * y + offset[1], depth]
             });
             for indices in [[0, 1, 2], [0, 2, 3]] {
                 triangle(
