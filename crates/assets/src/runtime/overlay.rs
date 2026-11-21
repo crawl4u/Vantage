@@ -508,7 +508,7 @@ impl RuntimeAssets {
         }
         // Copied vanilla topology groups keep the canonical shape the base carrier validates.
         crate::blob::compiled_stair_bases(&overlay.model_templates)?;
-        crate::blob::compiled_connected_bases(&overlay.model_templates)?;
+        crate::blob::compiled_connected_bases(&overlay.model_templates, true)?;
         let mut previous_carried = None;
         for &(index, faces) in &overlay.carried_cube_faces {
             let visual = overlay

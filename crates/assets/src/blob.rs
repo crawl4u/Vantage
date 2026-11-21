@@ -340,7 +340,7 @@ fn validate_compiled(compiled: &CompiledAssets) -> Result<(), AssetError> {
     let compound_tails = compiled_compound_tails(&compiled.model_templates)?;
     let stair_bases = compiled_stair_bases(&compiled.model_templates)?;
     let mut referenced_stair_bases = vec![false; stair_bases.len()];
-    let connected_bases = compiled_connected_bases(&compiled.model_templates)?;
+    let connected_bases = compiled_connected_bases(&compiled.model_templates, false)?;
     let mut referenced_connected_bases = vec![false; connected_bases.len()];
     for (index, visual) in compiled.visuals.iter().enumerate() {
         visual.destroy.validate()?;
@@ -704,9 +704,12 @@ pub(crate) fn compiled_stair_bases(
     Ok(bases)
 }
 
-/// Validates connected topology groups and returns their first templates and flags.
+/// Validates connected topology groups and returns their first templates and flags. Pane and
+/// fence templates keep vanilla's quad counts unless `authored` is set, which admits any count a
+/// model template can hold, as pack art with its own connection shapes needs.
 pub(crate) fn compiled_connected_bases(
     templates: &[crate::ModelTemplate],
+    authored: bool,
 ) -> Result<Vec<(usize, u32)>, AssetError> {
     let mut bases = Vec::new();
     let mut index = 0;
@@ -733,7 +736,8 @@ pub(crate) fn compiled_connected_bases(
             };
             if group.iter().any(|template| {
                 template.flags != flag
-                    || !crate::model::PANE_TEMPLATE_QUADS.contains(&template.quad_count)
+                    || !(authored && template.quad_count as usize <= crate::MAX_MODEL_TEMPLATE_QUADS
+                        || crate::model::PANE_TEMPLATE_QUADS.contains(&template.quad_count))
             }) {
                 return Err(invalid("pane template group is noncanonical"));
             }
@@ -754,7 +758,9 @@ pub(crate) fn compiled_connected_bases(
                 } else {
                     ((offset - 1) as u32).count_ones() * 8
                 };
-                template.flags != flag || template.quad_count != expected
+                template.flags != flag
+                    || !(authored && template.quad_count as usize <= crate::MAX_MODEL_TEMPLATE_QUADS
+                        || template.quad_count == expected)
             }) {
                 return Err(invalid("fence template group is noncanonical"));
             }

@@ -69,11 +69,16 @@ pub(super) fn apply(
                 .and_then(|previous| templates.get(previous as usize))
                 .is_some_and(|template| template.flags == MODEL_TEMPLATE_FLAG_POTTED_PLANT)
         };
+        // Connection groups pick their template by neighbours, never by quad position, so a
+        // redrawn pane or fence may draw any number of quads in each shape.
+        let authored_shapes = crate::model::MODEL_TEMPLATE_FLAG_PANE
+            | crate::model::MODEL_TEMPLATE_FLAG_FENCE_WOOD
+            | crate::model::MODEL_TEMPLATE_FLAG_FENCE_NETHER;
         if copied.is_none_or(|copied| {
-            copied
-                .iter()
-                .zip(source)
-                .any(|(copy, base)| copy.flags != base.flags || copy.quad_count != base.quad_count)
+            copied.iter().zip(source).any(|(copy, base)| {
+                copy.flags != base.flags
+                    || (copy.quad_count != base.quad_count && base.flags & authored_shapes == 0)
+            })
         }) || potted(base_templates, original) != potted(overlay_templates, replacement)
         {
             return Err(invalid(
@@ -156,5 +161,54 @@ mod tests {
         assert!(accepts(VisualKind::Model, BlockFlags::empty(), 0, Some(0)));
         assert!(!accepts(VisualKind::Model, BlockFlags::empty(), 0, Some(1)));
         assert!(!accepts(VisualKind::Model, BlockFlags::empty(), 0, Some(9)));
+    }
+
+    /// A pane or fence group redrawn from pack art may draw other quad counts than vanilla's,
+    /// while a group of another family still has to match quad for quad.
+    #[test]
+    fn connection_groups_may_change_their_quad_counts_but_not_their_flags() {
+        let group = |flags: u32, quads: u32| -> Vec<ModelTemplate> {
+            (0..16)
+                .map(|index| ModelTemplate {
+                    quad_start: index * quads,
+                    quad_count: quads,
+                    flags,
+                })
+                .collect()
+        };
+        let visual = || {
+            let mut visual =
+                BlockVisual::diagnostic(BlockFlags::empty(), crate::ContributorRole::default());
+            visual.kind = VisualKind::Model;
+            visual.model_template = 0;
+            visual
+        };
+        let apply_with = |base: &[ModelTemplate], overlay: &[ModelTemplate]| {
+            let quad = ModelQuad {
+                positions: [[0; 3]; 4],
+                uvs: [[0; 2]; 4],
+                material: 0,
+                flags: 0,
+            };
+            let mut visuals = [visual()];
+            let result = apply(
+                &[(0, 0)],
+                &mut visuals,
+                base,
+                overlay,
+                &vec![quad; 16 * 12],
+                base.len() as u32,
+            );
+            (result, visuals[0].model_template)
+        };
+        let pane = crate::MODEL_TEMPLATE_FLAG_PANE;
+        let (result, template) = apply_with(&group(pane, 6), &group(pane, 3));
+        assert!(result.is_ok());
+        assert_eq!(template, 16);
+        let wall = crate::MODEL_TEMPLATE_FLAG_WALL;
+        assert!(apply_with(&group(pane, 6), &group(wall, 6)).0.is_err());
+        // Only an overlay's own groups may leave vanilla's counts.
+        assert!(crate::blob::compiled_connected_bases(&group(pane, 3), true).is_ok());
+        assert!(crate::blob::compiled_connected_bases(&group(pane, 3), false).is_err());
     }
 }
