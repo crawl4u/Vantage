@@ -20,10 +20,16 @@ use zip::ZipArchive;
 pub(super) const OVERRIDE_VARIABLE: &str = "CINNABAR_JAVA_BASE";
 
 /// Folders of the base that fill gaps, relative to the archive root.
-const LAYERED_FOLDERS: [&str; 3] = [
+///
+/// Entity and painting art joins block and item art. The translator only places an entity texture
+/// where it matches Bedrock's picture of the same mob, so a layout the two editions do not share
+/// is left out rather than misdrawn.
+const LAYERED_FOLDERS: [&str; 5] = [
     "assets/minecraft/textures/block/",
     "assets/minecraft/textures/item/",
     "assets/minecraft/textures/colormap/",
+    "assets/minecraft/textures/entity/",
+    "assets/minecraft/textures/painting/",
 ];
 
 /// The folder whose presence marks a flattened (1.13 and later) pack or jar.
@@ -221,6 +227,8 @@ mod tests {
                 "assets/minecraft/textures/entity/chest/normal.png".to_owned(),
             ),
             (5, "assets/minecraft/lang/en_us.json".to_owned()),
+            (6, "assets/minecraft/textures/painting/kebab.png".to_owned()),
+            (7, "assets/minecraft/textures/gui/widgets.png".to_owned()),
         ];
         let pack: HashMap<String, usize> = [
             "assets/minecraft/textures/item/bucket.png",
@@ -238,9 +246,11 @@ mod tests {
             [
                 "assets/minecraft/textures/block/lantern.png.mcmeta",
                 "assets/minecraft/textures/colormap/grass.png",
+                "assets/minecraft/textures/entity/chest/normal.png",
                 "assets/minecraft/textures/item/goat_horn.png",
+                "assets/minecraft/textures/painting/kebab.png",
             ],
-            "the pack's own bucket wins, and only block, item and colour-map files are layered"
+            "the pack's own bucket wins; only block, item, colour-map, entity and painting files are layered"
         );
     }
 
