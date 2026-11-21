@@ -19,8 +19,11 @@ left to the same-path rule, then the file-name rule. Run: derive_extras.py <clie
 <out.tsv>.
 """
 
+import glob
 import hashlib
+import json
 import os
+import re
 import struct
 import sys
 import zipfile
@@ -31,6 +34,11 @@ import zlib
 # differently (fish, dolphins, baby animals), and copying it would draw a garbled mob, so the
 # mob keeps Bedrock's own texture instead.
 MIN_SIMILARITY = 0.6
+
+# For a texture drawn on a known Bedrock model, the share of that model's box faces that must
+# show the same shapes in the Java picture; below it the two editions lay the texture out
+# differently.
+MIN_AGREEMENT = 0.6
 
 # Textures the translator turns to Bedrock's orientation itself (see `flipped_box_faces` in
 # extras.rs), so their raw pixels correlate poorly with Bedrock's and are kept regardless.
@@ -109,6 +117,96 @@ def decode(data):
     return width, height, bytes(out)
 
 
+def read_geometries(bedrock_root):
+    """Bedrock model box layouts, and the model ids each entity texture is drawn on.
+
+    Returns (geometries, textures): `geometries` maps a model id to (width, height, boxes) with
+    each box (u, v, width, height, depth) in texels, and `textures` maps a texture path
+    (relative to textures/) to the model ids its entities use.
+    """
+
+    def parse(path):
+        try:
+            with open(path, encoding="utf-8") as handle:
+                return json.loads(re.sub(r"(?m)^\s*//.*$", "", handle.read()))
+        except (OSError, ValueError):
+            return {}
+
+    geometries = {}
+    for path in glob.glob(os.path.join(bedrock_root, "models", "entity", "*.geo.json")):
+        for model in parse(path).get("minecraft:geometry", []):
+            description = model["description"]
+            boxes = [
+                (int(cube["uv"][0]), int(cube["uv"][1]), *[int(round(side)) for side in cube["size"]])
+                for bone in model.get("bones", [])
+                for cube in bone.get("cubes", [])
+                if isinstance(cube.get("uv"), list) and "size" in cube
+            ]
+            geometries[description["identifier"]] = (
+                description.get("texture_width", 64),
+                description.get("texture_height", 64),
+                boxes,
+            )
+    textures = {}
+    for path in glob.glob(os.path.join(bedrock_root, "entity", "*.entity.json")):
+        description = parse(path).get("minecraft:client_entity", {}).get("description", {})
+        models = set(description.get("geometry", {}).values())
+        for texture in description.get("textures", {}).values():
+            textures.setdefault(texture.replace("textures/", "", 1), set()).update(models)
+    return geometries, textures
+
+
+def box_faces(u, v, w, h, d):
+    """The six face rectangles (x, y, width, height) of a Bedrock box at (u, v)."""
+    return [
+        (u, v + d, d, h),
+        (u + d, v + d, w, h),
+        (u + d + w, v + d, d, h),
+        (u + d + w + d, v + d, w, h),
+        (u + d, v, w, d),
+        (u + d + w, v, w, d),
+    ]
+
+
+def region(image, rect):
+    width, _, rgba = image
+    x, y, w, h = rect
+    return [rgba[((y + j) * width + x + i) * 4 : ((y + j) * width + x + i) * 4 + 4] for j in range(h) for i in range(w)]
+
+
+def alike(a, b):
+    """Whether two same-size pixel lists show the same shapes, whatever their colours."""
+    if len(a) == 0:
+        return True
+    if sum(1 for p, q in zip(a, b) if (p[3] > 0) == (q[3] > 0)) < 0.9 * len(a):
+        return False
+    xs = [(p[0] + p[1] + p[2]) / 3 for p, q in zip(a, b) if p[3] and q[3]]
+    ys = [(q[0] + q[1] + q[2]) / 3 for p, q in zip(a, b) if p[3] and q[3]]
+    if len(xs) < 2:
+        return True
+    mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+    vx = sum((x - mx) ** 2 for x in xs)
+    vy = sum((y - my) ** 2 for y in ys)
+    if vx < 1e-6 or vy < 1e-6:
+        return vx < 1e-6 and vy < 1e-6 or max(vx, vy) / len(xs) < 40
+    return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / (vx * vy) ** 0.5 >= 0.8
+
+
+def layout_agreement(java_image, bedrock_image, boxes):
+    """The share of the model's box faces whose picture shows the same shapes in both images."""
+    width, height, _ = java_image
+    faces = [
+        rect
+        for box in boxes
+        for rect in box_faces(*box)
+        if rect[2] > 0 and rect[3] > 0 and rect[0] + rect[2] <= width and rect[1] + rect[3] <= height
+    ]
+    if not faces:
+        return None
+    agree = sum(1 for rect in faces if alike(region(java_image, rect), region(bedrock_image, rect)))
+    return agree / len(faces)
+
+
 def similarity(java_image, bedrock_image):
     """How alike two same-size pictures are in layout, from 0 to 1, whatever their colours.
 
@@ -168,6 +266,7 @@ def main(jar_path, bedrock_root, out_path):
     for path in bedrock:
         if path.startswith("entity/"):
             stems.setdefault(os.path.basename(path), []).append(path)
+    geometries, model_ids = read_geometries(bedrock_root)
     rows, taken, incompatible = [], {}, []
     claimed = {}
     for path in java:
@@ -191,14 +290,19 @@ def main(jar_path, bedrock_root, out_path):
             ]
             if path.startswith("entity/") and len(named) == 1:
                 target = named[0]
-        if (
-            target
-            and not path.startswith(REORIENTED)
-            and digest(image) != digest(bedrock[target])
-            and similarity(image, bedrock[target]) < MIN_SIMILARITY
-        ):
-            incompatible.append(path)
-            target = None
+        if target and not path.startswith(REORIENTED) and digest(image) != digest(bedrock[target]):
+            agreement = None
+            for model in model_ids.get(target, ()):
+                tw, th, boxes = geometries.get(model, (0, 0, []))
+                if (tw, th) == image[:2]:
+                    score = layout_agreement(image, bedrock[target], boxes)
+                    if score is not None and (agreement is None or score > agreement):
+                        agreement = score
+            if agreement is None:
+                agreement = 1.0 if similarity(image, bedrock[target]) >= MIN_SIMILARITY else 0.0
+            if agreement < MIN_AGREEMENT:
+                incompatible.append(path)
+                target = None
         if target:
             rows.append((path, target, image[0], image[1]))
             taken.setdefault(target, []).append(path)
