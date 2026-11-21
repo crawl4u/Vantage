@@ -483,6 +483,14 @@ impl RuntimeAssets {
         )
     }
 
+    /// The meshing flags of a base model template.
+    #[must_use]
+    pub fn model_template_flags(&self, template: u32) -> Option<u32> {
+        self.model_templates
+            .get(template as usize)
+            .map(|template| template.flags)
+    }
+
     /// Returns the separate pot-content model paired with this block's world model.
     #[must_use]
     pub fn potted_model_template(&self, mode: NetworkIdMode, id: u32) -> Option<u32> {
