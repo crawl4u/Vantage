@@ -93,6 +93,9 @@ def decode(data):
     width, height, depth, color, _, _, interlace = header
     # Palette and grey images may pack several pixels per byte; the rest are 8 bits a channel.
     packed = depth in (1, 2, 4) and color in (0, 3)
+    if interlace == 1 and depth == 8 and color in (0, 2, 4, 6):
+        rgba = decode_interlaced(width, height, color, zlib.decompress(idat))
+        return (width, height, rgba) if rgba else None
     if (depth != 8 and not packed) or interlace != 0 or color not in (0, 2, 3, 4, 6):
         return None
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color]
@@ -326,6 +329,55 @@ def decode_tga(data):
         rows = [out[y * width * 4 : (y + 1) * width * 4] for y in range(height)]
         out = bytearray(b"".join(reversed(rows)))
     return width, height, bytes(out)
+
+
+ADAM7 = [(0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)]
+
+
+def decode_interlaced(width, height, color, raw):
+    """Un-interlaces (Adam7) an 8-bit grey, RGB, grey-alpha or RGBA PNG body to RGBA bytes."""
+    channels = {0: 1, 2: 3, 4: 2, 6: 4}.get(color)
+    if channels is None:
+        return None
+    out = bytearray(width * height * 4)
+    pos = 0
+    for x0, y0, dx, dy in ADAM7:
+        pw = (width - x0 + dx - 1) // dx
+        ph = (height - y0 + dy - 1) // dy
+        if pw <= 0 or ph <= 0:
+            continue
+        stride = pw * channels
+        previous = bytearray(stride)
+        for row in range(ph):
+            filt = raw[pos]
+            line = bytearray(raw[pos + 1 : pos + 1 + stride])
+            pos += 1 + stride
+            for i in range(stride):
+                a = line[i - channels] if i >= channels else 0
+                b = previous[i]
+                c = previous[i - channels] if i >= channels else 0
+                if filt == 1:
+                    line[i] = (line[i] + a) & 255
+                elif filt == 2:
+                    line[i] = (line[i] + b) & 255
+                elif filt == 3:
+                    line[i] = (line[i] + ((a + b) >> 1)) & 255
+                elif filt == 4:
+                    line[i] = (line[i] + paeth(a, b, c)) & 255
+            previous = line
+            for col in range(pw):
+                px = line[col * channels : col * channels + channels]
+                if color == 6:
+                    rgba = bytes(px)
+                elif color == 2:
+                    rgba = bytes(px) + bytes([255])
+                elif color == 0:
+                    rgba = bytes([px[0]] * 3) + bytes([255])
+                else:
+                    rgba = bytes([px[0]] * 3) + bytes([px[1]])
+                at = ((y0 + row * dy) * width + x0 + col * dx) * 4
+                out[at : at + 4] = rgba
+    return bytes(out)
 
 
 def digest(image):

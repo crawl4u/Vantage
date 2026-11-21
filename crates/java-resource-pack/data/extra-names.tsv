@@ -130,6 +130,7 @@ entity/decorated_pot/shelter_pottery_pattern	blocks/shelter_pottery_pattern	16	1
 entity/decorated_pot/skull_pottery_pattern	blocks/skull_pottery_pattern	16	16
 entity/decorated_pot/snort_pottery_pattern	blocks/snort_pottery_pattern	16	16
 entity/dolphin/dolphin	entity/dolphin	64	64
+entity/dolphin/dolphin_baby	entity/dolphin/dolphin_baby	64	64
 entity/enchantment/enchanting_table_book	entity/enchanting_table_book	64	32
 entity/end_crystal/end_crystal	entity/endercrystal/endercrystal	128	64
 entity/end_crystal/end_crystal_beam	entity/endercrystal/endercrystal_beam	16	256
@@ -205,6 +206,7 @@ entity/ghast/ghast_shooting	entity/ghast/ghast_shooting	128	64
 entity/ghast/happy_ghast	entity/happy_ghast/happy_ghast	128	128
 entity/ghast/happy_ghast_ropes	entity/happy_ghast/happy_ghast_ropes	128	128
 entity/goat/goat	entity/goat/goat	64	64
+entity/goat/goat_baby	entity/goat/goat_baby	64	64
 entity/guardian/guardian	entity/guardian	64	64
 entity/guardian/guardian_beam	entity/guardian_beam	32	32
 entity/guardian/guardian_elder	entity/guardian_elder	64	64
@@ -226,6 +228,7 @@ entity/horse/horse_darkbrown	entity/horse2/horse_darkbrown	64	64
 entity/horse/horse_darkbrown_baby	entity/horse2/horse_darkbrown_baby	64	64
 entity/horse/horse_gray	entity/horse2/horse_gray	64	64
 entity/horse/horse_gray_baby	entity/horse2/horse_gray_baby	64	64
+entity/horse/horse_markings_blackdots	entity/horse2/horse_markings_blackdots	64	64
 entity/horse/horse_markings_blackdots_baby	entity/horse2/baby_horse_markings_blackdots	64	64
 entity/horse/horse_markings_white	entity/horse2/horse_markings_white	64	64
 entity/horse/horse_markings_white_baby	entity/horse2/baby_horse_markings_white	64	64
@@ -261,7 +264,10 @@ entity/llama/llama_spit	entity/llama/spit	64	32
 entity/llama/llama_white	entity/llama/llama_white	128	64
 entity/llama/llama_white_baby	entity/llama/llama_white_baby	64	64
 entity/minecart/minecart	entity/minecart	64	32
+entity/nautilus/nautilus	entity/nautilus/nautilus	128	128
 entity/nautilus/nautilus_baby	entity/nautilus/nautilus_baby	64	64
+entity/nautilus/zombie_nautilus	entity/nautilus/zombie_nautilus	128	128
+entity/nautilus/zombie_nautilus_coral	entity/nautilus/zombie_nautilus_coral	128	128
 entity/panda/panda	entity/panda/panda	64	64
 entity/panda/panda_aggressive	entity/panda/panda_aggressive	64	64
 entity/panda/panda_baby	entity/panda/panda_baby	64	64
@@ -281,13 +287,16 @@ entity/pig/pig_cold_baby	entity/pig/pig_cold_baby	32	32
 entity/pig/pig_temperate	entity/pig/pig_v3	64	64
 entity/pig/pig_temperate_baby	entity/pig/pig_temperate_baby	32	32
 entity/pig/pig_warm	entity/pig/pig_warm	64	64
+entity/pig/pig_warm_baby	entity/pig/pig_warm_baby	32	32
 entity/piglin/piglin	entity/piglin/piglin	64	64
 entity/piglin/piglin_baby	entity/piglin/piglin_baby	64	64
 entity/piglin/piglin_brute	entity/piglin/piglin_brute	64	64
 entity/piglin/zombified_piglin	entity/piglin/zombie_piglin	64	64
 entity/piglin/zombified_piglin_baby	entity/piglin/zombie_piglin_baby	64	64
 entity/projectiles/wind_charge	entity/wind_charge	64	32
+entity/rabbit/rabbit_black	entity/rabbit/rabbit_black	64	64
 entity/rabbit/rabbit_black_baby	entity/rabbit/rabbit_black_baby	32	32
+entity/rabbit/rabbit_brown	entity/rabbit/rabbit_brown	64	64
 entity/rabbit/rabbit_brown_baby	entity/rabbit/rabbit_brown_baby	32	32
 entity/rabbit/rabbit_gold	entity/rabbit/rabbit_gold	64	64
 entity/rabbit/rabbit_gold_baby	entity/rabbit/rabbit_gold_baby	32	32
@@ -295,7 +304,9 @@ entity/rabbit/rabbit_salt	entity/rabbit/rabbit_salt	64	64
 entity/rabbit/rabbit_salt_baby	entity/rabbit/rabbit_salt_baby	32	32
 entity/rabbit/rabbit_toast	entity/rabbit/rabbit_toast	64	64
 entity/rabbit/rabbit_toast_baby	entity/rabbit/rabbit_toast_baby	32	32
+entity/rabbit/rabbit_white	entity/rabbit/rabbit_white	64	64
 entity/rabbit/rabbit_white_baby	entity/rabbit/rabbit_white_baby	32	32
+entity/rabbit/rabbit_white_splotched	entity/rabbit/rabbit_white_splotched	64	64
 entity/rabbit/rabbit_white_splotched_baby	entity/rabbit/rabbit_white_splotched_baby	32	32
 entity/shield/flow	entity/shield_patterns/flow	64	64
 entity/shield/guster	entity/shield_patterns/guster	64	64
