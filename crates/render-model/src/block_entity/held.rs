@@ -263,6 +263,10 @@ fn bed_color_from_item(identifier: &str) -> Option<&'static str> {
         .find(|color| *color == stem)
 }
 
+/// The length in blocks of a bed's held rig: a bed fitted to one block, drawn a little larger so it
+/// reads at Java's third-person size.
+pub const HELD_BED_LENGTH: f32 = 1.23;
+
 /// Builds a centered one-bone rig with static atlas UVs and texture-local glint coordinates.
 /// Returns `None` when the atlas lacks the model's textures.
 #[must_use]
@@ -293,8 +297,9 @@ fn model_with_heads(
     if builder.missing_required_texture || builder.solid.is_empty() {
         return None;
     }
-    // A bed spans two blocks; held and dropped alike it shrinks to fit one (a first-person hand
-    // restores its length).
+    // A bed spans two blocks: dropped, it shrinks to fit one; in a hand it is
+    // [`HELD_BED_LENGTH`] long, which a first-person pose scales back up to its real two.
+    let mut hand_scale = 1.0;
     if matches!(kind, HeldBlockEntity::Bed(_)) {
         let (low, high) = builder.solid.iter().fold(
             (
@@ -310,6 +315,7 @@ fn model_with_heads(
         for vertex in &mut builder.solid {
             vertex.position = (glam::Vec3::from(vertex.position) * fit).to_array();
         }
+        hand_scale = HELD_BED_LENGTH;
     }
     let (min, max) = builder.solid.iter().fold(
         (
@@ -356,7 +362,7 @@ fn model_with_heads(
                 uv[axis] - local * glint_span[axis]
             });
             vertices.push(ActorRigVertex {
-                position: (glam::Vec3::from(vertex.position) - center).to_array(),
+                position: ((glam::Vec3::from(vertex.position) - center) * hand_scale).to_array(),
                 normal: vertex.normal,
                 uv,
                 back_uv: uv,

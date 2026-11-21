@@ -131,8 +131,8 @@ pub(super) fn first_person_display_for_profile(
 /// generic block one `held` carries: the bed's `firstperson_righthand` display (tipped 30 degrees,
 /// turned 340, raised three sixteenths, scaled 0.375), pivoting about the head block's centre with
 /// the head away from the viewer.
-/// A bed's length in blocks; the held model is fitted to one block, so the hand pose restores it.
-const BED_BLOCKS_LONG: f32 = 2.0;
+/// A bed's real length in blocks, which the first-person pose restores from the held rig's.
+const BED_BLOCKS_LONG: f32 = 2.0 / render_model::block_entity::HELD_BED_LENGTH;
 
 fn bed_in_hand() -> Mat4 {
     let generic = Mat4::from_rotation_y(degrees(45.0)) * Mat4::from_scale(Vec3::splat(0.4));
@@ -299,8 +299,9 @@ mod tests {
             render_api::CombatVisuals::Modern,
         );
         let at = |point: Vec3| display.rotation * (point * display.scale) + display.translation;
-        // The fitted model's head end is +Z and its foot end -Z, half a block from its centre.
-        let (head, foot) = (at(Vec3::new(0., 0., 0.5)), at(Vec3::new(0., 0., -0.5)));
+        // The held rig's head end is +Z and its foot end -Z, half its length from its centre.
+        let half = render_model::block_entity::HELD_BED_LENGTH / 2.0;
+        let (head, foot) = (at(Vec3::new(0., 0., half)), at(Vec3::new(0., 0., -half)));
         assert!(((head - foot).length() - 0.75).abs() < 1e-4, "two blocks at 0.375");
         // Camera space looks down -Z: the head is farther away, the foot nearer.
         assert!(head.z < foot.z);

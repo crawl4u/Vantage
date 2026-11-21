@@ -320,13 +320,19 @@ fn prepared_special_drop_meshes_preserve_held_positions_and_texture_tiles() {
     for (kind, held) in source.models() {
         let model = held.dropped.as_ref().unwrap();
         let vertices = render_model_vertices(model);
+        // A held bed is drawn larger than the dropped one it otherwise matches.
+        let unit = if matches!(kind, HeldBlockEntity::Bed(_)) {
+            1.0 / HELD_BED_LENGTH
+        } else {
+            1.0
+        };
         for held in held.geometry.vertices.iter() {
             assert!(
                 vertices.iter().any(|drop| drop
                     .position
                     .iter()
                     .zip(held.position)
-                    .all(|(a, b)| (a - b).abs() <= 1.0 / 512.0 + 1.0e-5)),
+                    .all(|(a, b)| (a - b * unit).abs() <= 1.0 / 512.0 + 1.0e-5)),
                 "{kind:?}"
             );
         }
@@ -356,7 +362,7 @@ fn prepared_special_drop_meshes_preserve_held_positions_and_texture_tiles() {
 }
 
 #[test]
-fn a_held_bed_is_fitted_to_one_block_like_a_dropped_one() {
+fn a_held_bed_is_a_little_larger_than_the_one_block_a_dropped_bed_is_fitted_to() {
     use assets::block_entity_geometry::{
         BoxSpec,
         heads::{HeadBox, HeadModel},
@@ -382,6 +388,9 @@ fn a_held_bed_is_fitted_to_one_block_like_a_dropped_one() {
                 - values.fold(f32::INFINITY, f32::min)
         })
         .fold(0.0, f32::max);
-    assert!((length - 1.0).abs() < 1e-3, "a held bed is {length} blocks long");
+    assert!(
+        (length - HELD_BED_LENGTH).abs() < 1e-3,
+        "a held bed is {length} blocks long"
+    );
     assert!(model.dropped.is_some());
 }
