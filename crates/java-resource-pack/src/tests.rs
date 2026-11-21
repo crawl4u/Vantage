@@ -1563,3 +1563,29 @@ fn a_pack_with_its_own_water_art_also_gets_javas_water_colours() {
     let translation = run(&without, "Current").unwrap();
     assert!(!output(&translation).contains_key(crate::water::FILE));
 }
+
+#[test]
+fn an_item_model_decides_which_texture_the_item_draws() {
+    let items = "assets/minecraft/textures/item/";
+    let files = pack(vec![
+        (
+            &format!("{items}ruby_blade.png"),
+            solid(16, 16, [200, 20, 40, 255]),
+        ),
+        (
+            &format!("{items}diamond_sword.png"),
+            solid(16, 16, [10, 10, 10, 255]),
+        ),
+        (
+            "assets/minecraft/models/item/diamond_sword.json",
+            br#"{"parent":"item/handheld","textures":{"layer0":"item/ruby_blade"}}"#.to_vec(),
+        ),
+    ]);
+    let translation = run(&files, "Current").unwrap();
+    let out = output(&translation);
+    assert_eq!(
+        pixel(&out, "textures/items/diamond_sword.png", 8, 8).1,
+        [200, 20, 40, 255],
+        "the model's texture, not the file with the item's own name"
+    );
+}

@@ -385,12 +385,25 @@ pub(crate) fn translate_within(
         false,
         stem_key,
     ));
-    let item_files = source.load_all(pngs_below(
+    let mut item_files = source.load_all(pngs_below(
         &paths,
         &format!("{TEXTURES}{item_folder}"),
         false,
         stem_key,
     ));
+    // An item's model decides which texture it draws, whatever the file is called.
+    let redirected = crate::item_models::redirects(layout, &paths, |path| source.load(path));
+    if !redirected.is_empty() {
+        item_files.retain(|(name, _)| !redirected.iter().any(|(item, _)| item == name));
+        item_files.extend(
+            source.load_all(
+                redirected
+                    .iter()
+                    .map(|(item, path)| (item.clone(), path.as_str()))
+                    .collect(),
+            ),
+        );
+    }
     let mut armor_paths = pngs_below(&paths, &format!("{TEXTURES}models/armor/"), false, |path| {
         format!("{}.png", stem(path))
     });

@@ -94,6 +94,10 @@ pub(crate) fn parent(name: &str) -> Option<Value> {
         "block/slab" => slab([0.0; 3], [16.0, 8.0, 16.0], [0.0, 8.0, 16.0, 16.0]),
         "block/slab_top" => slab([0.0, 8.0, 0.0], [16.0; 3], [0.0, 0.0, 16.0, 8.0]),
         "block/thin_block" => json!({}),
+        // Flat item models carry no geometry: they draw their `layer0` texture as a sprite.
+        "item/generated" | "item/handheld" | "item/handheld_rod" | "builtin/generated" => {
+            json!({})
+        }
         "block/carpet" => json!({ "parent": "block/thin_block",
             "textures": { "particle": "#wool" }, "elements": [cuboid(
                 [0.0; 3], [16.0, 1.0, 16.0], &sides("wool", [

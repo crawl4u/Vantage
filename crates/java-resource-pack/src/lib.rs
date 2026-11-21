@@ -21,6 +21,7 @@ mod extras;
 mod font;
 pub use container::CONTAINER_SWAPS;
 mod hud;
+mod item_models;
 mod items;
 pub mod java_model;
 mod manifest;
