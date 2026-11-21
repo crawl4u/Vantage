@@ -15,7 +15,7 @@ impl EquipmentRuntime {
         }
         self.session_block_alpha(&item.identifier)
             .or_else(|| {
-                HeldBlockEntity::from_item(&item.identifier)
+                HeldBlockEntity::from_stack(&item.identifier, item.metadata)
                     .filter(|kind| self.held_block_entities.models.contains_key(kind))
                     .map(|_| HandItemAlphaMode::Cutout)
             })

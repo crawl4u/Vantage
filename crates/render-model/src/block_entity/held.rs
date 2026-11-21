@@ -44,6 +44,8 @@ pub enum HeldBlockEntity {
     /// The lectern stand without a book.
     Lectern,
     Skull(SkullKind),
+    /// A bed of the texture stem under `textures/entity/bed`, scaled to fit one block.
+    Bed(&'static str),
 }
 
 /// An orderable stand-in for [`ChestVariant`], so held models can key a map.
@@ -103,6 +105,9 @@ impl HeldBlockEntity {
         {
             return Some(Self::Shulker(color));
         }
+        if let Some(color) = bed_color_from_item(identifier) {
+            return Some(Self::Bed(color));
+        }
         match renderer? {
             BlockEntityRenderer::DecoratedPot => Some(Self::DecoratedPot),
             BlockEntityRenderer::Conduit => Some(Self::Conduit),
@@ -110,6 +115,16 @@ impl HeldBlockEntity {
             BlockEntityRenderer::Lectern => Some(Self::Lectern),
             _ => None,
         }
+    }
+
+    /// The held model of an item stack: as [`Self::from_item`], and a `minecraft:bed` takes its
+    /// colour from the stack's dye metadata.
+    #[must_use]
+    pub fn from_stack(identifier: &str, metadata: u32) -> Option<Self> {
+        if identifier == "minecraft:bed" {
+            return super::bed::bed_color(i64::from(metadata)).map(Self::Bed);
+        }
+        Self::from_item(identifier)
     }
 
     /// Every held model, for building them once per atlas.
@@ -130,6 +145,7 @@ impl HeldBlockEntity {
                 .map(|color| Self::Shulker(color)),
         );
         all.extend(SkullKind::kinds().map(Self::Skull));
+        all.extend((0..16).filter_map(super::bed::bed_color).map(Self::Bed));
         all.extend(
             assets::facts::BlockEntityFacts::pinned()
                 .entries()
@@ -209,6 +225,17 @@ impl HeldBlockEntity {
                 );
             }
             Self::Lectern => super::book::emit_lectern_stand(builder, atlas, block),
+            Self::Bed(color) => super::bed::emit(
+                builder,
+                atlas,
+                block,
+                &super::bed::BedModel {
+                    color,
+                    head: true,
+                    direction: 0,
+                },
+                heads.bed.as_ref(),
+            ),
             Self::Skull(kind) => skull::emit(
                 builder,
                 atlas,
@@ -223,6 +250,17 @@ impl HeldBlockEntity {
             ),
         }
     }
+}
+
+/// The bed texture stem of the item `identifier` (`minecraft:red_bed`, `minecraft:light_gray_bed`).
+fn bed_color_from_item(identifier: &str) -> Option<&'static str> {
+    let stem = identifier
+        .strip_prefix("minecraft:")?
+        .strip_suffix("_bed")?;
+    let stem = if stem == "light_gray" { "silver" } else { stem };
+    (0..16)
+        .filter_map(super::bed::bed_color)
+        .find(|color| *color == stem)
 }
 
 /// Builds a centered one-bone rig with static atlas UVs and texture-local glint coordinates.
@@ -254,6 +292,23 @@ fn model_with_heads(
     kind.emit(&mut builder, atlas, heads);
     if builder.missing_required_texture || builder.solid.is_empty() {
         return None;
+    }
+    if matches!(kind, HeldBlockEntity::Bed(_)) {
+        // A bed spans two blocks; held and dropped alike it shrinks to fit one.
+        let (low, high) = builder.solid.iter().fold(
+            (
+                glam::Vec3::splat(f32::INFINITY),
+                glam::Vec3::splat(f32::NEG_INFINITY),
+            ),
+            |(low, high), vertex| {
+                let position = glam::Vec3::from(vertex.position);
+                (low.min(position), high.max(position))
+            },
+        );
+        let fit = (1.0 / (high - low).max_element()).min(1.0);
+        for vertex in &mut builder.solid {
+            vertex.position = (glam::Vec3::from(vertex.position) * fit).to_array();
+        }
     }
     let (min, max) = builder.solid.iter().fold(
         (
@@ -654,6 +709,20 @@ mod tests {
                 .flat_map(|entry| entry.backing_blocks.iter().cloned()),
         )
         .chain(
+            (0..16)
+                .filter_map(crate::block_entity::bed_color)
+                .map(|color| {
+                    format!(
+                        "minecraft:{}_bed",
+                        if color == "silver" {
+                            "light_gray"
+                        } else {
+                            color
+                        }
+                    )
+                }),
+        )
+        .chain(
             assets::read_registry_for_protocol(
                 assets::pinned_block_registry_bytes(),
                 assets::active_content_registry_protocol(),
@@ -675,6 +744,54 @@ mod tests {
             if let HeldBlockEntity::Chest(key) = kind {
                 assert_eq!(ChestVariantKey::of(key.variant()), key);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod bed_tests {
+    use super::*;
+
+    /// Every bed colour is held as its own model, light gray under its legacy stem.
+    #[test]
+    fn every_bed_item_is_a_held_block_entity_with_its_texture_stem() {
+        assert_eq!(
+            HeldBlockEntity::from_item("minecraft:red_bed"),
+            Some(HeldBlockEntity::Bed("red"))
+        );
+        assert_eq!(
+            HeldBlockEntity::from_item("minecraft:light_gray_bed"),
+            Some(HeldBlockEntity::Bed("silver"))
+        );
+        assert_eq!(HeldBlockEntity::from_item("minecraft:bedrock"), None);
+        assert_eq!(
+            HeldBlockEntity::from_stack("minecraft:bed", 14),
+            Some(HeldBlockEntity::Bed("red")),
+            "a bed stack is coloured by its dye metadata"
+        );
+        assert_eq!(
+            HeldBlockEntity::from_stack("minecraft:bed", 8),
+            Some(HeldBlockEntity::Bed("silver"))
+        );
+        assert_eq!(HeldBlockEntity::from_stack("minecraft:bed", 99), None);
+        let beds: Vec<_> = HeldBlockEntity::all()
+            .into_iter()
+            .filter(|kind| matches!(kind, HeldBlockEntity::Bed(_)))
+            .collect();
+        assert_eq!(beds.len(), 16);
+        for kind in beds {
+            let HeldBlockEntity::Bed(color) = kind else {
+                unreachable!()
+            };
+            let item = format!(
+                "minecraft:{}_bed",
+                if color == "silver" {
+                    "light_gray"
+                } else {
+                    color
+                }
+            );
+            assert_eq!(HeldBlockEntity::from_item(&item), Some(kind), "{item}");
         }
     }
 }

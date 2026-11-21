@@ -10,6 +10,8 @@ use super::skull::SkullKind;
 pub struct HeadModels {
     pub piglin: Option<HeadModel>,
     pub dragon: Option<HeadModel>,
+    /// The complete bed, drawn from its head half.
+    pub bed: Option<HeadModel>,
     /// Copper golem statue poses: standing, sitting, star, running.
     pub statues: [Option<HeadModel>; 4],
 }
@@ -22,6 +24,10 @@ impl HeadModels {
         Self {
             piglin: head(SkullKind::Piglin),
             dragon: head(SkullKind::Dragon),
+            bed: geometries
+                .iter()
+                .find(|geometry| geometry.identifier.as_ref() == assets::BED_GEOMETRY_IDENTIFIER)
+                .and_then(|geometry| HeadModel::build_tree(geometry, None, 1.0, false)),
             statues: STATUE_GEOMETRIES.map(|identifier| {
                 geometries
                     .iter()

@@ -241,7 +241,7 @@ impl EquipmentRuntime {
                 }
                 ItemArtwork::StartupCube => {
                     if let Some(&(rig, location, span)) =
-                        HeldBlockEntity::from_item(&item.identifier)
+                        HeldBlockEntity::from_stack(&item.identifier, item.metadata)
                             .and_then(|kind| runtime.held_block_entities.models.get(&kind))
                     {
                         return Some((rig, location, true, span));

@@ -22,6 +22,7 @@ fn texture_names(kind: HeldBlockEntity) -> Vec<String> {
             .map(str::to_owned)
             .collect(),
         HeldBlockEntity::Skull(kind) => vec![head_texture(kind).to_owned()],
+        HeldBlockEntity::Bed(color) => vec![format!("textures/entity/bed/{color}")],
     }
 }
 
@@ -52,6 +53,7 @@ fn head_models() -> HeadModels {
     HeadModels {
         piglin: Some(head.clone()),
         dragon: Some(head.clone()),
+        bed: Some(head.clone()),
         statues: std::array::from_fn(|_| Some(head.clone())),
     }
 }

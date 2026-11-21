@@ -347,6 +347,8 @@ fn real_carriers_hold_block_entity_items_as_their_models() {
         "minecraft:chest",
         "minecraft:ender_chest",
         "minecraft:red_shulker_box",
+        "minecraft:red_bed",
+        "minecraft:light_gray_bed",
     ] {
         let input = ActorEquipmentInput {
             main: Some(WornItem {
@@ -377,6 +379,13 @@ fn real_carriers_hold_block_entity_items_as_their_models() {
         assert!(
             model.vertices.len() > 36,
             "{identifier} is more than one box"
+        );
+        assert!(
+            model
+                .vertices
+                .iter()
+                .all(|vertex| vertex.position.iter().all(|c| c.abs() <= 0.5 + 1e-3)),
+            "{identifier} fits the unit block the held cube uses"
         );
     }
 }
