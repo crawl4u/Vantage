@@ -57,6 +57,24 @@ pub(super) fn apply(
             visual.model_template = template_base + replacement;
             continue;
         }
+        // A fence gate's chain splits its quads across as many parts as they need, so a redrawn
+        // gate may run to another length: its first part keeps the gate's axis, and what follows
+        // is checked as any compound chain is.
+        let gate_axes = crate::model::MODEL_TEMPLATE_FLAG_GATE_AXIS_X
+            | crate::model::MODEL_TEMPLATE_FLAG_GATE_AXIS_Z;
+        let original_flags = base_templates[original as usize].flags;
+        if original_flags & gate_axes != 0 {
+            let chain = crate::model_template_parts(overlay_templates, replacement);
+            if chain.is_none_or(|chain| {
+                chain[0].flags != original_flags
+                    || chain.iter().any(|part| part.quad_count == 0)
+                    || chain.len() < 2
+            }) {
+                return Err(invalid("base template override is not a gate chain"));
+            }
+            visual.model_template = template_base + replacement;
+            continue;
+        }
         let span = crate::model_template_span(base_templates, original)
             .ok_or_else(|| invalid("base template override targets an unbounded template"))?;
         let copied = overlay_templates
@@ -69,11 +87,12 @@ pub(super) fn apply(
                 .and_then(|previous| templates.get(previous as usize))
                 .is_some_and(|template| template.flags == MODEL_TEMPLATE_FLAG_POTTED_PLANT)
         };
-        // Connection groups pick their template by neighbours, never by quad position, so a
-        // redrawn pane or fence may draw any number of quads in each shape.
+        // Connection groups and wall shapes are picked by neighbours or state, never by quad
+        // position, so a redrawn pane, fence or wall may draw any number of quads in each.
         let authored_shapes = crate::model::MODEL_TEMPLATE_FLAG_PANE
             | crate::model::MODEL_TEMPLATE_FLAG_FENCE_WOOD
-            | crate::model::MODEL_TEMPLATE_FLAG_FENCE_NETHER;
+            | crate::model::MODEL_TEMPLATE_FLAG_FENCE_NETHER
+            | crate::model::MODEL_TEMPLATE_FLAG_WALL;
         if copied.is_none_or(|copied| {
             copied.iter().zip(source).any(|(copy, base)| {
                 copy.flags != base.flags
@@ -210,5 +229,61 @@ mod tests {
         // Only an overlay's own groups may leave vanilla's counts.
         assert!(crate::blob::compiled_connected_bases(&group(pane, 3), true).is_ok());
         assert!(crate::blob::compiled_connected_bases(&group(pane, 3), false).is_err());
+    }
+
+    /// A gate may be redrawn as a chain of another length, and a wall as a shape of another
+    /// quad count, while the head keeps the gate's axis.
+    #[test]
+    fn gates_and_walls_may_change_their_shapes_but_not_their_flags() {
+        let part = |quad_start: u32, quad_count: u32, flags: u32| ModelTemplate {
+            quad_start,
+            quad_count,
+            flags,
+        };
+        let axis =
+            crate::MODEL_TEMPLATE_FLAG_COMPOUND_NEXT | crate::MODEL_TEMPLATE_FLAG_GATE_AXIS_X;
+        let visual = || {
+            let mut visual =
+                BlockVisual::diagnostic(BlockFlags::empty(), crate::ContributorRole::default());
+            visual.kind = VisualKind::Model;
+            visual.model_template = 0;
+            visual
+        };
+        let quad = ModelQuad {
+            positions: [[0; 3]; 4],
+            uvs: [[0; 2]; 4],
+            material: 0,
+            flags: 0,
+        };
+        let redraw = |base: &[ModelTemplate], overlay: &[ModelTemplate]| {
+            let mut visuals = [visual()];
+            apply(
+                &[(0, 0)],
+                &mut visuals,
+                base,
+                overlay,
+                &vec![quad; 64],
+                base.len() as u32,
+            )
+        };
+        let gate = [part(0, 32, axis), part(32, 4, 0)];
+        assert!(
+            redraw(
+                &gate,
+                &[
+                    part(0, 3, axis),
+                    part(3, 2, crate::MODEL_TEMPLATE_FLAG_COMPOUND_NEXT),
+                    part(5, 2, 0)
+                ]
+            )
+            .is_ok()
+        );
+        assert!(redraw(&gate, &[part(0, 3, axis), part(3, 2, 0)]).is_ok());
+        let other_axis =
+            crate::MODEL_TEMPLATE_FLAG_COMPOUND_NEXT | crate::MODEL_TEMPLATE_FLAG_GATE_AXIS_Z;
+        assert!(redraw(&gate, &[part(0, 3, other_axis), part(3, 2, 0)]).is_err());
+        let wall = crate::MODEL_TEMPLATE_FLAG_WALL;
+        assert!(redraw(&[part(0, 6, wall)], &[part(0, 30, wall)]).is_ok());
+        assert!(redraw(&[part(0, 6, wall)], &[part(0, 30, 0)]).is_err());
     }
 }

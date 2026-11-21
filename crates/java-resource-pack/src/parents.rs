@@ -277,6 +277,124 @@ pub(crate) fn parent(name: &str) -> Option<Value> {
                     [8.0, hook - if hanging { 1.0 } else { 0.0 } + if hanging { 6.0 } else { 2.0 }, 9.5],
                     ["west", "east"], [14.0, low, 11.0, high])] })
         }
+        "block/template_wall_post" => {
+            let faces: Vec<FaceSpec> = ["down", "up", "north", "south", "west", "east"]
+                .map(|face| (face, None, "wall", 0))
+                .into();
+            json!({ "textures": { "particle": "#wall" },
+                "elements": [cuboid([4.0, 0.0, 4.0], [12.0, 16.0, 12.0], &faces)] })
+        }
+        "block/template_wall_side" | "block/template_wall_side_tall" => {
+            let tall = name.ends_with("tall");
+            let faces: Vec<FaceSpec> = ["down", "up", "north", "west", "east"]
+                .map(|face| (face, None, "wall", 0))
+                .into();
+            json!({ "textures": { "particle": "#wall" }, "elements": [cuboid(
+                [5.0, 0.0, 0.0], [11.0, if tall { 16.0 } else { 14.0 }, 8.0], &faces)] })
+        }
+        "block/template_fence_gate"
+        | "block/template_fence_gate_open"
+        | "block/template_fence_gate_wall"
+        | "block/template_fence_gate_wall_open" => {
+            // A gate in a wall sits three pixels lower; an open one swings its halves back.
+            let lower = if name.contains("wall") { 3.0 } else { 0.0 };
+            let open = name.ends_with("open");
+            let face = |names: &[&'static str], uv: [f64; 4]| -> Vec<FaceSpec<'static>> {
+                names
+                    .iter()
+                    .map(|face| (*face, Some(uv), "texture", 0))
+                    .collect()
+            };
+            let boxed = |from: [f64; 3], to: [f64; 3], groups: Vec<Vec<FaceSpec>>| {
+                let faces: Vec<FaceSpec> = groups.into_iter().flatten().collect();
+                cuboid(
+                    [from[0], from[1] - lower, from[2]],
+                    [to[0], to[1] - lower, to[2]],
+                    &faces,
+                )
+            };
+            let post = |x: f64| {
+                boxed(
+                    [x, 5.0, 7.0],
+                    [x + 2.0, 16.0, 9.0],
+                    vec![
+                        face(&["down", "up"], [x, 7.0, x + 2.0, 9.0]),
+                        face(&["north", "south"], [x, 0.0, x + 2.0, 11.0]),
+                        face(&["west", "east"], [7.0, 0.0, 9.0, 11.0]),
+                    ],
+                )
+            };
+            // A rail between the posts: bars of three pixels at two heights, or in an open gate
+            // the swung halves.
+            let bar = |x: f64, width: f64, top: bool| {
+                let (y, v) = if top {
+                    (12.0, [1.0, 4.0])
+                } else {
+                    (6.0, [7.0, 10.0])
+                };
+
+                boxed(
+                    [x, y, 7.0],
+                    [x + width, y + 3.0, 9.0],
+                    vec![
+                        face(&["down", "up"], [x, 7.0, x + width, 9.0]),
+                        face(&["north", "south"], [x, v[0], x + width, v[1]]),
+                    ],
+                )
+            };
+            let slat = |x: f64| {
+                boxed(
+                    [x, 6.0, 7.0],
+                    [x + 2.0, 15.0, 9.0],
+                    vec![
+                        face(&["down", "up"], [x, 7.0, x + 2.0, 9.0]),
+                        face(&["north", "south"], [x, 1.0, x + 2.0, 10.0]),
+                        face(&["west", "east"], [7.0, 1.0, 9.0, 10.0]),
+                    ],
+                )
+            };
+            let swung = |x: f64| {
+                let width_faces = |uv: [f64; 4]| face(&["west", "east"], uv);
+                vec![
+                    boxed(
+                        [x, 6.0, 13.0],
+                        [x + 2.0, 15.0, 15.0],
+                        vec![
+                            face(&["down", "up"], [x, 13.0, x + 2.0, 15.0]),
+                            face(&["north", "south"], [x, 1.0, x + 2.0, 10.0]),
+                            width_faces([13.0, 1.0, 15.0, 10.0]),
+                        ],
+                    ),
+                    boxed(
+                        [x, 6.0, 9.0],
+                        [x + 2.0, 9.0, 13.0],
+                        vec![
+                            face(&["down", "up"], [x, 9.0, x + 2.0, 13.0]),
+                            width_faces([13.0, 7.0, 15.0, 10.0]),
+                        ],
+                    ),
+                    boxed(
+                        [x, 12.0, 9.0],
+                        [x + 2.0, 15.0, 13.0],
+                        vec![
+                            face(&["down", "up"], [x, 9.0, x + 2.0, 13.0]),
+                            width_faces([13.0, 1.0, 15.0, 4.0]),
+                        ],
+                    ),
+                ]
+            };
+            let mut elements = vec![post(0.0), post(14.0)];
+            if open {
+                elements.extend(swung(0.0));
+                elements.extend(swung(14.0));
+            } else {
+                elements.extend([slat(6.0), slat(8.0)]);
+                for x in [2.0, 10.0] {
+                    elements.extend([bar(x, 4.0, false), bar(x, 4.0, true)]);
+                }
+            }
+            json!({ "textures": { "particle": "#texture" }, "elements": elements })
+        }
         name if name.starts_with("block/template_bars_") => {
             let bars = |face: &'static str, uv: [f64; 4]| (face, Some(uv), "bars", 0);
             let edge = |face: &'static str, uv: [f64; 4]| (face, Some(uv), "edge", 0);
@@ -465,42 +583,69 @@ mod tests {
     }
 
     #[test]
-    fn iron_bars_connect_through_the_same_parts_as_panes_do() {
-        use crate::{java_model::resolve, multipart};
+    fn iron_bars_draw_the_parts_their_connections_select() {
+        use crate::multipart::{holds, parts};
         let pack = |name: &str| {
-            let (model, parent) = match name {
-                "block/post_ends" => ("post_ends", ()),
-                "block/post" => ("post", ()),
-                "block/cap" => ("cap", ()),
-                "block/cap_alt" => ("cap_alt", ()),
-                "block/side" => ("side", ()),
-                "block/side_alt" => ("side_alt", ()),
-                _ => return None,
-            };
-            let _ = parent;
-            Some(json!({ "parent": format!("block/template_bars_{model}"),
-                "textures": { "bars": "block/iron_bars", "edge": "block/iron_bars" } }))
+            let model = name.strip_prefix("block/")?;
+            matches!(
+                model,
+                "post_ends" | "post" | "cap" | "cap_alt" | "side" | "side_alt"
+            )
+            .then(|| {
+                json!({ "parent": format!("block/template_bars_{model}"),
+                    "textures": { "bars": "block/iron_bars", "edge": "block/iron_bars" } })
+            })
         };
-        let part = |model: &str, when: Value, y: i64| json!({ "apply": { "model": format!("block/{model}"), "y": y }, "when": when });
-        let parts = vec![
+        let part = |model: &str, when: Value| json!({ "apply": { "model": format!("block/{model}") }, "when": when });
+        let all_false =
+            json!({ "east": "false", "north": "false", "south": "false", "west": "false" });
+        let cap_north =
+            json!({ "east": "false", "north": "true", "south": "false", "west": "false" });
+        let list = vec![
             json!({ "apply": { "model": "block/post_ends" } }),
-            part(
-                "post",
-                json!({ "east": "false", "north": "false", "south": "false", "west": "false" }),
-                0,
-            ),
-            part(
-                "cap",
-                json!({ "east": "false", "north": "true", "south": "false", "west": "false" }),
-                0,
-            ),
-            part("side", json!({ "north": "true" }), 0),
+            part("post", all_false),
+            part("cap", cap_north),
+            part("side", json!({ "north": "true" })),
         ];
-        let bars = multipart::connected(&parts, &pack).unwrap();
-        assert_eq!(bars.always.elements.len(), 2, "the post's ends");
-        // Unconnected: the crossed post. Connected north alone: the cap and the side.
-        assert_eq!(bars.masks[0].elements.len(), 2);
-        assert_eq!(bars.masks[0b0001].elements.len(), 2 + 4);
-        assert!(resolve("block/template_bars_post", &|_| None).is_some());
+        let bars = parts(&list, &pack).unwrap();
+        let elements = |north: &'static str, others: &'static str| {
+            let state = move |name: &str| Some(if name == "north" { north } else { others });
+            bars.iter()
+                .filter(|part| {
+                    part.when
+                        .as_ref()
+                        .is_none_or(|when| holds(when, &state) == Some(true))
+                })
+                .map(|part| part.model.elements.len())
+                .sum::<usize>()
+        };
+        // The ends, then either the crossed post alone, or the cap and the side of one arm.
+        assert_eq!(elements("false", "false"), 2 + 2);
+        assert_eq!(elements("true", "false"), 2 + 2 + 4);
+    }
+
+    #[test]
+    fn walls_and_gates_have_the_parts_java_gives_them() {
+        let quads = |name: &str| -> usize {
+            parent(name).unwrap()["elements"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|element| element["faces"].as_object().unwrap().len())
+                .sum()
+        };
+        assert_eq!(quads("block/template_wall_post"), 6);
+        assert_eq!(quads("block/template_wall_side"), 5);
+        // A gate is two posts and the bars between them, more quads than one template holds.
+        assert_eq!(
+            quads("block/template_fence_gate"),
+            6 + 6 + 6 + 6 + 4 + 4 + 4 + 4
+        );
+        assert_eq!(
+            quads("block/template_fence_gate_open"),
+            6 + 6 + 2 * (6 + 4 + 4)
+        );
+        let low = parent("block/template_fence_gate_wall").unwrap();
+        assert_eq!(low["elements"][0]["from"], json!([0.0, 2.0, 7.0]));
     }
 }

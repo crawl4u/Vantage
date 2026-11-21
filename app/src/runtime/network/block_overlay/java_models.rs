@@ -9,7 +9,11 @@ use serde_json::Value;
 
 use pack_compiler::block_geometry::Geometry;
 
-use super::{Builder, geometry_inputs::geometry_catalog};
+use super::{
+    Builder,
+    geometry_inputs::geometry_catalog,
+    java_multipart::{self, Multipart},
+};
 
 /// The largest bindings document read.
 const MAX_BINDINGS_BYTES: u64 = 8 << 20;
@@ -23,16 +27,8 @@ struct Entry {
     materials: Vec<(Arc<str>, Arc<str>)>,
 }
 
-/// A fence or pane: the geometry that always draws and the one each connection mask adds.
-struct Connected {
-    block: String,
-    always: Arc<str>,
-    masks: Vec<Arc<str>>,
-    materials: Vec<(Arc<str>, Arc<str>)>,
-}
-
 /// Reads the translated pack's model bindings; the highest layer that holds them wins.
-fn entries(view: &LayeredPackView) -> (Vec<Entry>, Vec<Connected>) {
+fn entries(view: &LayeredPackView) -> (Vec<Entry>, Vec<Multipart>) {
     let Some(bytes) = view
         .read_layers_capped(
             java_resource_pack::block_models::BINDINGS,
@@ -58,24 +54,7 @@ fn entries(view: &LayeredPackView) -> (Vec<Entry>, Vec<Connected>) {
                 .collect(),
         )
     };
-    let connected = list
-        .iter()
-        .filter_map(|entry| {
-            let connections = entry.get("connections")?;
-            let masks: Vec<Arc<str>> = connections
-                .get("masks")?
-                .as_array()?
-                .iter()
-                .filter_map(|mask| Some(mask.as_str()?.into()))
-                .collect();
-            Some(Connected {
-                block: entry.get("block")?.as_str()?.to_owned(),
-                always: connections.get("always")?.as_str()?.into(),
-                masks: (masks.len() == 16).then_some(masks)?,
-                materials: materials(entry)?,
-            })
-        })
-        .collect();
+    let multiparts = java_multipart::read(list);
     let variants = list
         .iter()
         .filter_map(|entry| {
@@ -95,7 +74,7 @@ fn entries(view: &LayeredPackView) -> (Vec<Entry>, Vec<Connected>) {
             })
         })
         .collect();
-    (variants, connected)
+    (variants, multiparts)
 }
 
 /// Whether the Java state `java` is the one `entry` names; properties the entry leaves out
@@ -111,22 +90,17 @@ fn matches(entry: &Entry, java: assets::facts::java_mapping::JavaBlockState<'_>)
 impl Builder<'_> {
     /// Redraws every vanilla block state a pack's model bindings name with that Java model.
     pub(super) fn bind_java_models(&mut self, view: &LayeredPackView) {
-        let (entries, connected) = entries(view);
+        let (entries, multiparts) = entries(view);
         let Some(base) = self
             .base_assets
-            .filter(|_| !entries.is_empty() || !connected.is_empty())
+            .filter(|_| !entries.is_empty() || !multiparts.is_empty())
         else {
             return;
         };
         let wanted: HashSet<&str> = entries
             .iter()
             .map(|entry| &*entry.geometry)
-            .chain(
-                connected
-                    .iter()
-                    .flat_map(|entry| std::iter::once(&entry.always).chain(&entry.masks))
-                    .map(|geometry| &**geometry),
-            )
+            .chain(multiparts.iter().flat_map(Multipart::geometries))
             .collect();
         let geometries = geometry_catalog(view, &wanted);
         let Ok(records) = assets::read_registry_for_protocol(
@@ -138,8 +112,8 @@ impl Builder<'_> {
         // States drawing the same model with the same turn share one template.
         let mut templates: std::collections::HashMap<(usize, usize), Option<u32>> =
             std::collections::HashMap::new();
-        // Fences and panes of one family and pack entry share one template group.
-        let mut groups: std::collections::HashMap<(u32, usize), Option<u32>> =
+        // Fences, panes and walls of one family and pack entry share their templates.
+        let mut shapes: std::collections::HashMap<(u32, usize), Option<u32>> =
             std::collections::HashMap::new();
         for (visual, record) in records.iter().enumerate() {
             // Every Bedrock state takes the Java state the game's mapping gives it, so Java names
@@ -149,16 +123,17 @@ impl Builder<'_> {
             else {
                 continue;
             };
-            if let Some(group) = connected
+            if let Some(group) = multiparts
                 .iter()
                 .rposition(|entry| entry.block == java.name())
             {
-                self.bind_connected(
+                self.bind_multipart(
                     base,
                     visual as u32,
-                    (group, &connected[group]),
+                    java,
+                    (group, &multiparts[group]),
                     &geometries,
-                    &mut groups,
+                    &mut shapes,
                 );
                 continue;
             }
@@ -166,11 +141,20 @@ impl Builder<'_> {
                 continue;
             };
             let entry = &entries[index];
-            // A block with special meshing behaviour keeps its vanilla shape; an override it
-            // cannot take would fail the whole overlay.
-            if !base
-                .accepts_plain_model(base.resolve(assets::NetworkIdMode::Sequential, visual as u32))
-            {
+            let block = base.resolve(assets::NetworkIdMode::Sequential, visual as u32);
+            // A fence gate's chain of parts takes any model, keeping its axis; any other block
+            // with special meshing behaviour keeps its vanilla shape, as an override it cannot
+            // take would fail the whole overlay.
+            let gate_head = block
+                .model_template()
+                .and_then(|template| base.model_template_flags(template))
+                .filter(|flags| {
+                    flags
+                        & (assets::MODEL_TEMPLATE_FLAG_GATE_AXIS_X
+                            | assets::MODEL_TEMPLATE_FLAG_GATE_AXIS_Z)
+                        != 0
+                });
+            if gate_head.is_none() && !base.accepts_plain_model(block) {
                 continue;
             }
             let Some(geometry) = geometries.get(&*entry.geometry) else {
@@ -183,7 +167,7 @@ impl Builder<'_> {
                         other.geometry == entry.geometry && other.rotation == entry.rotation
                     })
                     .unwrap_or(index),
-                0,
+                gate_head.unwrap_or(0) as usize,
             );
             let template = *templates.entry(key).or_insert_with(|| {
                 let method = render_method(
@@ -192,8 +176,20 @@ impl Builder<'_> {
                 );
                 let components =
                     components(&entry.geometry, &entry.materials, entry.rotation, method);
+                let first = self.overlay.model_templates.len();
+                let quads = self.overlay.model_quads.len();
                 let built = self.model(&components, geometry, &[]);
-                (built.kind == assets::VisualKind::Model).then_some(built.model_template)
+                if built.kind != assets::VisualKind::Model {
+                    return None;
+                }
+                match gate_head {
+                    Some(head) if !self.as_gate_chain(first, head) => {
+                        self.overlay.model_templates.truncate(first);
+                        self.overlay.model_quads.truncate(quads);
+                        None
+                    }
+                    _ => Some(built.model_template),
+                }
             });
             if let Some(template) = template {
                 self.overlay
@@ -229,7 +225,7 @@ fn bedrock_turns(java_degrees: [i32; 3]) -> [i32; 3] {
 
 /// The components drawing `geometry` with each variable bound to its terrain key and the model
 /// turned about the block centre; `rotation` is Java's turns in degrees.
-fn components(
+pub(super) fn components(
     geometry: &Arc<str>,
     materials: &[(Arc<str>, Arc<str>)],
     rotation: [i32; 3],
@@ -256,112 +252,6 @@ fn components(
             translation: [0.0; 3],
         }),
         ..CustomVisualComponents::default()
-    }
-}
-
-/// Meshing flags of the vanilla families whose template groups a pack's fence or pane redraws.
-const CONNECTED_FAMILY: u32 = assets::MODEL_TEMPLATE_FLAG_PANE
-    | assets::MODEL_TEMPLATE_FLAG_FENCE_WOOD
-    | assets::MODEL_TEMPLATE_FLAG_FENCE_NETHER;
-
-impl Builder<'_> {
-    /// Points a vanilla fence or pane state at a template group drawn from the pack's models.
-    fn bind_connected(
-        &mut self,
-        base: &assets::RuntimeAssets,
-        visual: u32,
-        (index, entry): (usize, &Connected),
-        geometries: &std::collections::HashMap<String, Geometry>,
-        groups: &mut std::collections::HashMap<(u32, usize), Option<u32>>,
-    ) {
-        let block = base.resolve(assets::NetworkIdMode::Sequential, visual);
-        let Some(template) = block.model_template() else {
-            return;
-        };
-        let Some(flags) = base
-            .model_template_flags(template)
-            .filter(|flags| flags & CONNECTED_FAMILY != 0)
-        else {
-            return;
-        };
-        let method = render_method(base, block);
-        let head = *groups
-            .entry((template, index))
-            .or_insert_with(|| self.connected_group(entry, flags, method, geometries));
-        if let Some(head) = head {
-            self.overlay.template_overrides.push((visual, head));
-        }
-    }
-
-    /// Builds a pane's sixteen mask templates, or a fence's post and sixteen arm templates, and
-    /// returns the first. Nothing stays added when a shape cannot be drawn.
-    fn connected_group(
-        &mut self,
-        entry: &Connected,
-        flags: u32,
-        method: BlockRenderMethod,
-        geometries: &std::collections::HashMap<String, Geometry>,
-    ) -> Option<u32> {
-        let always = geometries.get(&*entry.always)?;
-        let masks = entry
-            .masks
-            .iter()
-            .map(|id| geometries.get(&**id))
-            .collect::<Option<Vec<_>>>()?;
-        let shapes: Vec<Geometry> = if flags & assets::MODEL_TEMPLATE_FLAG_PANE != 0 {
-            masks
-                .iter()
-                .map(|mask| {
-                    let mut shape = always.clone();
-                    shape.cubes.extend(mask.cubes.iter().cloned());
-                    shape.skipped_cubes += mask.skipped_cubes;
-                    shape
-                })
-                .collect()
-        } else {
-            std::iter::once(always.clone())
-                .chain(masks.into_iter().cloned())
-                .collect()
-        };
-        let family = flags & CONNECTED_FAMILY;
-        let first = self.overlay.model_templates.len();
-        let quads = self.overlay.model_quads.len();
-        let components = components(&entry.always, &entry.materials, [0; 3], method);
-        for shape in &shapes {
-            if !self.push_shape(&components, shape, family) {
-                self.overlay.model_templates.truncate(first);
-                self.overlay.model_quads.truncate(quads);
-                return None;
-            }
-        }
-        Some(first as u32)
-    }
-
-    /// Adds one group member: a single template of `family` drawing `shape`, empty when the
-    /// shape has no cubes. False when the shape needs more than one template or cannot draw.
-    fn push_shape(
-        &mut self,
-        components: &CustomVisualComponents,
-        shape: &Geometry,
-        family: u32,
-    ) -> bool {
-        if shape.cubes.is_empty() {
-            self.overlay.model_templates.push(assets::ModelTemplate {
-                quad_start: self.overlay.model_quads.len() as u32,
-                quad_count: 0,
-                flags: family,
-            });
-            return true;
-        }
-        let before = self.overlay.model_templates.len();
-        let built = self.model(components, shape, &[]);
-        if built.kind != assets::VisualKind::Model
-            || self.overlay.model_templates.len() != before + 1
-        {
-            return false;
-        }
-        self.overlay.model_templates[before].flags = family;
-        true
     }
 }
 

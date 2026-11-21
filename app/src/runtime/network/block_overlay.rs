@@ -8,6 +8,7 @@ mod bindings;
 mod condition;
 mod items;
 mod java_models;
+mod java_multipart;
 pub(super) use items::compile_block_item_overlay;
 mod geometry_inputs;
 use pack_compiler::block_geometry as geometry;

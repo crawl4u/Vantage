@@ -113,12 +113,6 @@ fn connected_base(family: u32) -> RuntimeAssets {
 
 /// [`connected_base`] whose faces blend with what is behind them when `blend` is set.
 fn connected_base_blending(family: u32, blend: bool) -> RuntimeAssets {
-    let diagnostic = RuntimeAssets::diagnostic();
-    let mut pane = super::super::diagnostic_visual();
-    pane.kind = VisualKind::Model;
-    pane.support = VisualSupport::Exact;
-    pane.model_template = 0;
-    pane.faces = [1; 6];
     let counts: Vec<u32> = if family == assets::MODEL_TEMPLATE_FLAG_PANE {
         vec![6; 16]
     } else {
@@ -127,7 +121,7 @@ fn connected_base_blending(family: u32, blend: bool) -> RuntimeAssets {
             .collect()
     };
     let mut start = 0;
-    let templates: Vec<assets::ModelTemplate> = counts
+    let templates = counts
         .iter()
         .map(|&quad_count| {
             let template = assets::ModelTemplate {
@@ -139,15 +133,39 @@ fn connected_base_blending(family: u32, blend: bool) -> RuntimeAssets {
             template
         })
         .collect();
+    base_with_shape(0, templates, blend)
+}
+
+/// A base of `index` plain cubes then a model drawing the templates from the first, whose
+/// quads are blank.
+fn base_with_shape(
+    index: usize,
+    templates: Vec<assets::ModelTemplate>,
+    blend: bool,
+) -> RuntimeAssets {
+    let diagnostic = RuntimeAssets::diagnostic();
+    let mut cube = super::super::diagnostic_visual();
+    cube.kind = VisualKind::Cube;
+    cube.support = VisualSupport::Exact;
+    cube.flags = assets::BlockFlags::CUBE_GEOMETRY | assets::BlockFlags::OCCLUDES_FULL_FACE;
+    cube.faces = [1; 6];
+    let mut shape = super::super::diagnostic_visual();
+    shape.kind = VisualKind::Model;
+    shape.support = VisualSupport::Exact;
+    shape.model_template = 0;
+    shape.faces = [1; 6];
+    let mut visuals = vec![cube; index];
+    visuals.push(shape);
     let quad = assets::ModelQuad {
         positions: [[0; 3]; 4],
         uvs: [[0; 2]; 4],
         material: 1,
         flags: 0,
     };
+    let quads: u32 = templates.iter().map(|template| template.quad_count).sum();
     let compiled = assets::CompiledAssets {
-        visuals: vec![pane].into(),
-        light_properties: vec![assets::LightProperties::OPAQUE_DARK; 1].into(),
+        light_properties: vec![assets::LightProperties::OPAQUE_DARK; visuals.len()].into(),
+        visuals: visuals.into(),
         hashed: Box::new([]),
         materials: (0..3)
             .map(|index| {
@@ -160,7 +178,7 @@ fn connected_base_blending(family: u32, blend: bool) -> RuntimeAssets {
             .collect::<Vec<_>>()
             .into(),
         model_templates: templates.into(),
-        model_quads: vec![quad; start as usize].into(),
+        model_quads: vec![quad; quads as usize].into(),
         animations: Box::new([]),
         animation_frames: Box::new([]),
         texture_pages: diagnostic.texture_pages().to_vec().into(),
@@ -187,9 +205,9 @@ fn bound_connected(family: u32) -> super::super::CompiledBlockOverlay {
         .expect("the first block maps to a Java block")
         .name()
         .to_owned();
-    // The post is one box; mask `m` adds one box for each connection it names.
-    let model = |boxes: usize| {
-        let element = |index: usize| java_resource_pack::java_model::Element {
+    // The post is one box; each connection adds one more.
+    let box_geometry = |name: &str, index: usize| {
+        let element = java_resource_pack::java_model::Element {
             from: [index as f64, 0.0, 7.0],
             to: [index as f64 + 1.0, 16.0, 9.0],
             rotation: None,
@@ -204,13 +222,11 @@ fn bound_connected(family: u32) -> super::super::CompiledBlockOverlay {
             )]
             .into(),
         };
-        java_resource_pack::java_model::Model {
+        let model = java_resource_pack::java_model::Model {
             textures: [("state".to_owned(), "block/state".to_owned())].into(),
-            elements: (0..boxes).map(element).collect(),
-        }
-    };
-    let geometry = |name: &str, boxes: usize| {
-        let document = java_resource_pack::java_model::to_geometry(name, &model(boxes));
+            elements: vec![element],
+        };
+        let document = java_resource_pack::java_model::to_geometry(name, &model);
         (
             format!(
                 "models/blocks/java/{}.geo.json",
@@ -219,19 +235,16 @@ fn bound_connected(family: u32) -> super::super::CompiledBlockOverlay {
             document.to_string().into_bytes(),
         )
     };
-    let masks: Vec<String> = (0..16)
-        .map(|mask| format!("geometry.java.pane_m{mask}"))
-        .collect();
-    let mut files = vec![geometry("geometry.java.pane_always", 1)];
-    files.extend(
-        masks
-            .iter()
-            .enumerate()
-            .map(|(mask, name)| geometry(name, (mask as u32).count_ones() as usize)),
-    );
+    let mut files = vec![box_geometry("geometry.java.pane_p0", 0)];
+    let mut parts = vec![json!({ "geometry": "geometry.java.pane_p0" })];
+    for (index, direction) in ["north", "east", "south", "west"].into_iter().enumerate() {
+        let name = format!("geometry.java.pane_p{}", index + 1);
+        files.push(box_geometry(&name, index + 1));
+        parts.push(json!({ "geometry": name, "when": { direction: "true" } }));
+    }
     let bindings = json!({ "format_version": 1, "blocks": [{
         "block": named,
-        "connections": { "always": "geometry.java.pane_always", "masks": masks },
+        "parts": parts,
         "materials": { "state": "state" } }] });
     files.push((
         java_resource_pack::block_models::BINDINGS.to_owned(),
@@ -292,4 +305,163 @@ fn a_redrawn_block_blends_where_the_vanilla_block_does() {
     };
     assert_eq!(method(true), protocol_ids::BlockRenderMethod::Blend);
     assert_eq!(method(false), protocol_ids::BlockRenderMethod::AlphaTest);
+}
+
+/// The first registry state whose Java state has a property, with the Java block and that
+/// property.
+fn first_state_with_a_property() -> (usize, String, (String, String)) {
+    let records = assets::read_registry_for_protocol(
+        assets::pinned_block_registry_bytes(),
+        assets::active_content_registry_protocol(),
+    )
+    .unwrap();
+    records
+        .iter()
+        .enumerate()
+        .find_map(|(index, record)| {
+            let java = assets::facts::java_mapping::java_block_state(record.sequential_id)?;
+            let (name, value) = java.properties().next()?;
+            Some((
+                index,
+                java.name().to_owned(),
+                (name.to_owned(), value.to_owned()),
+            ))
+        })
+        .expect("some Bedrock state maps to a Java state with properties")
+}
+
+/// One box of `tall` pixels reaching up from the floor, as a geometry file.
+fn tall_box(name: &str, tall: f64) -> (String, Vec<u8>) {
+    let element = java_resource_pack::java_model::Element {
+        from: [4.0, 0.0, 4.0],
+        to: [12.0, tall, 12.0],
+        rotation: None,
+        faces: ["north", "south", "east", "west"]
+            .into_iter()
+            .map(|face| {
+                (
+                    face,
+                    java_resource_pack::java_model::Face {
+                        texture: "state".to_owned(),
+                        uv: None,
+                        tint: false,
+                        rotation: 0,
+                    },
+                )
+            })
+            .collect(),
+    };
+    let model = java_resource_pack::java_model::Model {
+        textures: [("state".to_owned(), "block/state".to_owned())].into(),
+        elements: vec![element],
+    };
+    (
+        format!(
+            "models/blocks/java/{}.geo.json",
+            name.trim_start_matches("geometry.java.")
+        ),
+        java_resource_pack::java_model::to_geometry(name, &model)
+            .to_string()
+            .into_bytes(),
+    )
+}
+
+/// A pack binding `blocks` with `geometries` and one flat texture.
+fn pack_with_bindings(geometries: Vec<(String, Vec<u8>)>, blocks: serde_json::Value) -> LayeredPackView {
+    let mut files = geometries;
+    files.push((
+        java_resource_pack::block_models::BINDINGS.to_owned(),
+        json!({ "format_version": 1, "blocks": blocks })
+            .to_string()
+            .into_bytes(),
+    ));
+    files.push((
+        "textures/terrain_texture.json".to_owned(),
+        json!({"texture_data":{"state":{"textures":"textures/base_a"}}})
+            .to_string()
+            .into_bytes(),
+    ));
+    files.push((
+        "textures/base_a.png".to_owned(),
+        png(16, 16, |_, _| [9, 90, 200, 255]),
+    ));
+    pack_zip(files)
+}
+
+#[test]
+fn a_bound_java_wall_state_draws_the_parts_that_hold_for_its_java_state() {
+    let (index, named, (property, value)) = first_state_with_a_property();
+    // A post, an arm for this state's property value and an arm for a value it never has.
+    let files = vec![
+        tall_box("geometry.java.wall_p0", 16.0),
+        tall_box("geometry.java.wall_p1", 14.0),
+        tall_box("geometry.java.wall_p2", 12.0),
+    ];
+    let blocks = json!([{ "block": named, "materials": { "state": "state" }, "parts": [
+        { "geometry": "geometry.java.wall_p0" },
+        { "geometry": "geometry.java.wall_p1", "when": { property.clone(): value } },
+        { "geometry": "geometry.java.wall_p2", "when": { property: "no such value" } }] }]);
+    let wall = assets::MODEL_TEMPLATE_FLAG_WALL;
+    let base = base_with_shape(
+        index,
+        vec![assets::ModelTemplate {
+            quad_start: 0,
+            quad_count: 6,
+            flags: wall,
+        }],
+        false,
+    );
+    let overlay = compile(&pack_with_bindings(files, blocks), &base, &keys());
+    let templates = &overlay.overlay.model_templates;
+    assert_eq!(templates.len(), 1);
+    assert_eq!(templates[0].flags, wall);
+    // Four side faces of the post and of the arm that holds.
+    assert_eq!(templates[0].quad_count, 8);
+    assert_eq!(overlay.overlay.template_overrides, vec![(index as u32, 0)]);
+    base.with_block_overlay(index as u32 + 1, &overlay.overlay)
+        .unwrap();
+}
+
+#[test]
+fn a_bound_java_gate_model_redraws_the_gates_chain_of_parts_keeping_its_axis() {
+    let (index, named, _) = first_state_with_a_property();
+    let files = vec![tall_box("geometry.java.gate", 16.0)];
+    let blocks = json!([{ "block": named, "properties": {}, "geometry": "geometry.java.gate",
+        "rotation": [0, 0, 0], "materials": { "state": "state" } }]);
+    let axis = assets::MODEL_TEMPLATE_FLAG_COMPOUND_NEXT | assets::MODEL_TEMPLATE_FLAG_GATE_AXIS_X;
+    let base = base_with_shape(
+        index,
+        vec![
+            assets::ModelTemplate {
+                quad_start: 0,
+                quad_count: 6,
+                flags: axis,
+            },
+            assets::ModelTemplate {
+                quad_start: 6,
+                quad_count: 6,
+                flags: 0,
+            },
+        ],
+        false,
+    );
+    let overlay = compile(&pack_with_bindings(files, blocks), &base, &keys());
+    let templates = &overlay.overlay.model_templates;
+    assert_eq!(
+        templates.len(),
+        2,
+        "four quads split over a head and a tail"
+    );
+    assert_eq!(templates[0].flags, axis);
+    assert_eq!(templates[1].flags, 0);
+    assert_eq!(
+        templates
+            .iter()
+            .map(|template| template.quad_count)
+            .sum::<u32>(),
+        4
+    );
+    assert_eq!(overlay.overlay.template_overrides, vec![(index as u32, 0)]);
+    base.with_block_overlay(index as u32 + 1, &overlay.overlay)
+        .unwrap();
 }

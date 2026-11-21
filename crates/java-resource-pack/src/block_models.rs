@@ -106,7 +106,7 @@ pub(crate) fn translate(
             .and_then(|document| document.get("multipart")?.as_array())
         {
             if entries.len() < MAX_ENTRIES
-                && let Some((entry, files)) = connection_entry(layout, block, parts, &load)
+                && let Some((entry, files)) = multipart_entry(layout, block, parts, &load)
             {
                 entries.push(entry);
                 geometries.extend(files);
@@ -173,40 +173,37 @@ pub(crate) fn translate(
     Output { files }
 }
 
-/// The binding of a fence or pane: the geometry that always draws, one geometry per connection
-/// mask, and the Bedrock texture key each merged texture variable names. `None` when the block
-/// is not drawn from connections alone, or a texture is not a block texture.
-fn connection_entry(
+/// The binding of a multipart block: one geometry per part with the part's condition, and the
+/// Bedrock texture key each texture variable of the parts names. `None` when a model is
+/// missing or a texture is not a block texture.
+fn multipart_entry(
     layout: Layout,
     block: &str,
     parts: &[Value],
     load: &dyn Fn(&str) -> Option<Value>,
 ) -> Option<(Value, BTreeMap<String, Value>)> {
-    let connected = multipart::connected(parts, load)?;
+    let parts = multipart::parts(parts, load)?;
     let mut geometries = BTreeMap::new();
     let mut materials = Map::new();
-    let mut ids = Vec::new();
-    for (suffix, model) in std::iter::once(("always".to_owned(), &connected.always)).chain(
-        connected
-            .masks
-            .iter()
-            .enumerate()
-            .map(|(mask, model)| (format!("m{mask}"), model)),
-    ) {
-        for (variable, texture) in &model.textures {
+    let mut listed = Vec::new();
+    for (index, part) in parts.iter().enumerate() {
+        for (variable, texture) in &part.model.textures {
             materials.insert(variable.clone(), json!(block_texture_key(layout, texture)?));
         }
-        let identifier = format!("geometry.java.{block}_{suffix}");
+        let identifier = format!("geometry.java.{block}_p{index}");
         geometries.insert(
             identifier.clone(),
-            java_model::to_geometry(&identifier, model),
+            java_model::to_geometry(&identifier, &part.model),
         );
-        ids.push(identifier);
+        let mut entry = json!({ "geometry": identifier });
+        if let Some(when) = &part.when {
+            entry["when"] = when.clone();
+        }
+        listed.push(entry);
     }
-    let always = ids.remove(0);
     let entry = json!({
         "block": format!("minecraft:{block}"),
-        "connections": { "always": always, "masks": ids },
+        "parts": listed,
         "materials": materials,
     });
     Some((entry, geometries))
@@ -330,9 +327,9 @@ mod tests {
     }
 
     #[test]
-    fn multipart_blocks_and_missing_models_are_left_to_vanilla() {
+    fn blocks_whose_models_are_missing_are_left_to_vanilla() {
         let mut files = lantern_files();
-        files[0].1 = json!({ "multipart": [{ "apply": { "model": "block/lantern" } }] });
+        files[0].1 = json!({ "multipart": [{ "apply": { "model": "block/absent" } }] });
         assert!(run(&files).files.is_empty());
         files[0].1 = json!({ "variants": { "": { "model": "block/absent" } } });
         assert!(run(&files).files.is_empty());
@@ -385,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fence_binds_a_post_and_a_geometry_for_each_connection_mask() {
+    fn a_multipart_block_binds_each_part_with_its_condition() {
         let mut parts = vec![json!({ "apply": { "model": "block/oak_fence_post" } })];
         for (turn, direction) in ["north", "east", "south", "west"].iter().enumerate() {
             parts.push(
@@ -411,20 +408,19 @@ mod tests {
         let document = bindings(&output);
         let entry = &document["blocks"][0];
         assert_eq!(entry["block"], "minecraft:oak_fence");
-        assert_eq!(
-            entry["connections"]["always"],
-            "geometry.java.oak_fence_always"
-        );
-        assert_eq!(entry["connections"]["masks"].as_array().unwrap().len(), 16);
-        assert!(entry["materials"].as_object().unwrap().len() == 1);
-        // The post, plus one geometry per mask.
+        let listed = entry["parts"].as_array().unwrap();
+        assert_eq!(listed.len(), 5);
+        assert!(listed[0].get("when").is_none());
+        assert_eq!(listed[2]["when"], json!({ "east": "true" }));
+        assert_eq!(listed[2]["geometry"], "geometry.java.oak_fence_p2");
+        assert_eq!(entry["materials"].as_object().unwrap().len(), 1);
         assert_eq!(
             output
                 .files
                 .iter()
-                .filter(|(path, _)| path.starts_with("models/blocks/java/oak_fence_"))
+                .filter(|(path, _)| path.starts_with("models/blocks/java/oak_fence_p"))
                 .count(),
-            17
+            5
         );
     }
 }

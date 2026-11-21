@@ -27,7 +27,7 @@ pub mod java_model;
 mod manifest;
 pub mod menu_files;
 mod meta;
-mod multipart;
+pub mod multipart;
 mod parents;
 mod names;
 pub mod particle_atlas;
