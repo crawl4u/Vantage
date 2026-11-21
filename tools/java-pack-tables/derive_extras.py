@@ -19,6 +19,7 @@ left to the same-path rule, then the file-name rule. Run: derive_extras.py <clie
 <out.tsv>.
 """
 
+import difflib
 import glob
 import hashlib
 import json
@@ -43,6 +44,20 @@ MIN_AGREEMENT = 0.6
 # Textures the translator turns to Bedrock's orientation itself (see `flipped_box_faces` in
 # extras.rs), so their raw pixels correlate poorly with Bedrock's and are kept regardless.
 REORIENTED = ("entity/chest/",)
+
+# Rule 4 (same size, different name): a Java entity texture takes the Bedrock one that shares at
+# least this share of its drawn pixels, or that share with a similar file name, so the editions'
+# differently spelled variants (`cat_british_shorthair` and `britishshorthair`) meet.
+FUZZY_SAME_ART = 0.9
+FUZZY_NAMED = 0.6
+FUZZY_NAME_RATIO = 0.7
+
+# Textures extras.rs maps by an explicit alias, which the table must not repeat.
+ALIASED = ("entity/bell/bell_body", "entity/shulker/shulker", "entity/shulker/shulker_light_gray")
+
+# Entity folders rule 4 leaves alone: their pictures are composed or laid out per edition.
+FUZZY_EXCLUDED = ("entity/banner/", "entity/shield/", "entity/player/", "entity/equipment/",
+                  "entity/villager/", "entity/zombie_villager/")
 
 # Entity paths the file-name rule never matches: their layouts differ from Bedrock's namesakes.
 RENAME_EXCLUDED = ("entity/banner/", "entity/shield/", "entity/player/", "/profession/")
@@ -246,6 +261,18 @@ def similarity(java_image, bedrock_image):
     return cov / (var_x * var_y) ** 0.5
 
 
+def opaque_equality(java_image, bedrock_image):
+    """The share of pixels either picture draws that are identical in both (same-size images)."""
+    (width, height, a), (_, _, b) = java_image, bedrock_image
+    drawn = equal = 0
+    for i in range(0, width * height * 4, 4):
+        if a[i + 3] or b[i + 3]:
+            drawn += 1
+            if a[i : i + 4] == b[i : i + 4]:
+                equal += 1
+    return equal / drawn if drawn else 1.0
+
+
 def digest(image):
     width, height, rgba = image
     return hashlib.sha1(struct.pack(">II", width, height) + rgba).hexdigest()
@@ -320,6 +347,44 @@ def main(jar_path, bedrock_root, out_path):
         if target:
             rows.append((path, target, image[0], image[1]))
             taken.setdefault(target, []).append(path)
+    # Rule 4, after every earlier rule so each Bedrock texture keeps its first source.
+    mapped = {path for path, _, _, _ in rows} | set(incompatible)
+    used = set(taken)
+    by_size = {}
+    for path, image in bedrock.items():
+        if path.startswith("entity/") and path not in used:
+            by_size.setdefault(image[:2], []).append(path)
+    for path in sorted(java):
+        if path in mapped or path in ALIASED or not path.startswith("entity/") or path.startswith(FUZZY_EXCLUDED):
+            continue
+        image = java[path]
+        stem = os.path.basename(path)
+        scored = []
+        for candidate in by_size.get(image[:2], []):
+            if candidate in used:
+                continue
+            ratio = difflib.SequenceMatcher(None, stem, os.path.basename(candidate)).ratio()
+            scored.append((round(opaque_equality(image, bedrock[candidate]), 2), ratio, candidate))
+        if not scored:
+            continue
+        scored.sort(reverse=True)
+        _, ratio, target = scored[0]
+        score = opaque_equality(image, bedrock[target])
+        if not (score >= FUZZY_SAME_ART or (score >= FUZZY_NAMED and ratio >= FUZZY_NAME_RATIO)):
+            continue
+        agreement = None
+        for model in model_ids.get(target, ()):
+            tw, th, boxes = geometries.get(model, (0, 0, []))
+            if (tw, th) == image[:2]:
+                found = layout_agreement(image, bedrock[target], boxes)
+                if found is not None and (agreement is None or found > agreement):
+                    agreement = found
+        if agreement is not None and agreement < MIN_AGREEMENT:
+            incompatible.append(path)
+            continue
+        rows.append((path, target, image[0], image[1]))
+        taken.setdefault(target, []).append(path)
+        used.add(target)
     with open(out_path, "w", newline="\n") as out:
         out.write(
             "# Java Edition texture path -> Bedrock texture path, both without extension, then the\n"
