@@ -99,22 +99,38 @@ impl Builder<'_> {
             .collect::<HashSet<_>>();
         for source in keys.block_sources() {
             let block = base.resolve(assets::NetworkIdMode::Sequential, source.visual);
-            if !source.cube_binding_eligible
-                || !block.is_known()
-                || block.kind() != VisualKind::Cube
-                || block.model_template().is_some()
-                || block.variant() != 0
-                || block.flags().contains(assets::BlockFlags::LEAF_MODEL)
-                || assets::BlockFace::ALL.into_iter().any(|face| {
-                    base.material(block.face(face).material_id()).flags
-                        & assets::MATERIAL_FLAG_TINT_MASK
-                        != 0
-                })
+            // A tinted block (grass, foliage) keeps the world art its tint shader colours, but
+            // a hand or inventory picture is the pre-coloured carried art, which a pack
+            // supplies or the translated Java pack derives, so only that art is rebound.
+            let tinted = !source.cube_binding_eligible
+                && block.is_known()
+                && block.kind() == VisualKind::Cube
+                && block.model_template().is_none()
+                && (block.flags().contains(assets::BlockFlags::LEAF_MODEL)
+                    || assets::BlockFace::ALL.into_iter().any(|face| {
+                        base.material(block.face(face).material_id()).flags
+                            & assets::MATERIAL_FLAG_TINT_MASK
+                            != 0
+                    }))
+                && (0..6).all(|index| {
+                    source.carried_keys[index].is_some()
+                        || source.carried_fallback_keys[index].is_some()
+                });
+            if !tinted
+                && (!source.cube_binding_eligible
+                    || !block.is_known()
+                    || block.kind() != VisualKind::Cube
+                    || block.model_template().is_some()
+                    || block.variant() != 0
+                    || block.flags().contains(assets::BlockFlags::LEAF_MODEL))
             {
                 continue;
             }
             let world_bindings = assets::BlockFace::ALL.map(|face| {
                 let index = face as usize;
+                if tinted {
+                    return None;
+                }
                 let id = block.face(face).material_id();
                 let material = base.material(id);
                 let binding = bindings.binding(
@@ -141,7 +157,11 @@ impl Builder<'_> {
                 bindings
                     .texture(&source.name, &source.binding_name, index, true)
                     .or(source.carried_keys[index].as_deref())
-                    .or_else(|| bindings.texture(&source.name, &source.binding_name, index, false))
+                    .or_else(|| {
+                        bindings
+                            .texture(&source.name, &source.binding_name, index, false)
+                            .filter(|_| !tinted)
+                    })
                     .or(source.carried_fallback_keys[index].as_deref())
                     .or_else(|| {
                         keys.material_source(material)
@@ -185,7 +205,10 @@ impl Builder<'_> {
                     .is_some_and(|choices| {
                         choices
                             .iter()
-                            .any(|choice| choice.tint.is_some() || choice.overlay_color)
+                            // Carried art is pre-coloured, so its overlay colour is not applied again.
+                            .any(|choice| {
+                                choice.tint.is_some() || (choice.overlay_color && !tinted)
+                            })
                     })
             }) {
                 continue;
@@ -214,7 +237,20 @@ impl Builder<'_> {
                     .material_source(material)
                     .map_or(0, |source| source.variant);
                 let material = base.material(material);
-                let flags = material.flags & !assets::MATERIAL_FLAG_UV_ROTATION_MASK;
+                let mut flags = material.flags & !assets::MATERIAL_FLAG_UV_ROTATION_MASK;
+                if tinted {
+                    // Carried art arrives coloured, so the world's tint is left behind. A
+                    // masked overlay face, such as a grass side, keeps its mask and tint so the
+                    // default colour reaches it where the picture is drawn.
+                    let overlay = flags & assets::MATERIAL_FLAG_OVERLAY_MASK;
+                    let kept = if overlay != 0 {
+                        flags & assets::MATERIAL_FLAG_TINT_MASK
+                    } else {
+                        0
+                    };
+                    flags &= assets::gui_item::GUI_BLOCK_MATERIAL_FLAGS;
+                    flags |= overlay | kept;
+                }
                 let raster = (flags, material.ao_exponent);
                 self.terrain_material(Some(keys), carried_keys[index]?, variant, raster)
             });

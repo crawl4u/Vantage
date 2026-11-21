@@ -189,13 +189,14 @@ impl<'a> Model<'a> {
         overlay: &'a BlockOverlay,
         faces: [u32; 6],
         base: Option<&'a RuntimeAssets>,
+        tint: Option<&'a dyn Fn(u32) -> Option<[u8; 3]>>,
     ) -> Result<Self, Reject> {
         let parts = Parts {
             materials: &overlay.materials,
             templates: &overlay.model_templates,
             quads: &overlay.model_quads,
             textures: Textures::Overlay(overlay, base),
-            tint: None,
+            tint,
         };
         Self::build(parts, VisualKind::Cube, faces, None, Default::default())
     }
@@ -364,9 +365,10 @@ fn tile(parts: Parts<'_>, id: u32) -> Result<Tile<'_>, Reject> {
     } else {
         None
     };
+    let masked = material.flags & assets::MATERIAL_FLAG_OVERLAY_MASK != 0;
     let mut sampled = *material;
     if tint.is_some() {
-        sampled.flags &= !assets::MATERIAL_FLAG_TINT_MASK;
+        sampled.flags &= !(assets::MATERIAL_FLAG_TINT_MASK | assets::MATERIAL_FLAG_OVERLAY_MASK);
     }
     let rotated = matches!(
         material.flags & assets::MATERIAL_FLAG_UV_MASK,
@@ -386,7 +388,11 @@ fn tile(parts: Parts<'_>, id: u32) -> Result<Tile<'_>, Reject> {
     let tile = match tint {
         Some(tint) => {
             let mut pixels = tile.to_vec();
-            pack_compile_input::apply_atlas_tint(&mut pixels, tint);
+            if masked {
+                assets::gui_item::apply_overlay_mask_tint(&mut pixels, tint);
+            } else {
+                pack_compile_input::apply_atlas_tint(&mut pixels, tint);
+            }
             Pixels::Shared(Arc::from(pixels))
         }
         None => Pixels::Borrowed(tile),

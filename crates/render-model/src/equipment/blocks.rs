@@ -822,6 +822,17 @@ pub fn overlay_face_sheet(
     overlay_face_sheet_tinted(overlay, faces, base, &|_| None)
 }
 
+/// As [`overlay_face_sheet`], colouring faces that carry a tint with `tint`'s colour for their
+/// flags.
+pub fn overlay_face_sheet_with_tint(
+    overlay: &BlockOverlay,
+    faces: [u32; 6],
+    base: Option<&RuntimeAssets>,
+    tint: &dyn Fn(u32) -> Option<[u8; 3]>,
+) -> Option<IconSprite> {
+    overlay_face_sheet_tinted(overlay, faces, base, tint)
+}
+
 /// Bakes resolved per-material tints into shared held faces; unknown tint routes stay absent.
 fn overlay_face_sheet_tinted(
     overlay: &BlockOverlay,
@@ -851,7 +862,8 @@ fn overlay_face_sheet_tinted(
         } else {
             None
         };
-        material.flags &= !assets::MATERIAL_FLAG_TINT_MASK;
+        let masked = material.flags & assets::MATERIAL_FLAG_OVERLAY_MASK != 0;
+        material.flags &= !(assets::MATERIAL_FLAG_TINT_MASK | assets::MATERIAL_FLAG_OVERLAY_MASK);
         let rotated = matches!(
             material.flags & assets::MATERIAL_FLAG_UV_MASK,
             assets::MATERIAL_FLAG_UV_ROTATE_180 | assets::MATERIAL_FLAG_UV_INVERT
@@ -866,7 +878,9 @@ fn overlay_face_sheet_tinted(
                 .0
                 .reverse();
         }
-        if let Some(color) = color {
+        if let (Some(color), true) = (color, masked) {
+            assets::gui_item::apply_overlay_mask_tint(Arc::make_mut(&mut tile.rgba8), color);
+        } else if let Some(color) = color {
             for pixel in Arc::make_mut(&mut tile.rgba8).as_chunks_mut::<4>().0 {
                 for axis in 0..3 {
                     pixel[axis] = (u16::from(pixel[axis]) * u16::from(color[axis]) / 255) as u8;

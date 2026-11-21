@@ -877,3 +877,45 @@ mod review_regressions;
 mod weighted_replacements;
 
 mod filename_precedence;
+
+#[test]
+fn tinted_cubes_rebind_only_their_precoloured_carried_art() {
+    let tinted = assets::MATERIAL_FLAG_GRASS_TINT | assets::MATERIAL_FLAG_OVERLAY_MASK;
+    let base = carrier(&[[120, 80, 40, 255]], [1; 6], &[tinted, 0]);
+    let mut keys = keys();
+    let terrain = keys
+        .terrain_entries()
+        .map(|(key, value)| (key.into(), value.clone()))
+        .collect::<Vec<_>>();
+    let materials = keys
+        .material_sources()
+        .map(|(id, source)| (id, source.clone()))
+        .collect::<Vec<_>>();
+    let mut blocks = keys.block_sources().to_vec();
+    blocks[0].cube_binding_eligible = false;
+    keys = keys.with_sources(terrain, materials, blocks);
+    let view = stack(&[(
+        json!({"texture_data":{"replacement":{"textures":"textures/new"}}}),
+        json!({"fixture":{"textures":"replacement","carried_textures":"replacement"}}),
+        vec![("textures/new", [10, 180, 30, 255])],
+    )]);
+    let overlay = compile(&view, &base, &keys);
+    assert!(
+        overlay.overlay.face_overrides.is_empty(),
+        "the tinted world art stays with the tint shader"
+    );
+    let carried = overlay
+        .vanilla_carried
+        .iter()
+        .find(|route| route.visual == 0)
+        .expect("the carried art of a tinted cube is rebound");
+    for id in carried.faces {
+        let flags = overlay.overlay.materials[id as usize].flags;
+        assert_eq!(
+            flags & assets::MATERIAL_FLAG_TINT_MASK,
+            assets::MATERIAL_FLAG_GRASS_TINT,
+            "a masked overlay face keeps the tint its picture is coloured with"
+        );
+        assert_ne!(flags & assets::MATERIAL_FLAG_OVERLAY_MASK, 0);
+    }
+}

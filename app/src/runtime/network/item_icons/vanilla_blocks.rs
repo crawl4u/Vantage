@@ -38,11 +38,12 @@ pub(in crate::runtime::network) fn append(
     base: &RuntimeAssets,
     compiled: &CompiledBlockOverlay,
     icons: &mut BlockIcons,
+    grass: Option<[u8; 3]>,
 ) {
     let Some(routes) = ROUTES.get() else {
         return;
     };
-    append_routes(base, compiled, icons, routes);
+    append_routes(base, compiled, icons, routes, grass);
 }
 
 /// Prepares the supplied carrier routes without changing the installed process-wide inventory.
@@ -51,7 +52,13 @@ fn append_routes(
     compiled: &CompiledBlockOverlay,
     icons: &mut BlockIcons,
     routes: &[Route],
+    grass: Option<[u8; 3]>,
 ) {
+    let tint = |flags: u32| {
+        (flags & assets::MATERIAL_FLAG_TINT_MASK == assets::MATERIAL_FLAG_GRASS_TINT)
+            .then_some(grass)
+            .flatten()
+    };
     for route in routes {
         if icons.icons.len() >= MAX_SESSION_ICONS && icons.block_sheets.len() >= MAX_SESSION_ICONS {
             break;
@@ -69,14 +76,22 @@ fn append_routes(
             continue;
         }
         if icons.icons.len() < MAX_SESSION_ICONS
-            && let Some(sprite) =
-                pack_entity_compiler::overlay_cube_icon(&compiled.overlay, faces, None)
+            && let Some(sprite) = pack_entity_compiler::overlay_cube_icon_with_tint(
+                &compiled.overlay,
+                faces,
+                None,
+                &tint,
+            )
         {
             icons.icons.push(session_icon(route, sprite));
         }
         if icons.block_sheets.len() < MAX_SESSION_ICONS
-            && let Some(sheet) =
-                render_model::equipment::blocks::overlay_face_sheet(&compiled.overlay, faces, None)
+            && let Some(sheet) = render_model::equipment::blocks::overlay_face_sheet_with_tint(
+                &compiled.overlay,
+                faces,
+                None,
+                &tint,
+            )
         {
             icons.block_sheets.push(session_icon(route, sheet));
             let flags = faces.iter().fold(0, |flags, &id| {

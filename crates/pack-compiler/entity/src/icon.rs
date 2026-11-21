@@ -310,7 +310,21 @@ pub fn overlay_cube_icon(
     faces: [u32; 6],
     base: Option<&assets::RuntimeAssets>,
 ) -> Option<IconSprite> {
-    model::Model::overlay_cube(overlay, faces, base)
+    model::Model::overlay_cube(overlay, faces, base, None)
+        .ok()
+        .map(|model| model.raster())
+}
+
+/// Draws a carried cube like [`overlay_cube_icon`], colouring faces that carry a tint with
+/// `tint`'s colour for their flags.
+#[must_use]
+pub fn overlay_cube_icon_with_tint(
+    overlay: &assets::BlockOverlay,
+    faces: [u32; 6],
+    base: Option<&assets::RuntimeAssets>,
+    tint: &dyn Fn(u32) -> Option<[u8; 3]>,
+) -> Option<IconSprite> {
+    model::Model::overlay_cube(overlay, faces, base, Some(tint))
         .ok()
         .map(|model| model.raster())
 }

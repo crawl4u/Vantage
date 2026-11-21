@@ -446,7 +446,12 @@ fn compile_application(
                     if let (Some(compiled), Some((_, base))) =
                         (overlay.as_deref(), BASE_MATERIAL_KEYS.get())
                     {
-                        super::item_icons::vanilla_blocks::append(base, compiled, &mut block_icons);
+                        super::item_icons::vanilla_blocks::append(
+                            base,
+                            compiled,
+                            &mut block_icons,
+                            grass,
+                        );
                     }
                     block_icons
                 },

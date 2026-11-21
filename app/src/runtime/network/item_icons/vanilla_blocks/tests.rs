@@ -101,7 +101,7 @@ fn model_routes_never_publish_rebound_inventory_or_held_art() {
         metadata: 7,
         visual: 1,
     };
-    append_routes(&base, &textures(), &mut output, &[route]);
+    append_routes(&base, &textures(), &mut output, &[route], None);
     assert!(output.icons.is_empty());
     assert!(output.block_sheets.is_empty());
 }
@@ -114,7 +114,7 @@ fn plain_cube_routes_publish_both_thumbnail_and_held_sheet() {
         metadata: 7,
         visual: 1,
     };
-    append_routes(&block(false), &textures(), &mut output, &[route]);
+    append_routes(&block(false), &textures(), &mut output, &[route], None);
     assert_eq!(output.icons.len(), 1);
     assert_eq!(output.block_sheets.len(), 1);
     assert_eq!(output.icons[0].metadata, 7);
@@ -136,7 +136,7 @@ fn hd_carried_sheets_survive_session_publication_without_thumbnails() {
         metadata: 7,
         visual: 1,
     };
-    append_routes(&block(false), &compiled, &mut output, &[route]);
+    append_routes(&block(false), &compiled, &mut output, &[route], None);
     assert!(output.icons.is_empty());
     assert!(output.misses.is_empty());
     assert_eq!(output.block_sheets.len(), 1);
@@ -174,8 +174,72 @@ fn full_thumbnail_capacity_does_not_discard_available_carried_sheets() {
         metadata: 7,
         visual: 1,
     };
-    append_routes(&block(false), &textures(), &mut output, &[route]);
+    append_routes(&block(false), &textures(), &mut output, &[route], None);
     assert_eq!(output.icons.len(), MAX_SESSION_ICONS);
     assert_eq!(output.block_sheets.len(), 1);
     assert_eq!(output.block_sheets[0].metadata, 7);
+}
+
+/// A carried cube whose faces are masked grass-side art: half the texels are dirt (alpha 0) and
+/// half grey overlay (alpha 255), as a pack's grass side is stored.
+fn masked_carried() -> CompiledBlockOverlay {
+    let mut compiled = textures();
+    let side = 16usize;
+    let texels = (0..side * side)
+        .flat_map(|index| {
+            if index < side * side / 2 {
+                [200u8, 200, 200, 255]
+            } else {
+                [100, 60, 20, 0]
+            }
+        })
+        .collect::<Vec<_>>();
+    compiled.overlay.textures.first_mut().unwrap().mips =
+        assets::build_legacy_terrain_mip_chain(&texels, side as u32)
+            .unwrap()
+            .into();
+    compiled.overlay.materials[1].flags =
+        assets::MATERIAL_FLAG_GRASS_TINT | assets::MATERIAL_FLAG_OVERLAY_MASK;
+    compiled
+}
+
+#[test]
+fn masked_tinted_carried_faces_take_the_default_grass_colour_in_thumbnail_and_sheet() {
+    let route = || Route {
+        identifier: "minecraft:fixture_cube".into(),
+        metadata: 0,
+        visual: 1,
+    };
+    let mut output = BlockIcons::default();
+    append_routes(
+        &block(false),
+        &masked_carried(),
+        &mut output,
+        &[route()],
+        Some([100, 200, 50]),
+    );
+    assert_eq!(output.icons.len(), 1, "the thumbnail draws");
+    assert_eq!(output.block_sheets.len(), 1, "the held sheet draws");
+    let sheet = &output.block_sheets[0];
+    // The first face's top row is overlay: grey 200 tinted by the colour; no texel is
+    // transparent, and the dirt keeps its own colour.
+    let texel = |x: usize, y: usize| {
+        let offset = (y * sheet.width as usize + x) * 4;
+        <[u8; 4]>::try_from(&sheet.rgba8[offset..offset + 4]).unwrap()
+    };
+    assert_eq!(texel(2, 2), [78, 156, 39, 255]);
+    assert_eq!(texel(2, 14), [100, 60, 20, 255]);
+
+    let mut untinted = BlockIcons::default();
+    append_routes(
+        &block(false),
+        &masked_carried(),
+        &mut untinted,
+        &[route()],
+        None,
+    );
+    assert!(
+        untinted.icons.is_empty() && untinted.block_sheets.is_empty(),
+        "a tint with no colour leaves the startup art in place"
+    );
 }

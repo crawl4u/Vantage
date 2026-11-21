@@ -4,6 +4,19 @@
 use crate::{BlockFace, EntityGeometryCube, EntityGeometryUv};
 
 mod block_model;
+
+/// Colours `pixels` (straight-alpha RGBA8) the way the world draws a masked overlay face such
+/// as a grass side: alpha weighs the tint into the RGB, and every texel comes out opaque.
+pub fn apply_overlay_mask_tint(pixels: &mut [u8], tint: [u8; 3]) {
+    for pixel in pixels.as_chunks_mut::<4>().0 {
+        let weight = u32::from(pixel[3]);
+        for (channel, tint) in pixel[..3].iter_mut().zip(tint) {
+            let tinted = u32::from(*channel) * u32::from(tint) / 255;
+            *channel = ((u32::from(*channel) * (255 - weight) + tinted * weight + 127) / 255) as u8;
+        }
+        pixel[3] = 255;
+    }
+}
 mod cube_model;
 mod dried_ghast;
 mod dripleaf;
@@ -257,5 +270,35 @@ pub fn shield_face_uvs(cube: &EntityGeometryCube) -> [Option<[[f32; 2]; 4]>; 6] 
                 })
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod overlay_tint_tests {
+    use super::apply_overlay_mask_tint;
+
+    #[test]
+    fn alpha_weighs_the_tint_and_every_texel_comes_out_opaque() {
+        let mut pixels = [200, 200, 200, 255, 100, 60, 20, 0, 200, 100, 0, 128];
+
+        let mut rgba = [
+            pixels[..4].to_vec(),
+            pixels[4..8].to_vec(),
+            pixels[8..].to_vec(),
+        ]
+        .concat();
+        apply_overlay_mask_tint(&mut rgba, [100, 200, 50]);
+        assert_eq!(
+            &rgba[..4],
+            &[78, 156, 39, 255],
+            "full alpha is fully tinted"
+        );
+        assert_eq!(
+            &rgba[4..8],
+            &[100, 60, 20, 255],
+            "no alpha keeps the base colour"
+        );
+        assert_eq!(rgba[11], 255);
+        assert!(rgba[8] < 200 && rgba[8] > 70, "partial alpha blends");
     }
 }

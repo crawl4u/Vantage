@@ -42,6 +42,6 @@ pub use entity::{
 };
 pub use icon::{
     CompiledIconCarrier, IconCompileReport, compile_icon_assets, compile_icon_assets_with_blocks,
-    overlay_block_icon, overlay_block_icon_with_tint, overlay_cube_icon,
+    overlay_block_icon, overlay_block_icon_with_tint, overlay_cube_icon, overlay_cube_icon_with_tint,
 };
 pub use starter_skins::{compile_starter_skins, compile_starter_skins_to_file};
