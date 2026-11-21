@@ -26,6 +26,16 @@ import sys
 import zipfile
 import zlib
 
+# A texture matched only by path or file name must still look like its Bedrock namesake: when
+# its brightness pattern correlates with Bedrock's below this, the two editions lay the picture out
+# differently (fish, dolphins, baby animals), and copying it would draw a garbled mob, so the
+# mob keeps Bedrock's own texture instead.
+MIN_SIMILARITY = 0.6
+
+# Textures the translator turns to Bedrock's orientation itself (see `flipped_box_faces` in
+# extras.rs), so their raw pixels correlate poorly with Bedrock's and are kept regardless.
+REORIENTED = ("entity/chest/",)
+
 # Entity paths the file-name rule never matches: their layouts differ from Bedrock's namesakes.
 RENAME_EXCLUDED = ("entity/banner/", "entity/shield/", "entity/player/", "/profession/")
 
@@ -99,6 +109,31 @@ def decode(data):
     return width, height, bytes(out)
 
 
+def similarity(java_image, bedrock_image):
+    """How alike two same-size pictures are in layout, from 0 to 1, whatever their colours.
+
+    The correlation of their pixel brightness over the pixels either one draws: a recoloured
+    copy (a dyed shulker box) keeps its shapes and scores high, while a picture laid out
+    differently scores near zero.
+    """
+    (width, height, a), (_, _, b) = java_image, bedrock_image
+    xs, ys = [], []
+    for i in range(0, width * height * 4, 4):
+        if a[i + 3] or b[i + 3]:
+            xs.append((a[i] + a[i + 1] + a[i + 2]) / 3 if a[i + 3] else -1.0)
+            ys.append((b[i] + b[i + 1] + b[i + 2]) / 3 if b[i + 3] else -1.0)
+    n = len(xs)
+    if n == 0:
+        return 1.0
+    mean_x, mean_y = sum(xs) / n, sum(ys) / n
+    cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    var_y = sum((y - mean_y) ** 2 for y in ys)
+    if var_x == 0 or var_y == 0:
+        return 1.0 if var_x == var_y else 0.0
+    return cov / (var_x * var_y) ** 0.5
+
+
 def digest(image):
     width, height, rgba = image
     return hashlib.sha1(struct.pack(">II", width, height) + rgba).hexdigest()
@@ -133,7 +168,7 @@ def main(jar_path, bedrock_root, out_path):
     for path in bedrock:
         if path.startswith("entity/"):
             stems.setdefault(os.path.basename(path), []).append(path)
-    rows, taken = [], {}
+    rows, taken, incompatible = [], {}, []
     claimed = {}
     for path in java:
         if path.startswith("entity/") and not any(part in path for part in RENAME_EXCLUDED):
@@ -156,6 +191,14 @@ def main(jar_path, bedrock_root, out_path):
             ]
             if path.startswith("entity/") and len(named) == 1:
                 target = named[0]
+        if (
+            target
+            and not path.startswith(REORIENTED)
+            and digest(image) != digest(bedrock[target])
+            and similarity(image, bedrock[target]) < MIN_SIMILARITY
+        ):
+            incompatible.append(path)
+            target = None
         if target:
             rows.append((path, target, image[0], image[1]))
             taken.setdefault(target, []).append(path)
@@ -168,6 +211,15 @@ def main(jar_path, bedrock_root, out_path):
         )
         for java_path, bedrock_path, width, height in rows:
             out.write(f"{java_path}\t{bedrock_path}\t{width}\t{height}\n")
+    # The translator also matches by file name at run time, so the refused paths are listed for it.
+    listed = os.path.join(os.path.dirname(out_path), "extra-incompatible.txt")
+    with open(listed, "w", newline="\n") as out:
+        out.write(
+            "# Java textures laid out differently from their Bedrock namesakes, which the translator\n"
+            "# must not copy over them. Derived by tools/java-pack-tables/derive_extras.py.\n"
+        )
+        for path in incompatible:
+            out.write(path + "\n")
     shared = sum(1 for sources in taken.values() if len(sources) > 1)
     print(f"{len(rows)} of {len(java)} Java textures mapped; {shared} Bedrock textures have several sources")
 

@@ -1,0 +1,14 @@
+# Java textures laid out differently from their Bedrock namesakes, which the translator
+# must not copy over them. Derived by tools/java-pack-tables/derive_extras.py.
+entity/dolphin/dolphin
+entity/enderdragon/dragon_exploding
+entity/fish/tropical_a_pattern_1
+entity/fish/tropical_a_pattern_5
+entity/fish/tropical_b
+entity/fish/tropical_b_pattern_4
+entity/fish/tropical_b_pattern_5
+entity/horse/horse_brown
+entity/lead_knot/lead_knot
+entity/trident/trident_riptide
+entity/villager/villager
+entity/zombie_villager/zombie_villager

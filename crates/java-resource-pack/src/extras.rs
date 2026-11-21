@@ -32,6 +32,17 @@ static TABLE: LazyLock<HashMap<&'static str, Target>> = LazyLock::new(|| {
         .collect()
 });
 
+const INCOMPATIBLE_TEXT: &str = include_str!("../data/extra-incompatible.txt");
+
+/// Java paths whose picture is laid out differently from their Bedrock namesake's, so copying
+/// them would draw a garbled mob; they never map, by table or by name.
+static INCOMPATIBLE: LazyLock<std::collections::HashSet<&'static str>> = LazyLock::new(|| {
+    INCOMPATIBLE_TEXT
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect()
+});
+
 const BEDROCK_TEXT: &str = include_str!("../data/bedrock-textures.tsv");
 
 /// Bedrock texture (relative to `textures/`, no extension) to its vanilla size.
@@ -106,7 +117,8 @@ pub(crate) const FOLDERS: [&str; 8] = [
 /// Whether the table has an entry for the Java texture at `java` (relative to `textures/`, no
 /// extension).
 pub(crate) fn is_listed(java: &str) -> bool {
-    TABLE.contains_key(java) || name_candidates(java).next().is_some()
+    !INCOMPATIBLE.contains(java)
+        && (TABLE.contains_key(java) || name_candidates(java).next().is_some())
 }
 
 /// The Bedrock path (relative to `textures/`, no extension) for the Java texture at `java`
@@ -119,6 +131,9 @@ pub(crate) fn bedrock_path(java: &str, width: u32, height: u32) -> Option<&'stat
             && width / vanilla_width == height / vanilla_height
             && width >= vanilla_width
     };
+    if INCOMPATIBLE.contains(java) {
+        return None;
+    }
     if let Some(target) = TABLE.get(java) {
         return scaled(target.size).then_some(target.bedrock);
     }
@@ -130,7 +145,11 @@ pub(crate) fn bedrock_path(java: &str, width: u32, height: u32) -> Option<&'stat
 /// modern 64 by 64 humanoid layout keeps the classic 64 by 32 one in its top half, which is all
 /// the older Bedrock model reads.
 pub(crate) fn top_half_path(java: &str, width: u32, height: u32) -> Option<&'static str> {
-    if width != height || TABLE.contains_key(java) || !java.starts_with("entity/") {
+    if INCOMPATIBLE.contains(java)
+        || width != height
+        || TABLE.contains_key(java)
+        || !java.starts_with("entity/")
+    {
         return None;
     }
     name_candidates(java).find(|candidate| {
@@ -227,6 +246,24 @@ mod tests {
             image.put_pixel(14 * scale + dx, 0, image::Rgba([11, 0, 0, 255]));
         }
         image
+    }
+
+    #[test]
+    fn textures_laid_out_differently_from_bedrocks_never_map() {
+        assert!(!INCOMPATIBLE.is_empty());
+        for java in INCOMPATIBLE.iter() {
+            assert!(
+                !TABLE.contains_key(java),
+                "{java} is both mapped and refused"
+            );
+            for size in [16, 32, 64, 128] {
+                assert_eq!(bedrock_path(java, size, size), None, "{java}");
+                assert_eq!(top_half_path(java, size, size), None, "{java}");
+            }
+            assert!(!is_listed(java), "{java}");
+        }
+        assert!(INCOMPATIBLE.contains("entity/dolphin/dolphin"));
+        assert!(is_listed("entity/chest/normal"));
     }
 
     #[test]
