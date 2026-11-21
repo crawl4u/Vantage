@@ -66,7 +66,7 @@ fn a_twenty_four_map_wall_keeps_every_image_when_scan_order_changes() {
             let Some(rect) = rect else { continue };
             let at = (((rect.y - static_height) as usize) * width + rect.x as usize) * 4;
             assert_eq!(
-                &frame.dynamic_rgba8[at..at + 4],
+                &frame.dynamic_rgba8()[at..at + 4],
                 &[key as u8 + 1, 19, 73, 255]
             );
         }

@@ -191,6 +191,8 @@ pub(crate) struct BlockEntityGpu {
     atlas_identity: [u8; 32],
     atlas_size: [u32; 2],
     dynamic_revision: u64,
+    /// The first row and revision of each dynamic page the texture holds.
+    uploaded_pages: Vec<(u32, u64)>,
     atlas_upload: crate::gpu_allocation::UploadRetry,
     sampler: Sampler,
     view_buffer_id: Option<BufferId>,
@@ -224,6 +226,7 @@ fn init_gpu(mut commands: Commands, render_device: Res<RenderDevice>) {
         atlas_identity: [0; 32],
         atlas_size: [0; 2],
         dynamic_revision: u64::MAX,
+        uploaded_pages: Vec::new(),
         atlas_upload: crate::gpu_allocation::UploadRetry::default(),
         sampler: render_device.create_sampler(&SamplerDescriptor {
             label: Some("block-entity nearest atlas sampler"),
@@ -294,6 +297,7 @@ pub(crate) fn prepare_resources(
         gpu.atlas_size = atlas.size;
         gpu.texture_raw_views = raw_views;
         gpu.dynamic_revision = u64::MAX;
+        gpu.uploaded_pages.clear();
         let uploaded = upload_atlas(&uploads.device, &uploads.queue, atlas, raw_views);
         gpu.atlas_upload
             .record(uploaded.is_some(), released.then_some(&*uploads.queue));
@@ -303,18 +307,37 @@ pub(crate) fn prepare_resources(
         }
     }
     let dynamic_rows = atlas.size[1].saturating_sub(atlas.static_height);
-    if gpu.dynamic_revision != frame.dynamic_revision
-        && frame.dynamic_rgba8.len() == atlas.size[0] as usize * dynamic_rows as usize * 4
-    {
-        if let Some(texture) = &gpu.texture {
-            write_rows(
-                &uploads.queue,
-                texture,
-                atlas.static_height,
-                atlas.size[0],
-                dynamic_rows,
-                &frame.dynamic_rgba8,
-            );
+    let page_bytes = atlas.size[0] as usize * 4;
+    let held_rows: usize = frame
+        .dynamic_pages
+        .iter()
+        .map(|page| page.rgba8.len() / page_bytes)
+        .sum();
+    if gpu.dynamic_revision != frame.dynamic_revision && held_rows == dynamic_rows as usize {
+        if let Some(texture) = gpu.texture.clone() {
+            // Only the pages written since the last upload cross to the GPU: a new canvas
+            // costs one page, not the whole strip.
+            for page in frame.dynamic_pages.iter() {
+                let held = gpu
+                    .uploaded_pages
+                    .iter()
+                    .position(|(row, _)| *row == page.first_row);
+                if held.is_some_and(|index| gpu.uploaded_pages[index].1 == page.revision) {
+                    continue;
+                }
+                write_rows(
+                    &uploads.queue,
+                    &texture,
+                    atlas.static_height + page.first_row,
+                    atlas.size[0],
+                    (page.rgba8.len() / page_bytes) as u32,
+                    &page.rgba8,
+                );
+                match held {
+                    Some(index) => gpu.uploaded_pages[index].1 = page.revision,
+                    None => gpu.uploaded_pages.push((page.first_row, page.revision)),
+                }
+            }
         }
         gpu.dynamic_revision = frame.dynamic_revision;
     }

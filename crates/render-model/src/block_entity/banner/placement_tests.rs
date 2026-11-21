@@ -216,5 +216,5 @@ fn warmed_banner_publications_reuse_arrays_and_preserve_retained_frames() {
     assert_eq!(frame.crack, expected.crack);
     assert_eq!(frame.portal, expected.portal);
     assert_eq!(frame.additive, expected.additive);
-    assert_eq!(frame.dynamic_rgba8, expected.dynamic_rgba8);
+    assert_eq!(frame.dynamic_rgba8(), expected.dynamic_rgba8());
 }

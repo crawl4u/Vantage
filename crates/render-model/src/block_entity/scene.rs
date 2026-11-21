@@ -169,7 +169,9 @@ pub struct BlockEntityFrame {
     pub revision: u64,
     pub atlas: Option<Arc<BlockEntityAtlasImage>>,
     pub dynamic_revision: u64,
-    pub dynamic_rgba8: Arc<[u8]>,
+    /// The runtime canvas pages; a page whose revision is unchanged shares its texels with the
+    /// previous frame's.
+    pub dynamic_pages: Arc<[super::atlas::DynamicPage]>,
     pub solid: Arc<[BlockEntityVertex]>,
     pub overlay: Arc<[BlockEntityVertex]>,
     pub crack: Arc<[BlockEntityVertex]>,
@@ -178,6 +180,28 @@ pub struct BlockEntityFrame {
     /// Normalized star texture bounds; wrapping happens within this atlas placement.
     pub portal_star_rect: [f32; 4],
     pub portal_time_seconds: f32,
+}
+
+impl BlockEntityFrame {
+    /// The runtime canvas strip as one RGBA8 image whose rows start below the static atlas;
+    /// for tests and snapshots, as the GPU takes it page by page.
+    #[must_use]
+    pub fn dynamic_rgba8(&self) -> Vec<u8> {
+        let width = self.atlas.as_ref().map_or(1, |atlas| atlas.size[0]);
+        let stride = width as usize * 4;
+        let rows = self
+            .dynamic_pages
+            .iter()
+            .map(|page| page.first_row as usize + page.rgba8.len() / stride)
+            .max()
+            .unwrap_or(0);
+        let mut pixels = vec![0; rows * stride];
+        for page in self.dynamic_pages.iter() {
+            let start = page.first_row as usize * stride;
+            pixels[start..start + page.rgba8.len()].copy_from_slice(&page.rgba8);
+        }
+        pixels
+    }
 }
 
 /// Static atlas pixels plus dimensions for GPU upload; a new size means a new texture.
@@ -297,7 +321,7 @@ impl BlockEntityScene {
         self.frame = BlockEntityFrame {
             revision: self.frame.revision,
             dynamic_revision: self.frame.dynamic_revision,
-            dynamic_rgba8: Arc::clone(&self.frame.dynamic_rgba8),
+            dynamic_pages: Arc::clone(&self.frame.dynamic_pages),
             ..Default::default()
         };
         self.reusable = None;
@@ -465,10 +489,10 @@ impl BlockEntityScene {
             revision: self.frame.revision.wrapping_add(1),
             atlas: self.image.clone(),
             dynamic_revision: text.revision(),
-            dynamic_rgba8: if dynamic_changed || self.frame.dynamic_rgba8.is_empty() {
-                Arc::from(text.pixels())
+            dynamic_pages: if dynamic_changed || self.frame.dynamic_pages.is_empty() {
+                text.page_snapshots(&self.frame.dynamic_pages).into()
             } else {
-                Arc::clone(&self.frame.dynamic_rgba8)
+                Arc::clone(&self.frame.dynamic_pages)
             },
             solid: shared_layer(&self.frame.solid, &builder.solid, &mut self.buffers),
             overlay: shared_layer(&self.frame.overlay, &builder.overlay, &mut self.buffers),

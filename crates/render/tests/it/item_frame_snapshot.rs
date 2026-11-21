@@ -115,7 +115,7 @@ fn geometry(
     );
     let atlas = frame.atlas.as_ref().unwrap();
     let mut pixels = atlas.static_rgba8.to_vec();
-    pixels.extend_from_slice(&frame.dynamic_rgba8);
+    pixels.extend_from_slice(&frame.dynamic_rgba8());
     let mut vertices = frame.solid.to_vec();
     let rows = item_frame_item_transform(
         [0; 3],

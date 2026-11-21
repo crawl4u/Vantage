@@ -98,12 +98,12 @@ fn reference_frame(
             revision: scene.frame.revision.wrapping_add(1),
             atlas: scene.image.clone(),
             dynamic_revision: text.revision(),
-            dynamic_rgba8: if scene.frame.dynamic_revision != text.revision()
-                || scene.frame.dynamic_rgba8.is_empty()
+            dynamic_pages: if scene.frame.dynamic_revision != text.revision()
+                || scene.frame.dynamic_pages.is_empty()
             {
-                Arc::from(text.pixels())
+                text.page_snapshots(&scene.frame.dynamic_pages).into()
             } else {
-                Arc::clone(&scene.frame.dynamic_rgba8)
+                Arc::clone(&scene.frame.dynamic_pages)
             },
             solid: builder.solid.into(),
             overlay: builder.overlay.into(),
@@ -136,7 +136,7 @@ fn assert_matches_reference(
     assert_eq!(frame.portal_star_rect, expected.portal_star_rect);
     assert_eq!(frame.portal_time_seconds, expected.portal_time_seconds);
     assert_eq!(frame.dynamic_revision, expected.dynamic_revision);
-    assert_eq!(frame.dynamic_rgba8, expected.dynamic_rgba8);
+    assert_eq!(frame.dynamic_rgba8(), expected.dynamic_rgba8());
     assert_eq!(scene.rejected_quads(), rejected);
 }
 
@@ -239,7 +239,7 @@ fn dynamic_atlas_updates_keep_static_meshes_and_asset_installs_invalidate_them()
     assert_matches_reference(&mut scene, 1.0, &[], &submissions);
     assert_eq!(scene.static_rebuilds, 3);
     assert_ne!(scene.frame.dynamic_revision, first.dynamic_revision);
-    assert_ne!(scene.frame.dynamic_rgba8, first.dynamic_rgba8);
+    assert_ne!(scene.frame.dynamic_rgba8(), first.dynamic_rgba8());
     scene.install_assets(&assets_with_chest_offset(384));
     assert!(scene.cached_submissions.is_empty());
     assert_matches_reference(&mut scene, 2.0, &[], &submissions);
@@ -293,7 +293,7 @@ fn every_distinct_sign_text_keeps_its_own_canvas_and_an_unchanged_frame_rasteriz
         let row = rect.y as usize - image.static_height as usize;
         let start = (row * image.size[0] as usize + rect.x as usize) * 4;
         assert_eq!(
-            &first.dynamic_rgba8[start..start + 4],
+            &first.dynamic_rgba8()[start..start + 4],
             &canvas(key as u64)[..4],
             "sign {key} shows another sign's text"
         );
@@ -624,7 +624,7 @@ fn identical_atlas_reinstalls_publish_fresh_sign_and_map_pixels() {
             let old_atlas = previous.atlas.as_ref().unwrap();
             assert_eq!(atlas.identity, old_atlas.identity);
             assert_eq!(atlas.size, old_atlas.size);
-            assert_ne!(frame.dynamic_rgba8, previous.dynamic_rgba8);
+            assert_ne!(frame.dynamic_rgba8(), previous.dynamic_rgba8());
             assert!(frame.dynamic_revision > previous.dynamic_revision);
         }
         previous = Some(frame);
@@ -635,7 +635,7 @@ fn identical_atlas_reinstalls_publish_fresh_sign_and_map_pixels() {
     scene.install_assets(&assets);
     let empty = scene.update(SceneClock::default(), &[], &[]);
     assert!(empty.dynamic_revision > revision);
-    assert!(empty.dynamic_rgba8.iter().all(|pixel| *pixel == 0));
+    assert!(empty.dynamic_rgba8().iter().all(|pixel| *pixel == 0));
     let revision = empty.dynamic_revision;
     let unchanged = scene.update(SceneClock::default(), &[], &[]);
     assert_eq!(unchanged.dynamic_revision, revision);
@@ -738,7 +738,7 @@ fn live_chest_artwork_reload_keeps_every_cached_sign_visible() {
                 &submissions,
             );
             assert_eq!(frame.solid.len(), count * 6);
-            assert_eq!(frame.dynamic_rgba8, before.dynamic_rgba8);
+            assert_eq!(frame.dynamic_rgba8(), before.dynamic_rgba8());
             assert_eq!(frame.dynamic_revision, before.dynamic_revision);
             assert_ne!(
                 frame.atlas.as_ref().unwrap().identity,

@@ -10,6 +10,22 @@ use assets::RuntimeBlockEntityAssets;
 
 use super::artwork::{MAX_ATLAS_SIDE, StaticTexture, appended_layout};
 
+static PAGE_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// A revision no page has had before, so a snapshot is never mistaken for another's.
+fn next_page_revision() -> u64 {
+    PAGE_REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// One page of runtime canvas texels as published for upload: the rows it starts at below the
+/// static atlas, a revision that changes whenever its texels do, and the texels.
+#[derive(Clone, Debug)]
+pub struct DynamicPage {
+    pub first_row: u32,
+    pub revision: u64,
+    pub rgba8: Arc<[u8]>,
+}
+
 /// Size of one text canvas cell in atlas pixels.
 pub const TEXT_CELL: [u32; 2] = [96, 48];
 const TEXT_COLUMNS: u32 = 10;
@@ -307,6 +323,8 @@ struct CellPool {
     /// The slot holding each `Some` entry of `keys`, so a hit needs no scan of every slot.
     slots_by_key: HashMap<u64, usize, FixedState>,
     last_used: Vec<u64>,
+    /// Per page, a revision that changes whenever the page's texels do.
+    page_revisions: Vec<u64>,
     clock: u64,
     /// The first clock value of the current frame; slots used since then are never evicted.
     frame_start: u64,
@@ -328,6 +346,7 @@ impl CellPool {
             keys: Vec::new(),
             slots_by_key: HashMap::with_hasher(FixedState::default()),
             last_used: Vec::new(),
+            page_revisions: Vec::new(),
             clock: 0,
             frame_start: 0,
             made_this_frame: 0,
@@ -348,6 +367,7 @@ impl CellPool {
             .push(vec![0; self.width * self.cell[1] * self.rows_per_page * 4]);
         self.keys.resize(self.keys.len() + self.page_slots(), None);
         self.last_used.resize(self.keys.len(), 0);
+        self.page_revisions.push(next_page_revision());
         self.revision = self.revision.wrapping_add(1);
     }
 
@@ -370,6 +390,7 @@ impl CellPool {
             *page = resized;
         }
         self.width = width;
+        self.page_revisions.fill_with(next_page_revision);
         self.revision = self.revision.wrapping_add(1);
     }
 
@@ -407,6 +428,7 @@ impl CellPool {
             page[target..target + cell_width * 4]
                 .copy_from_slice(&canvas[source..source + cell_width * 4]);
         }
+        self.page_revisions[slot / page_slots] = next_page_revision();
         self.keys[slot] = Some(key);
         self.slots_by_key.insert(key, slot);
         // Older than anything drawn this frame, so a drawn canvas may take it.
@@ -465,6 +487,7 @@ impl CellPool {
             page[target..target + cell_width * 4]
                 .copy_from_slice(&canvas[source..source + cell_width * 4]);
         }
+        self.page_revisions[slot / page_slots] = next_page_revision();
         if let Some(evicted) = self.keys[slot].replace(key) {
             self.slots_by_key.remove(&evicted);
         }
@@ -568,6 +591,31 @@ impl DynamicCells {
     #[must_use]
     pub fn revision(&self) -> u64 {
         self.text.revision.wrapping_add(self.maps.revision)
+    }
+
+    /// The pages as published for upload, reusing the texels of any page in `previous` whose
+    /// revision has not changed, so only pages that were written are copied.
+    #[must_use]
+    pub fn page_snapshots(&self, previous: &[DynamicPage]) -> Vec<DynamicPage> {
+        let mut pages = Vec::with_capacity(self.maps.pages.len() + self.text.pages.len());
+        for (pool, offsets) in [
+            (&self.maps, &self.layout.maps),
+            (&self.text, &self.layout.text),
+        ] {
+            for ((page, revision), first_row) in
+                pool.pages.iter().zip(&pool.page_revisions).zip(offsets)
+            {
+                let kept = previous
+                    .iter()
+                    .find(|old| old.first_row == *first_row && old.revision == *revision);
+                pages.push(DynamicPage {
+                    first_row: *first_row,
+                    revision: *revision,
+                    rgba8: kept.map_or_else(|| Arc::from(&page[..]), |old| Arc::clone(&old.rgba8)),
+                });
+            }
+        }
+        pages
     }
 
     /// Canvas pixels in append order, matching every previously returned pixel rect.
@@ -960,7 +1008,10 @@ mod warm_tests {
             text.begin_frame();
         }
         for key in 0..page {
-            assert!(text.text_slot(key, || panic!("drawn canvas lost")).is_some());
+            assert!(
+                text.text_slot(key, || panic!("drawn canvas lost"))
+                    .is_some()
+            );
         }
         assert!(text.text_pages() as usize <= MAX_TEXT_PAGES);
         // A canvas drawn now takes a warmed slot rather than being refused.
@@ -973,5 +1024,29 @@ mod warm_tests {
             }
         }
         assert!(taken > 0);
+    }
+
+    /// A new canvas rewrites one page; the pages it did not touch are published as they were.
+    #[test]
+    fn a_new_canvas_republishes_only_the_page_it_wrote() {
+        let mut text = DynamicCells::new(MIN_DYNAMIC_ATLAS_WIDTH).unwrap();
+        let page = TEXT_SLOT_COUNT as u64;
+        for key in 0..page + 1 {
+            text.text_slot(key, || canvas(1)).unwrap();
+            if key % 8 == 7 {
+                text.begin_frame();
+            }
+        }
+        let before = text.page_snapshots(&[]);
+        assert_eq!(before.len(), 2, "two text pages");
+        text.begin_frame();
+        text.text_slot(page + 1, || canvas(2)).unwrap();
+        let after = text.page_snapshots(&before);
+        assert!(
+            Arc::ptr_eq(&before[0].rgba8, &after[0].rgba8),
+            "the full page is untouched"
+        );
+        assert_ne!(before[1].revision, after[1].revision);
+        assert!(!Arc::ptr_eq(&before[1].rgba8, &after[1].rgba8));
     }
 }
