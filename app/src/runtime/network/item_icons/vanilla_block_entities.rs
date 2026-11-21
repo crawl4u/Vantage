@@ -14,7 +14,11 @@ const MAX_TEXTURE_SIDE: u32 = 512;
 /// Adds an icon for each block item whose entity model the pack can texture; items whose
 /// textures the pack lacks keep their vanilla icon.
 pub(in crate::runtime::network) fn append(view: &LayeredPackView, icons: &mut BlockIcons) {
-    for (identifier, metadata) in super::vanilla_blocks::block_item_keys() {
+    // Beds are items of their own, one per dye, rather than block items.
+    static BED: std::sync::LazyLock<std::sync::Arc<str>> =
+        std::sync::LazyLock::new(|| std::sync::Arc::from("minecraft:bed"));
+    let beds = (0..16).map(|metadata| (&*BED, metadata));
+    for (identifier, metadata) in super::vanilla_blocks::block_item_keys().chain(beds) {
         if icons.icons.len() >= MAX_SESSION_ICONS {
             break;
         }

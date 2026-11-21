@@ -117,7 +117,7 @@ pub(super) fn block_key(
 }
 
 /// Bumped when the compile of entity-drawn block item icons changes, so cached icon sets rebuild.
-const BLOCK_ENTITY_ICON_REVISION: u32 = 1;
+const BLOCK_ENTITY_ICON_REVISION: u32 = 2;
 
 /// Icons additionally depend on registry mappings and the installed item routes and sprites.
 pub(super) fn icon_key(

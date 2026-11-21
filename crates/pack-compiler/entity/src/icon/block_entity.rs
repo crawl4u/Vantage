@@ -29,6 +29,46 @@ fn boxes(texture: &str, logical: [f32; 2], boxes: &[geometry::ModelBox]) -> Part
     }
 }
 
+/// The texture stem of a bed item: `minecraft:bed` takes its dye from `metadata`, and a coloured
+/// `minecraft:<colour>_bed` names it.
+fn bed_color(name: &str, metadata: u32) -> Option<&'static str> {
+    let colors = &geometry::SHULKER_COLORS[1..];
+    if name == "minecraft:bed" {
+        return colors.get(usize::try_from(metadata).ok()?).copied();
+    }
+    let stem = name.strip_prefix("minecraft:")?.strip_suffix("_bed")?;
+    let stem = if stem == "light_gray" { "silver" } else { stem };
+    colors.iter().copied().find(|color| *color == stem)
+}
+
+/// A bed lying along the view's depth axis, head away, scaled so its length spans the cube. The
+/// boxes are authored standing on end; each corner is turned a quarter revolution about X, as the
+/// placed bed is, so the mattress lies flat.
+fn bed(color: &str) -> Part {
+    let faces = geometry::BED_BOXES
+        .iter()
+        .flat_map(|&(origin, size, uv)| geometry::box_faces(origin, size, uv, 0.0))
+        .map(|(corners, texels)| {
+            (
+                corners.map(|[x, y, z]| {
+                    [
+                        (y - 16.0) / 32.0 + 0.5,
+                        (9.0 - z - 4.5) / 32.0 + 0.5,
+                        (8.0 - x) / 32.0 + 0.5,
+                    ]
+                }),
+                texels,
+            )
+        })
+        .collect();
+    Part {
+        texture: format!("textures/entity/bed/{color}"),
+        logical: geometry::BED_TEXTURE_SIZE,
+        faces,
+        color: [255; 3],
+    }
+}
+
 /// Only banner dye changes these block models by item metadata.
 pub(super) fn metadata_variant(name: &str, metadata: u32) -> u32 {
     if is_banner(name) { metadata } else { 0 }
@@ -125,6 +165,8 @@ pub(super) fn raster_with(
             }
         }
         vec![part]
+    } else if let Some(color) = bed_color(name, metadata) {
+        vec![bed(color)]
     } else if let Some(chest_texture) = chest_texture(name) {
         vec![chest(chest_texture)]
     } else if let Some(skull_type) = assets::vanilla_skull_type(name) {
@@ -491,5 +533,40 @@ mod chest_icon_tests {
             assert!(extent >= side * 7 / 8, "{name} spans {extent} of {side}");
             assert!(low.iter().all(|&edge| edge > 0) && high.iter().all(|&edge| edge < side - 1));
         }
+    }
+
+    #[test]
+    fn a_bed_item_draws_its_dyed_texture_lying_flat_with_the_pillow_far_right() {
+        let texture = |color: [u8; 4]| IconSprite {
+            width: 64,
+            height: 64,
+            rgba8: color.repeat(64 * 64).into(),
+        };
+        let mut asked = Vec::new();
+        let red = raster_with("minecraft:bed", 14, &[], 64, &mut |path| {
+            asked.push(path.to_owned());
+            Ok(Some(texture([200, 20, 20, 255])))
+        })
+        .unwrap()
+        .expect("a bed has an inventory model");
+        assert_eq!(asked, ["textures/entity/bed/red"]);
+        let named = raster_with("minecraft:red_bed", 0, &[], 64, &mut |_| {
+            Ok(Some(texture([200, 20, 20, 255])))
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(red.rgba8, named.rgba8, "metadata and name pick the same colour");
+        // Lying flat, the bed is wider than it is tall.
+        let pixels = red.rgba8.as_chunks::<4>().0;
+        let rows: Vec<usize> = (0..64)
+            .filter(|row| pixels[row * 64..][..64].iter().any(|p| p[3] != 0))
+            .collect();
+        let columns: Vec<usize> = (0..64)
+            .filter(|column| (0..64).any(|row| pixels[row * 64 + column][3] != 0))
+            .collect();
+        assert!(columns.len() > rows.len() * 5 / 4);
+        assert!(raster_with("minecraft:bed", 16, &[], 64, &mut |_| Ok(Some(texture([1; 4]))))
+            .unwrap()
+            .is_none());
     }
 }
