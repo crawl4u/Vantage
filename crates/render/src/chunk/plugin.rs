@@ -135,6 +135,7 @@ impl Plugin for ChunkRenderPlugin {
             .init_resource::<ChunkGpuUploadStats>()
             .init_resource::<GpuUpdateFairness>()
             .init_resource::<ChunkGpuTextureAssets>()
+            .init_resource::<super::WorldPageViews>()
             .init_resource::<ChunkGpuBiomeTints>()
             .init_resource::<ChunkTextureUploadStats>()
             .init_resource::<pipeline::solid::ChunkSolidIndirectBatches>()
@@ -202,6 +203,9 @@ impl Plugin for ChunkRenderPlugin {
                     prepare_chunk_texture_assets
                         .in_set(ChunkPublicationStage::Attributes)
                         .run_if(render_scene::startup_work::world_work_allowed),
+                    super::publish_world_page_views
+                        .in_set(ChunkPublicationStage::Attributes)
+                        .after(prepare_chunk_texture_assets),
                     prepare_chunk_animation_clock.in_set(ChunkPublicationStage::Attributes),
                     prepare_chunk_biome_tints
                         .in_set(ChunkPublicationStage::Attributes)

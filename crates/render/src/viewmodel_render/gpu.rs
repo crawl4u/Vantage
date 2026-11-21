@@ -38,6 +38,10 @@ pub(super) struct HandGpu {
     pub(super) token: Option<ViewmodelToken>,
     pub(super) pipeline: Option<CachedRenderPipelineId>,
     pub(super) pipeline_variants: [Option<CachedRenderPipelineId>; 8],
+    /// Layout, sampler and pipelines for a cube drawn from the world's texture pages.
+    pub(super) world_layout: BindGroupLayoutDescriptor,
+    world_sampler: Sampler,
+    pub(super) world_pipeline_variants: [Option<CachedRenderPipelineId>; 8],
     pub(super) vertex_count: u32,
 }
 
@@ -83,6 +87,18 @@ pub(super) fn init_gpu(
         token: None,
         pipeline: None,
         pipeline_variants: [None; 8],
+        world_layout: world_hand_layout(),
+        world_sampler: device.create_sampler(&SamplerDescriptor {
+            label: Some("held cube world page sampler"),
+            mag_filter: FilterMode::Nearest,
+            min_filter: FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            lod_max_clamp: (assets::VANILLA_TERRAIN_MIP_COUNT - 1) as f32,
+            ..default()
+        }),
+        world_pipeline_variants: [None; 8],
         vertex_count: 0,
     });
 }
@@ -110,6 +126,7 @@ pub(super) struct PrepareViewmodel<'w, 's> {
     pub(super) drawn: Res<'w, HandDrawn>,
     pub(super) views: Query<'w, 's, HandPrepareView>,
     pub(super) coverage: Option<Res<'w, crate::ui_render::UiHandCoverage>>,
+    pub(super) pages: Option<Res<'w, crate::chunk::WorldPageViews>>,
     pub(super) tick: SystemChangeTick,
 }
 
@@ -127,6 +144,7 @@ pub(super) fn prepare(params: PrepareViewmodel) {
         drawn,
         views,
         coverage,
+        pages,
         tick,
     } = params;
     let same_device = &gpu.device == device.wgpu_device();
@@ -226,12 +244,38 @@ pub(super) fn prepare(params: PrepareViewmodel) {
         gpu.vertices = None;
         gpu.vertices = Some(device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("validated neutral arm and sleeve"),
-            contents: bytemuck::cast_slice(&frame.geometry.vertices),
+            contents: match &frame.geometry.world {
+                Some(world) => bytemuck::cast_slice(&world.vertices),
+                None => bytemuck::cast_slice(&frame.geometry.vertices),
+            },
             usage: BufferUsages::VERTEX,
         }));
         gpu.geometry = Some(token.geometry);
-        gpu.vertex_count = frame.geometry.vertices.len() as u32;
+        gpu.bind_group = None;
+        gpu.vertex_count = frame
+            .geometry
+            .world
+            .as_ref()
+            .map_or(frame.geometry.vertices.len(), |world| world.vertices.len())
+            as u32;
     }
+    // A cube from world pages needs those pages uploaded from the carrier it was built from.
+    let world_views = match &frame.geometry.world {
+        None => None,
+        Some(world) => match pages
+            .as_ref()
+            .filter(|pages| pages.carrier == Some(world.carrier))
+            .and_then(|pages| pages.views.as_ref())
+        {
+            Some(views) => Some(views.clone()),
+            None => {
+                ViewmodelCompletionGate::observe_stage(2, 7, Some(token));
+                gate.reject(token);
+                gpu.token = None;
+                return;
+            }
+        },
+    };
     if gpu
         .skin
         .as_ref()
@@ -278,35 +322,76 @@ pub(super) fn prepare(params: PrepareViewmodel) {
         bytemuck::cast_slice(&hand_projection(token.viewport).to_cols_array()),
     );
     if gpu.bind_group.is_none() {
-        gpu.bind_group = Some(device.create_bind_group(
-            "neutral hand binding",
-            &cache.get_bind_group_layout(&gpu.layout),
-            &[
-                BindGroupEntry {
+        gpu.bind_group = Some(match &world_views {
+            Some(views) => {
+                let mut entries = vec![BindGroupEntry {
                     binding: 0,
                     resource: gpu.projection.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: BindingResource::TextureView(&gpu.skin.as_ref().unwrap().view),
-                },
-                BindGroupEntry {
-                    binding: 2,
-                    resource: BindingResource::Sampler(&gpu.sampler),
-                },
-            ],
-        ));
+                }];
+                entries.extend(
+                    views
+                        .iter()
+                        .enumerate()
+                        .map(|(index, view)| BindGroupEntry {
+                            binding: 1 + index as u32,
+                            resource: BindingResource::TextureView(view),
+                        }),
+                );
+                entries.push(BindGroupEntry {
+                    binding: 1 + views.len() as u32,
+                    resource: BindingResource::Sampler(&gpu.world_sampler),
+                });
+                device.create_bind_group(
+                    "held cube world page binding",
+                    &cache.get_bind_group_layout(&gpu.world_layout),
+                    &entries,
+                )
+            }
+            None => device.create_bind_group(
+                "neutral hand binding",
+                &cache.get_bind_group_layout(&gpu.layout),
+                &[
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: gpu.projection.as_entire_binding(),
+                    },
+                    BindGroupEntry {
+                        binding: 1,
+                        resource: BindingResource::TextureView(&gpu.skin.as_ref().unwrap().view),
+                    },
+                    BindGroupEntry {
+                        binding: 2,
+                        resource: BindingResource::Sampler(&gpu.sampler),
+                    },
+                ],
+            ),
+        });
     }
     let gpu = &mut *gpu;
     let layout = &gpu.layout;
-    gpu.pipeline =
+    gpu.pipeline = if world_views.is_some() {
+        let world_layout = &gpu.world_layout;
+        memoized_hand_pipeline(
+            &mut gpu.world_pipeline_variants,
+            token.samples,
+            token.hdr,
+            || {
+                cache.queue_render_pipeline(specialized_world_hand_pipeline(
+                    world_layout.clone(),
+                    token.samples,
+                    token.hdr,
+                ))
+            },
+        )
+    } else {
         memoized_hand_pipeline(&mut gpu.pipeline_variants, token.samples, token.hdr, || {
             cache.queue_render_pipeline(specialized_hand_pipeline(
                 layout.clone(),
                 token.samples,
                 token.hdr,
             ))
-        });
+        })
+    };
     if gpu.pipeline.is_none() {
         ViewmodelCompletionGate::observe_stage(2, 6, Some(token));
         gate.reject(token);
@@ -392,6 +477,7 @@ pub(super) fn invalidate_hand_resources(gpu: &mut HandGpu) {
     gpu.geometry = None;
     gpu.pipeline = None;
     gpu.pipeline_variants = [None; 8];
+    gpu.world_pipeline_variants = [None; 8];
     gpu.vertex_count = 0;
 }
 
@@ -555,4 +641,76 @@ pub(super) fn submit_completion(
             token.or(gpu.token),
         );
     }
+}
+
+/// Declares the hand projection, the world's texture pages and the sampler that reads them.
+pub(super) fn world_hand_layout() -> BindGroupLayoutDescriptor {
+    let mut entries = vec![BindGroupLayoutEntry {
+        binding: 0,
+        visibility: ShaderStages::VERTEX,
+        ty: BindingType::Buffer {
+            ty: BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: BufferSize::new(64),
+        },
+        count: None,
+    }];
+    entries.extend(
+        (0..assets::MAX_TEXTURE_PAGES as u32).map(|page| BindGroupLayoutEntry {
+            binding: 1 + page,
+            visibility: ShaderStages::FRAGMENT,
+            ty: BindingType::Texture {
+                sample_type: TextureSampleType::Float { filterable: true },
+                view_dimension: TextureViewDimension::D2Array,
+                multisampled: false,
+            },
+            count: None,
+        }),
+    );
+    entries.push(BindGroupLayoutEntry {
+        binding: 1 + assets::MAX_TEXTURE_PAGES as u32,
+        visibility: ShaderStages::FRAGMENT,
+        ty: BindingType::Sampler(SamplerBindingType::Filtering),
+        count: None,
+    });
+    BindGroupLayoutDescriptor::new("held cube world page layout", &entries)
+}
+
+/// Matches the world-page hand pipeline to its camera colour and depth attachments.
+pub(super) fn specialized_world_hand_pipeline(
+    layout: BindGroupLayoutDescriptor,
+    samples: u32,
+    hdr: bool,
+) -> RenderPipelineDescriptor {
+    let mut descriptor = specialized_hand_pipeline(layout, samples, hdr);
+    descriptor.label = Some("held cube from world pages".into());
+    descriptor.vertex.shader = HAND_WORLD_SHADER;
+    descriptor.vertex.buffers = vec![VertexBufferLayout {
+        array_stride: size_of::<render_model::viewmodel::WorldHandVertex>() as u64,
+        step_mode: VertexStepMode::Vertex,
+        attributes: vec![
+            VertexAttribute {
+                format: VertexFormat::Float32x3,
+                offset: 0,
+                shader_location: 0,
+            },
+            VertexAttribute {
+                format: VertexFormat::Float32x2,
+                offset: 12,
+                shader_location: 1,
+            },
+            VertexAttribute {
+                format: VertexFormat::Uint32x2,
+                offset: 20,
+                shader_location: 2,
+            },
+            VertexAttribute {
+                format: VertexFormat::Uint32,
+                offset: 28,
+                shader_location: 3,
+            },
+        ],
+    }];
+    descriptor.fragment.as_mut().unwrap().shader = HAND_WORLD_SHADER;
+    descriptor
 }

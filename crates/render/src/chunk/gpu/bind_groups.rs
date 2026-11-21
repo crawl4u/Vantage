@@ -248,6 +248,29 @@ pub(in crate::chunk) struct PreparedChunkTextureAssets {
     pub(in crate::chunk) native_leaf_sampler: Sampler,
 }
 
+/// The world's texture pages as the camera-local hand samples them, in gamma space like the
+/// chunk shader's native art, tagged with the carrier they were uploaded from.
+#[derive(Resource, Default)]
+pub(crate) struct WorldPageViews {
+    /// Address of the carrier the views were uploaded from; `None` until a page set exists.
+    pub(crate) carrier: Option<usize>,
+    pub(crate) views: Option<[TextureView; assets::MAX_TEXTURE_PAGES]>,
+}
+
+/// Shares the uploaded page views with the hand without a second copy of the pixels.
+pub(crate) fn publish_world_page_views(
+    textures: Option<Res<ChunkGpuTextureAssets>>,
+    mut published: ResMut<WorldPageViews>,
+) {
+    let prepared = textures.as_ref().and_then(|t| t.prepared.as_ref());
+    let carrier = prepared.map(|p| p.identity.carrier.pointer);
+    if published.carrier == carrier {
+        return;
+    }
+    published.carrier = carrier;
+    published.views = prepared.map(|p| p.native_leaf_views.clone());
+}
+
 #[derive(Resource)]
 pub(in crate::chunk) struct ChunkGpuAnimationClock {
     pub(in crate::chunk) buffer: Buffer,

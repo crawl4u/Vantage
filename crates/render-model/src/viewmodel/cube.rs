@@ -17,7 +17,7 @@ const MAX_FACE_SIDE: usize = 128;
 pub(crate) mod tests;
 
 /// The existing held-cube transport pose, shared by cube and validated cube-model geometry.
-fn opaque_cube_pose() -> Mat4 {
+pub(super) fn opaque_cube_pose() -> Mat4 {
     Mat4::from_translation(Vec3::new(0.56, -0.52, -0.72))
         * Mat4::from_rotation_y(45_f32.to_radians())
         * Mat4::from_scale(Vec3::splat(0.4))
@@ -180,6 +180,7 @@ impl ViewmodelGeometry {
             identity: digest.finalize().into(),
             allowed_rigs: Arc::from([]),
             cube_origin: true,
+            world: None,
         };
         let skin = ViewmodelSkin::with_side(pixels.into(), pixel_identity, side as u32)?;
         Some((geometry, skin))

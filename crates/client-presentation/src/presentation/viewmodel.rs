@@ -363,7 +363,12 @@ impl HandAdapter {
             if diagnostic {
                 self.cube_reason = 6;
             }
-            let (geometry, pixels) = ViewmodelGeometry::opaque_cube(world.runtime_assets, visual)?;
+            let (geometry, pixels) = ViewmodelGeometry::opaque_world_cube(
+                world.runtime_assets,
+                visual,
+                render_model::viewmodel::world_cube::DEFAULT_GRASS,
+            )
+            .or_else(|| ViewmodelGeometry::opaque_cube(world.runtime_assets, visual))?;
             if diagnostic {
                 self.cube_reason = 7;
             }

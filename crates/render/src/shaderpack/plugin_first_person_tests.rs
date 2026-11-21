@@ -59,6 +59,7 @@ fn active_static_viewmodel_keeps_pack_categories_drawn() {
         identity: token.geometry,
         allowed_rigs: Arc::from([]),
         cube_origin: false,
+        world: None,
     };
     let gate = render_scene::ViewmodelCompletionGate::default();
     assert!(

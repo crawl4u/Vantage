@@ -42,6 +42,7 @@ use gpu::*;
 #[cfg(test)]
 mod tests;
 const HAND_SHADER: Handle<Shader> = uuid_handle!("05c3d760-7ab6-4f19-b6b3-dea197927fa5");
+const HAND_WORLD_SHADER: Handle<Shader> = uuid_handle!("5d0b7c5e-3f4a-4c7e-9a52-1f6b8e2d7a41");
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ViewmodelRenderPlugin;
@@ -74,6 +75,12 @@ fn install(app: &mut App) {
         app,
         HAND_SHADER,
         "viewmodel.wgsl",
+        crate::shader_safety::from_wgsl
+    );
+    load_internal_asset!(
+        app,
+        HAND_WORLD_SHADER,
+        "viewmodel_world.wgsl",
         crate::shader_safety::from_wgsl
     );
     let render_app = app.sub_app_mut(RenderApp);
@@ -154,6 +161,17 @@ impl crate::pipeline_warmup::PrewarmPipelines for HandGpu {
             ))
         })
         .ok_or("unsupported hand pipeline sample count")?;
+        ids.push(id);
+        let world_layout = &self.world_layout;
+        let id =
+            memoized_hand_pipeline(&mut self.world_pipeline_variants, samples, view.hdr, || {
+                cache.queue_render_pipeline(specialized_world_hand_pipeline(
+                    world_layout.clone(),
+                    samples,
+                    view.hdr,
+                ))
+            })
+            .ok_or("unsupported hand pipeline sample count")?;
         ids.push(id);
         Ok(())
     }

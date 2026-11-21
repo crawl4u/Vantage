@@ -184,3 +184,69 @@ fn a_held_cube_texture_grows_with_the_resolution_of_its_faces() {
         );
     }
 }
+
+/// A cube drawn from world pages names each face's own page and layer at any resolution, keeps
+/// the geometry of the baked cube, and copies no pixels.
+#[test]
+fn a_world_cube_names_the_pages_and_layers_of_its_faces() {
+    for source in [16, 64] {
+        let (compiled, records) = barrels_with_size(source);
+        let runtime = RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap();
+        let record = records
+            .iter()
+            .find(|r| r.name.as_ref() == "minecraft:barrel")
+            .unwrap();
+        let visual = BlockVisualId(record.sequential_id);
+        let (baked, _) = ViewmodelGeometry::opaque_cube(&runtime, visual).unwrap();
+        let (cube, skin) =
+            ViewmodelGeometry::opaque_world_cube(&runtime, visual, world_cube::DEFAULT_GRASS)
+                .expect("a plain cube is drawn from world pages");
+        let world = cube.world.as_ref().unwrap();
+        assert!(cube.vertices.is_empty() && cube.cube_origin);
+        assert_eq!(world.carrier, std::ptr::from_ref(&runtime) as usize);
+        assert_eq!(world.vertices.len(), baked.vertices.len());
+        assert_ne!(skin.identity, [0; 32]);
+        let block = runtime.resolve(assets::NetworkIdMode::Sequential, visual.0);
+        for (face, quad) in BlockFace::ALL.into_iter().zip(world.vertices.chunks(6)) {
+            let material = runtime
+                .materials()
+                .get(block.face(face).material_id() as usize)
+                .unwrap();
+            for (vertex, baked) in quad.iter().zip(&baked.vertices[face as usize * 6..]) {
+                assert_eq!(vertex.page, material.texture.page());
+                assert_eq!(vertex.layer, material.texture.layer());
+                assert_eq!(vertex.position, baked.position);
+                assert!(vertex.uv.iter().all(|uv| (0.0..=1.0).contains(uv)));
+                assert_eq!(vertex.tint, 0);
+            }
+        }
+    }
+}
+
+/// Every flag that tints a face gives its default hand colour; water, which has none, is refused.
+#[test]
+fn held_tints_follow_the_material_flags() {
+    use world_cube::{DEFAULT_GRASS, held_tint};
+    let grass = [1, 2, 3];
+    assert_eq!(held_tint(0, grass), Some(None));
+    assert_eq!(
+        held_tint(assets::MATERIAL_FLAG_GRASS_TINT, grass),
+        Some(Some(grass))
+    );
+    let foliage = |class| held_tint(assets::MATERIAL_FLAG_FOLIAGE_TINT | class, DEFAULT_GRASS);
+    let colours = [
+        foliage(0),
+        foliage(assets::MATERIAL_FLAG_BIRCH_FOLIAGE),
+        foliage(assets::MATERIAL_FLAG_EVERGREEN_FOLIAGE),
+    ];
+    assert!(colours.iter().all(|c| c.is_some_and(|c| c.is_some())));
+    assert_eq!(
+        colours
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3,
+        "each foliage class has its own colour"
+    );
+    assert_eq!(held_tint(assets::MATERIAL_FLAG_WATER_TINT, grass), None);
+}

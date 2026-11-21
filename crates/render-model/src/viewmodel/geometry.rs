@@ -53,6 +53,7 @@ pub fn validated_geometry(
         identity,
         allowed_rigs: Arc::from([]),
         cube_origin: false,
+        world: None,
     })
 }
 

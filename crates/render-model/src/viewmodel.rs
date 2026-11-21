@@ -3,6 +3,7 @@ use glam::{Mat4, Vec3};
 use std::sync::Arc;
 pub(crate) mod cube;
 pub mod geometry;
+pub mod world_cube;
 pub const VIEWMODEL_TEXTURE_SIDE: u32 = 64;
 
 /// The largest texture a held cube's faces are packed into.
@@ -56,12 +57,42 @@ pub struct HandVertex {
 
 const _: () = assert!(size_of::<HandVertex>() == 20);
 
+/// Set in [`WorldHandVertex::tint`] when the face is coloured by its tint RGB.
+pub const WORLD_HAND_TINTED: u32 = 1 << 24;
+/// Set when the face's alpha is a mask of where the tint applies, as on a grass side.
+pub const WORLD_HAND_OVERLAY_MASK: u32 = 1 << 25;
+
+/// A held-cube vertex that names a layer of a world texture page instead of skin texels.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct WorldHandVertex {
+    pub position: [f32; 3],
+    /// Position within the face, 0 to 1.
+    pub uv: [f32; 2],
+    pub page: u32,
+    pub layer: u32,
+    /// Tint red, green and blue in the low 24 bits, then the `WORLD_HAND_*` flags.
+    pub tint: u32,
+}
+
+const _: () = assert!(size_of::<WorldHandVertex>() == 32);
+
+/// A held cube drawn from the world's texture pages.
+#[derive(Clone, Debug)]
+pub struct WorldCube {
+    pub vertices: Arc<[WorldHandVertex]>,
+    /// Address of the asset carrier whose pages the vertices index.
+    pub carrier: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct ViewmodelGeometry {
     pub vertices: Arc<[HandVertex]>,
     pub identity: [u8; 32],
     pub allowed_rigs: Arc<[u32]>,
     pub cube_origin: bool,
+    /// When set, the cube is drawn from world pages and `vertices` is unused.
+    pub world: Option<WorldCube>,
 }
 
 impl ViewmodelGeometry {

@@ -522,6 +522,7 @@ fn actual_renderer_startup_revokes_pending_callback_and_equal_token_publish_reco
         identity: token.geometry,
         allowed_rigs: std::sync::Arc::from([]),
         cube_origin: false,
+        world: None,
     };
     let mut scene = ViewmodelScene::default();
     assert!(scene.publish(token, &skin, &geometry, &gate));
@@ -691,6 +692,7 @@ fn same_hand_token_reallocates_only_private_depth_when_internal_resolution_chang
         identity: token.geometry,
         allowed_rigs: std::sync::Arc::from([]),
         cube_origin: false,
+        world: None,
     };
     let gate = world.resource::<ViewmodelCompletionGate>().clone();
     assert!(
@@ -742,4 +744,31 @@ fn same_hand_token_reallocates_only_private_depth_when_internal_resolution_chang
             "valid scale transitions keep GPU admission"
         );
     }
+}
+
+/// The page-sampling hand shader validates, and its vertex layout and bindings match the
+/// geometry and the world's texture page set it reads.
+#[test]
+fn world_page_shader_validates_and_matches_the_vertex_and_page_abi() {
+    let source = include_str!("../viewmodel_world.wgsl");
+    let module = naga::front::wgsl::parse_str(source).unwrap();
+    naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::all(),
+    )
+    .validate(&module)
+    .unwrap();
+    // One binding per page, so a page added to the world set must reach the hand.
+    for page in 0..assets::MAX_TEXTURE_PAGES {
+        assert!(source.contains(&format!("var page{page}: texture_2d_array<f32>")));
+    }
+    assert!(!source.contains(&format!("var page{}:", assets::MAX_TEXTURE_PAGES)));
+    let descriptor = specialized_world_hand_pipeline(world_hand_layout(), 1, false);
+    let buffer = &descriptor.vertex.buffers[0];
+    assert_eq!(
+        buffer.array_stride as usize,
+        size_of::<render_model::viewmodel::WorldHandVertex>()
+    );
+    let last = buffer.attributes.last().unwrap();
+    assert_eq!(last.offset + last.format.size(), buffer.array_stride);
 }

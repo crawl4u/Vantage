@@ -155,6 +155,7 @@ use gpu::bind_groups::{
     prepare_chunk_animation_clock, prepare_chunk_bind_group, prepare_chunk_biome_tints,
     prepare_chunk_texture_assets, storage_table_fits,
 };
+pub(crate) use gpu::bind_groups::{WorldPageViews, publish_world_page_views};
 #[allow(unused_imports)]
 use gpu::layout::{
     ARENA_MIGRATION_FRAME_BYTES, ArenaGrowthError, ArenaGrowthPlan, ArenaMigration,
