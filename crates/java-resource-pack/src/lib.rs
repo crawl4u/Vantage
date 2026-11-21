@@ -27,6 +27,7 @@ mod manifest;
 pub mod menu_files;
 mod meta;
 mod multipart;
+mod parents;
 mod names;
 pub mod particle_atlas;
 mod sky;

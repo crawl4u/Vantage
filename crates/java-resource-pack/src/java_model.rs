@@ -142,7 +142,7 @@ fn builtin(name: &str) -> Option<Value> {
             json!({ "textures": { "particle": "#pane" }, "elements": [
             part([7, 0, 7], [9, 16, 9], &[("east", [7, 0, 9, 16], "pane")])] })
         }
-        _ => return None,
+        _ => return crate::parents::parent(name),
     })
 }
 
