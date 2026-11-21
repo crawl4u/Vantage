@@ -7,6 +7,7 @@ entity/fish/tropical_b
 entity/fish/tropical_b_pattern_4
 entity/fish/tropical_b_pattern_5
 entity/lead_knot/lead_knot
+entity/sulfur_cube/sulfur_cube_outer
 entity/trident/trident_riptide
 entity/villager/villager
 entity/zombie_villager/zombie_villager

@@ -76,19 +76,22 @@ def decode(data):
     if header is None:
         return None
     width, height, depth, color, _, _, interlace = header
-    if depth != 8 or interlace != 0 or color not in (0, 2, 3, 4, 6):
+    # Palette and grey images may pack several pixels per byte; the rest are 8 bits a channel.
+    packed = depth in (1, 2, 4) and color in (0, 3)
+    if (depth != 8 and not packed) or interlace != 0 or color not in (0, 2, 3, 4, 6):
         return None
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color]
-    stride = width * channels
+    stride = (width * depth + 7) // 8 if packed else width * channels
+    step = 1 if packed else channels
     raw = zlib.decompress(idat)
     rows, previous = [], bytearray(stride)
     for y in range(height):
         base = y * (stride + 1)
         filt, line = raw[base], bytearray(raw[base + 1 : base + 1 + stride])
         for x in range(stride):
-            a = line[x - channels] if x >= channels else 0
+            a = line[x - step] if x >= step else 0
             b = previous[x]
-            c = previous[x - channels] if x >= channels else 0
+            c = previous[x - step] if x >= step else 0
             if filt == 1:
                 line[x] = (line[x] + a) & 255
             elif filt == 2:
@@ -99,6 +102,17 @@ def decode(data):
                 line[x] = (line[x] + paeth(a, b, c)) & 255
         rows.append(line)
         previous = line
+    if packed:
+        # Expand to one byte per pixel so the loop below reads palette indices or grey levels.
+        mask = (1 << depth) - 1
+        scale = 255 // mask
+        expanded = []
+        for line in rows:
+            pixels = bytearray(width)
+            for x in range(width):
+                pixels[x] = (line[x * depth // 8] >> (8 - depth - (x * depth) % 8)) & mask
+            expanded.append(pixels if color == 3 else bytearray(v * scale for v in pixels))
+        rows = expanded
     out = bytearray()
     for line in rows:
         for x in range(width):
