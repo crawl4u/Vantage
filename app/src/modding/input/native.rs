@@ -71,8 +71,8 @@ pub(in crate::modding) fn prepare_native_input(
         return;
     };
     let (_, wheel_received) = scroll::sample(&mut physical.wheel, wheel_events.as_deref(), entity);
-    let focused = driven.is_some()
-        || (window.focused && focus.as_ref().is_none_or(|focus| focus.available()));
+    let focused =
+        driven.is_some() || (window.focused && focus.as_ref().is_none_or(|focus| focus.available()));
     if focused {
         let seed_pointer = !physical.held_seeded;
         physical.seed_held(keys.get_pressed());
@@ -176,11 +176,7 @@ pub(in crate::modding) fn prepare_native_input(
             } else {
                 text.as_deref()
             };
-            events.extend(
-                presentation
-                    .mod_ui_mut()
-                    .mod_panel_field_key(&key, text, modifiers),
-            );
+            events.extend(presentation.mod_ui_mut().mod_panel_field_key(&key, text, modifiers));
         } else if key != TEXT_INPUT && !repeat {
             pressed.push(key);
         }
@@ -278,15 +274,8 @@ pub(in crate::modding) fn prepare_native_input(
     };
     native.scroll = [0.0; 4];
     let chord_held = !native.scroll_keys.is_empty()
-        && native
-            .scroll_keys
-            .iter()
-            .all(|key| physical.held_keys.contains(key));
-    if !open
-        && focused
-        && !absorbed
-        && wheel_received
-        && chord_held
+        && native.scroll_keys.iter().all(|key| physical.held_keys.contains(key));
+    if !open && focused && !absorbed && wheel_received && chord_held
         && let Some(scroll) = scroll.as_deref_mut()
     {
         native.scroll = match scroll.unit {
@@ -315,11 +304,6 @@ pub(in crate::modding) fn prepare_native_input(
     );
     if !open {
         let owned = native.reserved.clone();
-        consume_reserved(
-            &mut keys,
-            mouse.as_deref_mut(),
-            &owned,
-            reserved.as_deref_mut(),
-        );
+        consume_reserved(&mut keys, mouse.as_deref_mut(), &owned, reserved.as_deref_mut());
     }
 }

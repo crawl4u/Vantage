@@ -3,9 +3,7 @@
 use client_audio::audio::engine::SoundEvent;
 use mod_api::handled_player_mod::Guest;
 use semantic_input::action_filter as input;
-use vantage::host::{
-    action_filter as actions, sound_handling as sound, teleport_handling as teleport,
-};
+use vantage::host::{action_filter as actions, sound_handling as sound, teleport_handling as teleport};
 
 /// The identity the semantic router sees for native Vantage's action filter.
 pub(crate) const ACTION_OWNER: u64 = 1 << 62;
@@ -17,10 +15,7 @@ pub(crate) fn wants_actions() -> bool {
 
 /// One verdict per transition from native Vantage's action filter (the CPS limiter).
 pub(crate) fn filter_actions(frame: &input::ActionFilterFrame) -> input::ActionVerdict {
-    let held = |value: [bool; 2]| actions::Held {
-        attack: value[0],
-        item_use: value[1],
-    };
+    let held = |value: [bool; 2]| actions::Held { attack: value[0], item_use: value[1] };
     let verdict = vantage::Mod::filter_actions(actions::ActionFrame {
         epoch: frame.epoch,
         time_us: frame.time_us,
@@ -50,9 +45,7 @@ pub(crate) fn filter_actions(frame: &input::ActionFilterFrame) -> input::ActionV
 }
 
 /// The rotation Vantage keeps for a local MovePlayer, or none while No cam reset is off.
-pub(crate) fn teleport_rotation(
-    rotation: crate::runtime::world::MovePlayerRotation,
-) -> Option<[f32; 2]> {
+pub(crate) fn teleport_rotation(rotation: crate::runtime::world::MovePlayerRotation) -> Option<[f32; 2]> {
     if !vantage::handler_config().no_cam_reset {
         return None;
     }
@@ -86,19 +79,13 @@ pub(crate) fn filter_sounds(observations: &[SoundEvent]) -> Vec<bool> {
         .enumerate()
         .filter(|(_, event)| {
             event.name.len() <= mod_api::MAX_SOUND_NAME_BYTES
-                && event
-                    .position
-                    .is_none_or(|p| p.iter().all(|v| v.is_finite()))
+                && event.position.is_none_or(|p| p.iter().all(|v| v.is_finite()))
         })
         .take(mod_api::MAX_HANDLED_SOUNDS);
     for (index, event) in selected {
         let handled = vantage::Mod::handle_sound(sound::SoundContext {
             name: event.name.to_string(),
-            position: event.position.map(|p| sound::Position {
-                x: p[0],
-                y: p[1],
-                z: p[2],
-            }),
+            position: event.position.map(|p| sound::Position { x: p[0], y: p[1], z: p[2] }),
             looping: event.looping,
             cancelled: false,
         });

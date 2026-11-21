@@ -210,11 +210,7 @@ pub(super) fn drive_mod(
                 pitch: delta.pitch,
             });
         gameplay.apply_native_controls(effects.as_ref(), delta, &ui);
-        super::vantage::present_touch(
-            &mut presentation,
-            native_touch.as_deref_mut(),
-            std::iter::empty(),
-        );
+        super::vantage::present_touch(&mut presentation, native_touch.as_deref_mut(), std::iter::empty());
         gameplay.apply_movement_intents(None, false);
         gameplay.apply_control_modes(None);
         gameplay.apply_movement_input(None, false, &ui);
@@ -254,11 +250,7 @@ pub(super) fn drive_mod(
                 now,
             );
         }
-        super::vantage::present_touch(
-            &mut presentation,
-            native_touch.as_deref_mut(),
-            std::iter::empty(),
-        );
+        super::vantage::present_touch(&mut presentation, native_touch.as_deref_mut(), std::iter::empty());
         return;
     }
     // Screen authority and cursor capture may change after wheel input was staged.
@@ -279,9 +271,7 @@ pub(super) fn drive_mod(
     }
     if let Some(native) = native_touch.as_deref_mut() {
         native.taps.extend(native_taps);
-        native
-            .taps
-            .truncate(ui::mod_touch::MAX_QUEUED_TOUCH_PRESSES);
+        native.taps.truncate(ui::mod_touch::MAX_QUEUED_TOUCH_PRESSES);
     }
     drawing_policy::bind(&mut extension.hosts, &gameplay);
     anchors::reconcile(&mut extension.hosts, &gameplay);
@@ -718,11 +708,9 @@ pub(super) fn drive_mod(
     let hidden = extension.hosts.hidden_hud_elements();
     let mod_ui = presentation.mod_ui_mut();
     mod_ui.set_hud_surfaces(
-        extension.hud_surfaces().chain(
-            native_hud
-                .iter()
-                .flat_map(|hud| super::vantage::published(hud)),
-        ),
+        extension
+            .hud_surfaces()
+            .chain(native_hud.iter().flat_map(|hud| super::vantage::published(hud))),
     );
     mod_ui.set_hidden_hud_elements(hidden);
     let mod_presentation = extension.hosts.merged_presentation();

@@ -56,10 +56,7 @@ pub(super) enum Sample {
 pub(super) struct NativeTerrain {
     pub(super) subscriptions: Vec<(TerrainQuery, Sample)>,
     pub(super) pending: Vec<TerrainQuery>,
-    pub(super) searches: Vec<(
-        mod_host::BlockSearch,
-        Option<Result<mod_host::FoundBlocks, TerrainReadError>>,
-    )>,
+    pub(super) searches: Vec<(mod_host::BlockSearch, Option<Result<mod_host::FoundBlocks, TerrainReadError>>)>,
     pub(super) pending_searches: Vec<mod_host::BlockSearch>,
     cursor: usize,
     revision: u64,
@@ -129,8 +126,7 @@ impl NativeTerrain {
             *sample = match refresh {
                 TerrainRefresh::Keep => continue,
                 TerrainRefresh::Replace(region)
-                    if mod_host::terrain_region_bytes(&region)
-                        > mod_api::MAX_TERRAIN_RESPONSE_BYTES =>
+                    if mod_host::terrain_region_bytes(&region) > mod_api::MAX_TERRAIN_RESPONSE_BYTES =>
                 {
                     Sample::Failed(TerrainReadError::LimitExceeded)
                 }
@@ -222,10 +218,7 @@ impl TerrainSampling {
         context: &GameplayContext<'_>,
         observation: Option<&mod_host::WorldObservation>,
     ) {
-        let stream = context
-            .world
-            .as_ref()
-            .and_then(|world| world.stream.as_ref());
+        let stream = context.world.as_ref().and_then(|world| world.stream.as_ref());
         let (Some(observation), Some(stream), Some(registries)) =
             (observation, stream, context.collisions.as_ref())
         else {
@@ -251,8 +244,7 @@ impl TerrainSampling {
             descriptors: &mut self.descriptors,
         };
         native.refresh(mod_api::MAX_TERRAIN_FRAME_CELLS, &mut source);
-        self.searches
-            .refresh_native(&mut native.searches, stream, observation);
+        self.searches.refresh_native(&mut native.searches, stream, observation);
     }
 }
 

@@ -27,11 +27,9 @@ pub(in crate::modding) fn refresh_presentation(world: &mut World) {
         let hidden = runtime.hosts.hidden_hud_elements();
         let mod_ui = presentation.mod_ui_mut();
         mod_ui.set_hud_surfaces(
-            runtime.hud_surfaces().chain(
-                native
-                    .iter()
-                    .flat_map(|hud| crate::modding::vantage::published(hud)),
-            ),
+            runtime
+                .hud_surfaces()
+                .chain(native.iter().flat_map(|hud| crate::modding::vantage::published(hud))),
         );
         mod_ui.set_hidden_hud_elements(hidden);
         presentation.set_mod_presentation(runtime.hosts.merged_presentation());

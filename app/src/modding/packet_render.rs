@@ -430,9 +430,7 @@ pub(super) fn publish_alone(
         // ride on the packet output.
         Some(native) if !native.output.retained.is_empty() || !native.output.masks.is_empty() => {
             let mut combined = drawing.output.clone();
-            combined
-                .retained
-                .extend(native.output.retained.iter().cloned());
+            combined.retained.extend(native.output.retained.iter().cloned());
             combined.masks = drawing
                 .output
                 .masks

@@ -55,9 +55,7 @@ mod pointer;
 pub(crate) mod registration;
 mod teleport_handler;
 pub(crate) use teleport_handler::handle_move_player_rotation;
-pub(crate) use vantage::handlers::{
-    filter_sounds as filter_native_sounds, wants_sounds as native_wants_sounds,
-};
+pub(crate) use vantage::handlers::{filter_sounds as filter_native_sounds, wants_sounds as native_wants_sounds};
 mod terrain;
 
 /// Every loaded mod's presentation cues committed this frame, in load order.
@@ -170,16 +168,17 @@ impl ModRuntime {
     /// Each live guest's committed HUD surface in load order, with its stable UI owner and
     /// the actors its projections may follow.
     fn hud_surfaces(&self) -> impl Iterator<Item = mod_ui::PublishedHudSurface<'_>> {
-        (0..self.hosts.host_count()).filter_map(|index| {
-            let host = self.hosts.host(index);
-            let (surface, revision) = host.hud_surface()?;
-            Some(mod_ui::PublishedHudSurface {
-                owner: self.panel_ui_owner(index),
-                revision,
-                surface,
-                authority: actor_authority(host.grants()),
+        (0..self.hosts.host_count())
+            .filter_map(|index| {
+                let host = self.hosts.host(index);
+                let (surface, revision) = host.hud_surface()?;
+                Some(mod_ui::PublishedHudSurface {
+                    owner: self.panel_ui_owner(index),
+                    revision,
+                    surface,
+                    authority: actor_authority(host.grants()),
+                })
             })
-        })
     }
 
     /// Existing mod order chooses one active, explicitly authorized local menu brand.

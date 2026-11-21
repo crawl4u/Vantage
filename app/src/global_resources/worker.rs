@@ -18,10 +18,7 @@ const PACKS: Filter = Filter {
 
 pub(super) enum Command {
     MinecraftImport(Box<launcher_host::minecraft_import::Request>),
-    Action {
-        action: Action,
-        revision: u64,
-    },
+    Action { action: Action, revision: u64 },
     Import(PathBuf),
     Commit(Vec<resource_pack::ActivePack>),
     /// Rename the open folder to this name.
@@ -442,16 +439,12 @@ fn scan_folder(
                 );
                 watch.seen.remove(&path);
                 if !keep_original(&root, &path) {
-                    watch
-                        .rejected
-                        .extend(stamp.map(|stamp| (path.clone(), stamp)));
+                    watch.rejected.extend(stamp.map(|stamp| (path.clone(), stamp)));
                 }
                 changed = true;
             }
             result => {
-                watch
-                    .rejected
-                    .extend(stamp.map(|stamp| (path.clone(), stamp)));
+                watch.rejected.extend(stamp.map(|stamp| (path.clone(), stamp)));
                 snapshot.message = match result {
                     Err(error) => format!("{label}: {error}"),
                     _ => format!("{label} has no resource pack in it."),
@@ -759,10 +752,7 @@ fn act(
         }
         Action::PutInFolder { index, folder } => {
             let target = match folder {
-                Some(folder) => snapshot
-                    .subfolders()
-                    .get(folder)
-                    .map(|path| (*path).to_owned()),
+                Some(folder) => snapshot.subfolders().get(folder).map(|path| (*path).to_owned()),
                 None => Some(resource_pack::folder_parent(&snapshot.folder).to_owned()),
             };
             if let (Some(pack), Some(target)) = (snapshot.available.get(index), target) {
@@ -776,10 +766,7 @@ fn act(
                 let mut places = vec![String::new()];
                 places.extend(snapshot.folders.iter().cloned());
                 let current = library.folder_of(pack.id);
-                let at = places
-                    .iter()
-                    .position(|place| place == current)
-                    .unwrap_or(0);
+                let at = places.iter().position(|place| place == current).unwrap_or(0);
                 let target = places[(at + 1) % places.len()].clone();
                 library.place_pack(pack.id, &target)?;
                 clear_indexed(snapshot);

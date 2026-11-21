@@ -157,7 +157,12 @@ fn thumbnail_crop(width: u32, height: u32) -> Option<[u32; 4]> {
         return None;
     }
     let (crop_width, crop_height) = (units * aspect_width, units * aspect_height);
-    Some([(width - crop_width) / 2, 0, crop_width, crop_height])
+    Some([
+        (width - crop_width) / 2,
+        0,
+        crop_width,
+        crop_height,
+    ])
 }
 
 /// Returns the divisor that reduces the thumbnail dimensions to their aspect ratio.
