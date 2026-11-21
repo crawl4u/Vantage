@@ -108,6 +108,11 @@ fn a_bound_java_model_redraws_the_states_that_map_to_its_java_block_and_no_other
 /// A base whose only visual is a pane or fence of vanilla's template group: a pane has sixteen
 /// mask templates of six quads, a fence a post and sixteen arm templates of eight quads an arm.
 fn connected_base(family: u32) -> RuntimeAssets {
+    connected_base_blending(family, false)
+}
+
+/// [`connected_base`] whose faces blend with what is behind them when `blend` is set.
+fn connected_base_blending(family: u32, blend: bool) -> RuntimeAssets {
     let diagnostic = RuntimeAssets::diagnostic();
     let mut pane = super::super::diagnostic_visual();
     pane.kind = VisualKind::Model;
@@ -144,7 +149,16 @@ fn connected_base(family: u32) -> RuntimeAssets {
         visuals: vec![pane].into(),
         light_properties: vec![assets::LightProperties::OPAQUE_DARK; 1].into(),
         hashed: Box::new([]),
-        materials: vec![assets::Material::unvaried(); 3].into(),
+        materials: (0..3)
+            .map(|index| {
+                let mut material = assets::Material::unvaried();
+                if blend && index != 0 {
+                    material.flags |= assets::MATERIAL_FLAG_ALPHA_BLEND;
+                }
+                material
+            })
+            .collect::<Vec<_>>()
+            .into(),
         model_templates: templates.into(),
         model_quads: vec![quad; start as usize].into(),
         animations: Box::new([]),
@@ -267,4 +281,15 @@ fn a_bound_java_fence_redraws_its_post_and_one_arm_template_for_each_mask() {
         let arms = &templates[1 + mask as usize];
         assert_eq!(arms.quad_count, mask.count_ones(), "mask {mask}");
     }
+}
+
+#[test]
+fn a_redrawn_block_blends_where_the_vanilla_block_does() {
+    let family = assets::MODEL_TEMPLATE_FLAG_PANE;
+    let method = |blend: bool| {
+        let base = connected_base_blending(family, blend);
+        super::super::java_models::render_method(&base, base.resolve(NetworkIdMode::Sequential, 0))
+    };
+    assert_eq!(method(true), protocol_ids::BlockRenderMethod::Blend);
+    assert_eq!(method(false), protocol_ids::BlockRenderMethod::AlphaTest);
 }

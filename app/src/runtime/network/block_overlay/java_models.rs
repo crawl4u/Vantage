@@ -186,7 +186,12 @@ impl Builder<'_> {
                 0,
             );
             let template = *templates.entry(key).or_insert_with(|| {
-                let components = components(&entry.geometry, &entry.materials, entry.rotation);
+                let method = render_method(
+                    base,
+                    base.resolve(assets::NetworkIdMode::Sequential, visual as u32),
+                );
+                let components =
+                    components(&entry.geometry, &entry.materials, entry.rotation, method);
                 let built = self.model(&components, geometry, &[]);
                 (built.kind == assets::VisualKind::Model).then_some(built.model_template)
             });
@@ -196,6 +201,22 @@ impl Builder<'_> {
                     .push((visual as u32, template));
             }
         }
+    }
+}
+
+/// How a redrawn block's faces blend: with what is behind them where the vanilla block already
+/// does (stained glass), and as cut-out art otherwise.
+pub(super) fn render_method(
+    base: &assets::RuntimeAssets,
+    block: assets::ResolvedBlock,
+) -> BlockRenderMethod {
+    let blends = assets::BlockFace::ALL.into_iter().any(|face| {
+        base.material(block.face(face).material_id()).flags & assets::MATERIAL_FLAG_ALPHA_BLEND != 0
+    });
+    if blends {
+        BlockRenderMethod::Blend
+    } else {
+        BlockRenderMethod::AlphaTest
     }
 }
 
@@ -212,6 +233,7 @@ fn components(
     geometry: &Arc<str>,
     materials: &[(Arc<str>, Arc<str>)],
     rotation: [i32; 3],
+    method: BlockRenderMethod,
 ) -> CustomVisualComponents {
     CustomVisualComponents {
         geometry: Some(geometry.clone()),
@@ -223,7 +245,7 @@ fn components(
                         name.clone(),
                         texture.clone(),
                     );
-                    material.render_method = BlockRenderMethod::AlphaTest;
+                    material.render_method = method;
                     material
                 })
                 .collect(),
@@ -262,9 +284,10 @@ impl Builder<'_> {
         else {
             return;
         };
+        let method = render_method(base, block);
         let head = *groups
             .entry((template, index))
-            .or_insert_with(|| self.connected_group(entry, flags, geometries));
+            .or_insert_with(|| self.connected_group(entry, flags, method, geometries));
         if let Some(head) = head {
             self.overlay.template_overrides.push((visual, head));
         }
@@ -276,6 +299,7 @@ impl Builder<'_> {
         &mut self,
         entry: &Connected,
         flags: u32,
+        method: BlockRenderMethod,
         geometries: &std::collections::HashMap<String, Geometry>,
     ) -> Option<u32> {
         let always = geometries.get(&*entry.always)?;
@@ -302,7 +326,7 @@ impl Builder<'_> {
         let family = flags & CONNECTED_FAMILY;
         let first = self.overlay.model_templates.len();
         let quads = self.overlay.model_quads.len();
-        let components = components(&entry.always, &entry.materials, [0; 3]);
+        let components = components(&entry.always, &entry.materials, [0; 3], method);
         for shape in &shapes {
             if !self.push_shape(&components, shape, family) {
                 self.overlay.model_templates.truncate(first);
