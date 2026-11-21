@@ -277,6 +277,135 @@ pub(crate) fn parent(name: &str) -> Option<Value> {
                     [8.0, hook - if hanging { 1.0 } else { 0.0 } + if hanging { 6.0 } else { 2.0 }, 9.5],
                     ["west", "east"], [14.0, low, 11.0, high])] })
         }
+        name if name.starts_with("block/template_bars_") => {
+            let bars = |face: &'static str, uv: [f64; 4]| (face, Some(uv), "bars", 0);
+            let edge = |face: &'static str, uv: [f64; 4]| (face, Some(uv), "edge", 0);
+            let mut elements = Vec::new();
+            match name.trim_start_matches("block/template_bars_") {
+                "post_ends" => {
+                    for y in [0.001, 15.999] {
+                        elements.push(cuboid(
+                            [7.0, y, 7.0],
+                            [9.0, y, 9.0],
+                            &[
+                                edge("down", [7.0, 7.0, 9.0, 9.0]),
+                                edge("up", [7.0, 7.0, 9.0, 9.0]),
+                            ],
+                        ));
+                    }
+                }
+                "post" => {
+                    elements.push(cuboid(
+                        [8.0, 0.0, 7.0],
+                        [8.0, 16.0, 9.0],
+                        &[
+                            bars("west", [7.0, 0.0, 9.0, 16.0]),
+                            bars("east", [9.0, 0.0, 7.0, 16.0]),
+                        ],
+                    ));
+                    elements.push(cuboid(
+                        [7.0, 0.0, 8.0],
+                        [9.0, 16.0, 8.0],
+                        &[
+                            bars("north", [7.0, 0.0, 9.0, 16.0]),
+                            bars("south", [9.0, 0.0, 7.0, 16.0]),
+                        ],
+                    ));
+                }
+                "cap" => {
+                    elements.push(cuboid(
+                        [8.0, 0.0, 8.0],
+                        [8.0, 16.0, 9.0],
+                        &[
+                            bars("west", [8.0, 0.0, 7.0, 16.0]),
+                            bars("east", [7.0, 0.0, 8.0, 16.0]),
+                        ],
+                    ));
+                    elements.push(cuboid(
+                        [7.0, 0.0, 9.0],
+                        [9.0, 16.0, 9.0],
+                        &[
+                            bars("north", [9.0, 0.0, 7.0, 16.0]),
+                            bars("south", [7.0, 0.0, 9.0, 16.0]),
+                        ],
+                    ));
+                }
+                "cap_alt" => {
+                    elements.push(cuboid(
+                        [8.0, 0.0, 7.0],
+                        [8.0, 16.0, 8.0],
+                        &[
+                            bars("west", [8.0, 0.0, 9.0, 16.0]),
+                            bars("east", [9.0, 0.0, 8.0, 16.0]),
+                        ],
+                    ));
+                    elements.push(cuboid(
+                        [7.0, 0.0, 7.0],
+                        [9.0, 16.0, 7.0],
+                        &[
+                            bars("north", [7.0, 0.0, 9.0, 16.0]),
+                            bars("south", [9.0, 0.0, 7.0, 16.0]),
+                        ],
+                    ));
+                }
+                "side" => {
+                    elements.push(cuboid(
+                        [8.0, 0.0, 0.0],
+                        [8.0, 16.0, 8.0],
+                        &[
+                            bars("west", [16.0, 0.0, 8.0, 16.0]),
+                            bars("east", [8.0, 0.0, 16.0, 16.0]),
+                        ],
+                    ));
+                    elements.push(cuboid(
+                        [7.0, 0.0, 0.0],
+                        [9.0, 16.0, 7.0],
+                        &[edge("north", [7.0, 0.0, 9.0, 16.0])],
+                    ));
+                    for y in [0.001, 15.999] {
+                        elements.push(cuboid(
+                            [7.0, y, 0.0],
+                            [9.0, y, 7.0],
+                            &[
+                                edge("down", [9.0, 0.0, 7.0, 7.0]),
+                                edge("up", [7.0, 0.0, 9.0, 7.0]),
+                            ],
+                        ));
+                    }
+                }
+                "side_alt" => {
+                    elements.push(cuboid(
+                        [8.0, 0.0, 8.0],
+                        [8.0, 16.0, 16.0],
+                        &[
+                            bars("west", [8.0, 0.0, 0.0, 16.0]),
+                            bars("east", [0.0, 0.0, 8.0, 16.0]),
+                        ],
+                    ));
+                    elements.push(cuboid(
+                        [7.0, 0.0, 9.0],
+                        [9.0, 16.0, 16.0],
+                        &[
+                            edge("south", [7.0, 0.0, 9.0, 16.0]),
+                            edge("down", [9.0, 9.0, 7.0, 16.0]),
+                            edge("up", [7.0, 9.0, 9.0, 16.0]),
+                        ],
+                    ));
+                    for y in [0.001, 15.999] {
+                        elements.push(cuboid(
+                            [7.0, y, 9.0],
+                            [9.0, y, 16.0],
+                            &[
+                                edge("down", [9.0, 9.0, 7.0, 16.0]),
+                                edge("up", [7.0, 9.0, 9.0, 16.0]),
+                            ],
+                        ));
+                    }
+                }
+                _ => return None,
+            }
+            json!({ "textures": { "particle": "#bars" }, "elements": elements })
+        }
         _ => return None,
     })
 }
@@ -333,5 +462,45 @@ mod tests {
         assert_eq!(furnace.elements.len(), 1);
         let hanging = resolve("block/template_hanging_lantern", &pack).unwrap();
         assert_eq!(hanging.elements[0].from, [5.0, 1.0, 5.0]);
+    }
+
+    #[test]
+    fn iron_bars_connect_through_the_same_parts_as_panes_do() {
+        use crate::{java_model::resolve, multipart};
+        let pack = |name: &str| {
+            let (model, parent) = match name {
+                "block/post_ends" => ("post_ends", ()),
+                "block/post" => ("post", ()),
+                "block/cap" => ("cap", ()),
+                "block/cap_alt" => ("cap_alt", ()),
+                "block/side" => ("side", ()),
+                "block/side_alt" => ("side_alt", ()),
+                _ => return None,
+            };
+            let _ = parent;
+            Some(json!({ "parent": format!("block/template_bars_{model}"),
+                "textures": { "bars": "block/iron_bars", "edge": "block/iron_bars" } }))
+        };
+        let part = |model: &str, when: Value, y: i64| json!({ "apply": { "model": format!("block/{model}"), "y": y }, "when": when });
+        let parts = vec![
+            json!({ "apply": { "model": "block/post_ends" } }),
+            part(
+                "post",
+                json!({ "east": "false", "north": "false", "south": "false", "west": "false" }),
+                0,
+            ),
+            part(
+                "cap",
+                json!({ "east": "false", "north": "true", "south": "false", "west": "false" }),
+                0,
+            ),
+            part("side", json!({ "north": "true" }), 0),
+        ];
+        let bars = multipart::connected(&parts, &pack).unwrap();
+        assert_eq!(bars.always.elements.len(), 2, "the post's ends");
+        // Unconnected: the crossed post. Connected north alone: the cap and the side.
+        assert_eq!(bars.masks[0].elements.len(), 2);
+        assert_eq!(bars.masks[0b0001].elements.len(), 2 + 4);
+        assert!(resolve("block/template_bars_post", &|_| None).is_some());
     }
 }
