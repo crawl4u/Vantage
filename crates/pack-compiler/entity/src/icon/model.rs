@@ -14,7 +14,7 @@ use assets::{
 
 use super::cube::Reject;
 
-pub(super) const SIDE: usize = 32;
+pub(super) const SIDE: usize = 64;
 
 struct Face<'a> {
     corners: [[f32; 3]; 4],

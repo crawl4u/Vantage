@@ -234,6 +234,12 @@ impl EquipmentRuntime {
                     (index, MeshKey::SessionBlock(index), placement, location)
                 }
                 ItemArtwork::SessionSprite => {
+                    // An entity-drawn block's modelled rig beats its flat inventory icon.
+                    if HeldBlockEntity::from_stack(&item.identifier, item.metadata)
+                        .is_some_and(|kind| runtime.held_block_entities.models.contains_key(&kind))
+                    {
+                        return None;
+                    }
                     let (identifier, metadata) = runtime.session_icon_key(item);
                     let (index, placement, location) =
                         runtime.session_sprite(identifier, metadata)?;

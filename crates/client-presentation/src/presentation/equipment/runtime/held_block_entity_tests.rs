@@ -371,3 +371,37 @@ fn held_block_entity_alpha_uses_only_admitted_models_after_session_materials() {
         assert_eq!(off.presentation.submission.input.rig, rig);
     }
 }
+
+#[test]
+fn a_modelled_block_entity_in_hand_beats_its_flat_session_icon() {
+    use client_ui::ui_runtime::presentation::{SessionIcon, SessionIcons};
+
+    let (mut runtime, body, mut item) = block_fixture();
+    item.identifier = Arc::from("minecraft:chest");
+    let animation = ItemAnimationState::default();
+    let fallback = runtime.first_person_item(&body, &item, animation).unwrap();
+    let kind = HeldBlockEntity::from_item(&item.identifier).unwrap();
+    let rig = equipment_rig_id(0);
+    runtime
+        .held_block_entities
+        .models
+        .insert(kind, (rig, fallback.presentation.location, [1.0; 2]));
+    let items = crate::session_assets::SessionItems {
+        components: Arc::new(Default::default()),
+        icons: Some(Arc::new(SessionIcons {
+            icons: vec![SessionIcon {
+                identifier: Arc::clone(&item.identifier),
+                metadata: 0,
+                width: 16,
+                height: 16,
+                rgba8: vec![200; 16 * 16 * 4].into(),
+            }],
+            ..Default::default()
+        })),
+    };
+    let staged = StagedSessionIcons::stage(Some(&items)).unwrap();
+    let (_, locations) = ActorArtworkPages::default().with_equipment_rasters(staged.rasters());
+    runtime.set_session_items(Some(&items), Some(staged), locations);
+    let main = runtime.first_person_item(&body, &item, animation).unwrap();
+    assert_eq!(main.presentation.submission.input.rig, rig);
+}
