@@ -958,6 +958,15 @@ fn resolve(
         Template::Sign { mount, front, back } => {
             let mut face = |spec: &Option<sign_text::SignTextSpec>| -> Option<SignFace> {
                 let spec = spec.as_ref()?;
+                if hidden {
+                    // Not drawn now: ready its canvas for when it turns into view, without
+                    // taking a slot from the signs that are drawn.
+                    scene.text_warm(spec.cache_key(), || {
+                        sign_text::rasterize(spec, context.font, &mut runtime.layouts)
+                            .unwrap_or_default()
+                    });
+                    return None;
+                }
                 let rect: AtlasRect = scene.text_rect(spec.cache_key(), || {
                     sign_text::rasterize(spec, context.font, &mut runtime.layouts)
                         .unwrap_or_default()

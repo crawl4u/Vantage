@@ -344,6 +344,15 @@ impl BlockEntityScene {
         self.atlas.as_ref()?.text_cell(slot?)
     }
 
+    /// Prepares the text canvas for `key` for a sign not drawn yet, without displacing a canvas
+    /// that is drawn.
+    pub fn text_warm(&mut self, key: u64, make: impl FnOnce() -> Vec<u8>) {
+        if let Some(text) = self.text.as_mut() {
+            text.text_warm(key, make);
+            self.sync_canvas_layout();
+        }
+    }
+
     /// The atlas rect of the 128x128 map canvas for `key`, rasterizing `make` on a miss.
     pub fn map_rect(&mut self, key: u64, make: impl FnOnce() -> Vec<u8>) -> Option<AtlasRect> {
         let slot = self.text.as_mut()?.map_slot(key, make);

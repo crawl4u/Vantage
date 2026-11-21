@@ -373,6 +373,47 @@ impl CellPool {
         self.revision = self.revision.wrapping_add(1);
     }
 
+    /// Makes `key` resident for later without claiming a slot from what is drawn now: a hit is
+    /// left as old as it was so drawn canvases can still replace it, and a miss takes only a free
+    /// slot or a new page, and only while half the frame's rasterization budget is unspent.
+    fn warm(&mut self, key: u64, make: impl FnOnce() -> Vec<u8>) {
+        if self.slots_by_key.contains_key(&key)
+            || self.made_this_frame >= MAX_NEW_CELLS_PER_FRAME / 2
+        {
+            return;
+        }
+        let slot = match self.keys.iter().position(Option::is_none) {
+            Some(slot) => slot,
+            None if self.pages.len() < self.max_pages => {
+                let slot = self.keys.len();
+                self.add_page();
+                slot
+            }
+            None => return,
+        };
+        let canvas = make();
+        self.made_this_frame += 1;
+        let [cell_width, cell_height] = self.cell;
+        if canvas.len() != cell_width * cell_height * 4 {
+            return;
+        }
+        let page_slots = self.page_slots();
+        let page_slot = slot % page_slots;
+        let (column, row) = (page_slot % self.columns, page_slot / self.columns);
+        let page = &mut self.pages[slot / page_slots];
+        for line in 0..cell_height {
+            let target = ((row * cell_height + line) * self.width + column * cell_width) * 4;
+            let source = line * cell_width * 4;
+            page[target..target + cell_width * 4]
+                .copy_from_slice(&canvas[source..source + cell_width * 4]);
+        }
+        self.keys[slot] = Some(key);
+        self.slots_by_key.insert(key, slot);
+        // Older than anything drawn this frame, so a drawn canvas may take it.
+        self.last_used[slot] = self.frame_start.saturating_sub(1);
+        self.revision = self.revision.wrapping_add(1);
+    }
+
     /// Returns the slot for key, rasterizing make on a miss with bounded per-frame work.
     /// Evicts only unused slots; returns None for invalid canvases or exhausted page/raster budgets.
     fn slot(&mut self, key: u64, make: impl FnOnce() -> Vec<u8>) -> Option<usize> {
@@ -544,6 +585,16 @@ impl DynamicCells {
             }
         }
         pixels
+    }
+
+    /// Keeps `key`'s canvas ready without taking a slot a drawn canvas needs; see
+    /// [`CellPool::warm`].
+    pub fn text_warm(&mut self, key: u64, make: impl FnOnce() -> Vec<u8>) {
+        let can_grow = self.layout.height + TEXT_PAGE_HEIGHT <= self.height_limit;
+        self.text.max_pages = (self.text.pages.len() + usize::from(can_grow)).min(MAX_TEXT_PAGES);
+        self.text.warm(key, make);
+        self.layout
+            .extend(self.text.pages.len(), self.maps.pages.len());
     }
 
     /// The text slot holding `key`; see [`CellPool::slot`].
@@ -878,5 +929,49 @@ mod tests {
         assert_eq!(atlas.size()[1], 5 + dynamic_height(2));
         assert_eq!(atlas.text_cell(0).unwrap().y, (5 + MAP_STRIP_HEIGHT) as f32);
         assert!(atlas.text_cell(TEXT_SLOT_COUNT).is_some());
+    }
+}
+
+#[cfg(test)]
+mod warm_tests {
+    use super::*;
+
+    fn canvas(value: u8) -> Vec<u8> {
+        vec![value; (TEXT_CELL[0] * TEXT_CELL[1] * 4) as usize]
+    }
+
+    /// Signs not drawn yet are readied without taking a slot a drawn sign needs.
+    #[test]
+    fn warmed_canvases_never_displace_drawn_ones_and_yield_to_them() {
+        let mut text = DynamicCells::new(MIN_DYNAMIC_ATLAS_WIDTH).unwrap();
+        let page = TEXT_SLOT_COUNT as u64;
+        // A first frame draws a whole page.
+        for key in 0..page {
+            text.text_slot(key, || canvas(1)).unwrap();
+            if key % 8 == 7 {
+                text.begin_frame();
+            }
+        }
+        text.begin_frame();
+        // Another frame warms far more than fits: nothing drawn is taken, and the pool stops
+        // growing at its cap.
+        for key in 1_000..1_000 + 2 * page {
+            text.text_warm(key, || canvas(2));
+            text.begin_frame();
+        }
+        for key in 0..page {
+            assert!(text.text_slot(key, || panic!("drawn canvas lost")).is_some());
+        }
+        assert!(text.text_pages() as usize <= MAX_TEXT_PAGES);
+        // A canvas drawn now takes a warmed slot rather than being refused.
+        text.begin_frame();
+        let mut taken = 0;
+        for key in 5_000..5_000 + page {
+            taken += usize::from(text.text_slot(key, || canvas(3)).is_some());
+            if key % 8 == 7 {
+                text.begin_frame();
+            }
+        }
+        assert!(taken > 0);
     }
 }

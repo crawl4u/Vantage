@@ -502,7 +502,7 @@ fn framed_ordinary_items_keep_their_icon_without_map_data() {
 #[test]
 fn signs_hidden_from_their_first_frame_reveal_with_resident_text() {
     let mut fixture = Fixture::new();
-    // More signs than one frame may rasterize.
+    // More signs than one frame may ready.
     let signs: Vec<_> = (0..20)
         .map(|index| {
             let template = Template::Sign {
@@ -527,6 +527,9 @@ fn signs_hidden_from_their_first_frame_reveal_with_resident_text() {
             .update(SceneClock::default(), &[], &[])
             .dynamic_revision
     };
+    // Hidden signs ready half a frame's rasterization budget each frame, leaving the rest to
+    // the signs that are drawn, so twenty take three frames.
+    hidden_frame(&mut fixture);
     hidden_frame(&mut fixture);
     let revision = hidden_frame(&mut fixture);
     for (position, template) in &signs {
