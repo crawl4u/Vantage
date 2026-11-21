@@ -22,6 +22,7 @@ mod cached;
 pub use cached::{CachedPackMetadata, cached_pack_metadata};
 mod directory;
 mod java;
+mod java_base;
 mod selection;
 pub use selection::{
     GlobalSelectionEntry, ParsedGlobalSelection, merge_global_selection, parse_global_selection,

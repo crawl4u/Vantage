@@ -1,6 +1,6 @@
 //! Imports a Java Edition resource pack by translating it into an ordinary Bedrock pack archive.
 
-use super::{PACK_IMPORT_EXTENSIONS, directory::BoundedArchive, read_entry};
+use super::{PACK_IMPORT_EXTENSIONS, directory::BoundedArchive, java_base, read_entry};
 use crate::{
     AdmissionError, LibraryError, MAX_DECLARED_BYTES_PER_PACK, MAX_FILE_BYTES, MAX_MANIFEST_BYTES,
     MAX_PACK_TEXTURE_BYTES,
@@ -39,10 +39,20 @@ pub(super) fn translate(
         .iter()
         .filter_map(|(index, path)| Some((path.strip_prefix(root)?.to_owned(), *index)))
         .collect();
-    let relative: Vec<String> = entries.keys().cloned().collect();
+    // The installed Java release fills every texture the pack omits, so those blocks and items
+    // keep Java's art instead of falling back to Bedrock's.
+    let mut base = java_base::open();
+    let base_entries = base
+        .as_ref()
+        .map(|base| base.missing_from(&entries))
+        .unwrap_or_default();
+    let relative: Vec<String> = entries.keys().chain(base_entries.keys()).cloned().collect();
     let translation = java_resource_pack::translate(
         &relative,
-        |path| read_entry(archive, *entries.get(path)?, read_limit(path)).ok(),
+        |path| match entries.get(path) {
+            Some(index) => read_entry(archive, *index, read_limit(path)).ok(),
+            None => base.as_mut()?.read(*base_entries.get(path)?),
+        },
         &pack_name(source, root),
         MAX_PACK_TEXTURE_BYTES,
     )

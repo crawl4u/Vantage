@@ -27,6 +27,7 @@ zip-footer = { path = "../zip-footer" }
 
 [dev-dependencies]
 image.workspace = true
+tempfile = "3"
 zip = { version = "7", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [lints]
