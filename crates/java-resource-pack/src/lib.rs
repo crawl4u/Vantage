@@ -26,6 +26,7 @@ pub mod java_model;
 mod manifest;
 pub mod menu_files;
 mod meta;
+mod multipart;
 mod names;
 pub mod particle_atlas;
 mod sky;

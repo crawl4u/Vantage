@@ -5,9 +5,10 @@
 //! the geometry, its texture variables and its whole-block turn. Entries name the Java block and
 //! its Java properties; the client finds the Bedrock states that map to them through the game's
 //! Java mapping, so no name or state table is kept here. A block built from `multipart` keeps
-//! its vanilla shape.
+//! its vanilla shape unless its parts depend only on the four horizontal connections, as a
+//! fence's or a pane's do ([`multipart`]).
 
-use crate::{Layout, java_model, names};
+use crate::{Layout, java_model, multipart, names};
 use serde_json::{Map, Value, json};
 use std::{
     cell::RefCell,
@@ -100,6 +101,18 @@ pub(crate) fn translate(
             let mut source = source.borrow_mut();
             (source.0)(path).and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
         };
+        if let Some(parts) = document
+            .as_ref()
+            .and_then(|document| document.get("multipart")?.as_array())
+        {
+            if entries.len() < MAX_ENTRIES
+                && let Some((entry, files)) = connection_entry(layout, block, parts, &load)
+            {
+                entries.push(entry);
+                geometries.extend(files);
+            }
+            continue;
+        }
         let Some(variants) = document
             .as_ref()
             .and_then(|document| document.get("variants")?.as_object())
@@ -168,6 +181,53 @@ pub(crate) fn translate(
     Output { files }
 }
 
+/// The binding of a fence or pane: the geometry that always draws, one geometry per connection
+/// mask, and the Bedrock texture key each merged texture variable names. `None` when the block
+/// is not drawn from connections alone, or a texture is not a block texture.
+fn connection_entry(
+    layout: Layout,
+    block: &str,
+    parts: &[Value],
+    load: &dyn Fn(&str) -> Option<Value>,
+) -> Option<(Value, BTreeMap<String, Value>)> {
+    let connected = multipart::connected(parts, load)?;
+    let mut geometries = BTreeMap::new();
+    let mut materials = Map::new();
+    let mut ids = Vec::new();
+    for (suffix, model) in std::iter::once(("always".to_owned(), &connected.always)).chain(
+        connected
+            .masks
+            .iter()
+            .enumerate()
+            .map(|(mask, model)| (format!("m{mask}"), model)),
+    ) {
+        for (variable, texture) in &model.textures {
+            materials.insert(variable.clone(), json!(block_texture_key(layout, texture)?));
+        }
+        let identifier = format!("geometry.java.{block}_{suffix}");
+        geometries.insert(
+            identifier.clone(),
+            java_model::to_geometry(&identifier, model),
+        );
+        ids.push(identifier);
+    }
+    let always = ids.remove(0);
+    let entry = json!({
+        "block": format!("minecraft:{block}"),
+        "connections": { "always": always, "masks": ids },
+        "materials": materials,
+    });
+    Some((entry, geometries))
+}
+
+/// The Bedrock terrain key of a Java block texture, or `None` for another kind of texture.
+/// The translator keeps block textures by file name, whatever folder they sit in.
+fn block_texture_key(layout: Layout, texture: &str) -> Option<String> {
+    let name = texture.strip_prefix("block/")?;
+    let path = names::block_path(layout, name.rsplit('/').next().unwrap_or(name));
+    Some(path.strip_prefix("blocks/").unwrap_or(&path).to_owned())
+}
+
 /// Whether the model is one box filling the block.
 fn is_full_cube(model: &java_model::Model) -> bool {
     matches!(model.elements.as_slice(), [element]
@@ -190,12 +250,9 @@ fn geometry(
     let mut materials = Map::new();
     for variable in variables {
         let texture = resolved.texture(variable)?;
-        let name = texture.strip_prefix("block/")?;
-        // The translator keeps block textures by file name, whatever folder they sit in.
-        let path = names::block_path(layout, name.rsplit('/').next().unwrap_or(name));
         materials.insert(
             variable.to_owned(),
-            json!(path.strip_prefix("blocks/").unwrap_or(&path)),
+            json!(block_texture_key(layout, texture)?),
         );
     }
     let name = model
@@ -325,5 +382,49 @@ mod tests {
         assert_eq!(rotation(0, 270), Some([0, 270, 0]));
         assert_eq!(rotation(-90, 0), Some([270, 0, 0]));
         assert_eq!(rotation(0, 45), None);
+    }
+
+    #[test]
+    fn a_fence_binds_a_post_and_a_geometry_for_each_connection_mask() {
+        let mut parts = vec![json!({ "apply": { "model": "block/oak_fence_post" } })];
+        for (turn, direction) in ["north", "east", "south", "west"].iter().enumerate() {
+            parts.push(
+                json!({ "apply": { "model": "block/oak_fence_side", "y": turn * 90 },
+                "when": { *direction: "true" } }),
+            );
+        }
+        let files = vec![
+            (
+                "assets/minecraft/blockstates/oak_fence.json",
+                json!({ "multipart": parts }),
+            ),
+            (
+                "assets/minecraft/models/block/oak_fence_post.json",
+                json!({ "parent": "block/fence_post", "textures": { "texture": "block/oak_planks" } }),
+            ),
+            (
+                "assets/minecraft/models/block/oak_fence_side.json",
+                json!({ "parent": "block/fence_side", "textures": { "texture": "block/oak_planks" } }),
+            ),
+        ];
+        let output = run(&files);
+        let document = bindings(&output);
+        let entry = &document["blocks"][0];
+        assert_eq!(entry["block"], "minecraft:oak_fence");
+        assert_eq!(
+            entry["connections"]["always"],
+            "geometry.java.oak_fence_always"
+        );
+        assert_eq!(entry["connections"]["masks"].as_array().unwrap().len(), 16);
+        assert!(entry["materials"].as_object().unwrap().len() == 1);
+        // The post, plus one geometry per mask.
+        assert_eq!(
+            output
+                .files
+                .iter()
+                .filter(|(path, _)| path.starts_with("models/blocks/java/oak_fence_"))
+                .count(),
+            17
+        );
     }
 }

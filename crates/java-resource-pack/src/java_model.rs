@@ -89,8 +89,64 @@ fn builtin(name: &str) -> Option<Value> {
             json!({ "textures": { "particle": "#cross" }, "elements": [
                 plane([0, 0, 8], [16, 16, 8], 45), plane([8, 0, 0], [8, 16, 16], 45)] })
         }
+        "block/fence_post" => json!({ "textures": { "particle": "#texture" }, "elements": [
+            part([6, 0, 6], [10, 16, 10], &[
+                ("down", [6, 6, 10, 10], "texture"), ("up", [6, 6, 10, 10], "texture"),
+                ("north", [6, 0, 10, 16], "texture"), ("south", [6, 0, 10, 16], "texture"),
+                ("west", [6, 0, 10, 16], "texture"), ("east", [6, 0, 10, 16], "texture")])] }),
+        "block/fence_side" => json!({ "textures": { "particle": "#texture" }, "elements": [
+            part([7, 12, 0], [9, 15, 9], &[
+                ("down", [7, 0, 9, 9], "texture"), ("up", [7, 0, 9, 9], "texture"),
+                ("north", [7, 1, 9, 4], "texture"), ("west", [0, 1, 9, 4], "texture"),
+                ("east", [0, 1, 9, 4], "texture")]),
+            part([7, 6, 0], [9, 9, 9], &[
+                ("down", [7, 0, 9, 9], "texture"), ("up", [7, 0, 9, 9], "texture"),
+                ("north", [7, 7, 9, 10], "texture"), ("west", [0, 7, 9, 10], "texture"),
+                ("east", [0, 7, 9, 10], "texture")])] }),
+        "block/template_glass_pane_post" => {
+            json!({ "textures": { "particle": "#pane" }, "elements": [
+            part([7, 0, 7], [9, 16, 9], &[
+                ("down", [7, 7, 9, 9], "edge"), ("up", [7, 7, 9, 9], "edge")])] })
+        }
+        "block/template_glass_pane_side" => {
+            json!({ "textures": { "particle": "#pane" }, "elements": [
+            part([7, 0, 0], [9, 16, 7], &[
+                ("down", [7, 0, 9, 7], "edge"), ("up", [7, 0, 9, 7], "edge"),
+                ("north", [7, 0, 9, 16], "edge"), ("west", [16, 0, 9, 16], "pane"),
+                ("east", [9, 0, 16, 16], "pane")])] })
+        }
+        "block/template_glass_pane_side_alt" => {
+            json!({ "textures": { "particle": "#pane" }, "elements": [
+            part([7, 0, 9], [9, 16, 16], &[
+                ("down", [7, 0, 9, 7], "edge"), ("up", [7, 0, 9, 7], "edge"),
+                ("south", [7, 0, 9, 16], "edge"), ("west", [7, 0, 0, 16], "pane"),
+                ("east", [0, 0, 7, 16], "pane")])] })
+        }
+        "block/template_glass_pane_noside" => {
+            json!({ "textures": { "particle": "#pane" }, "elements": [
+            part([7, 0, 7], [9, 16, 9], &[("north", [9, 0, 7, 16], "pane")])] })
+        }
+        "block/template_glass_pane_noside_alt" => {
+            json!({ "textures": { "particle": "#pane" }, "elements": [
+            part([7, 0, 7], [9, 16, 9], &[("east", [7, 0, 9, 16], "pane")])] })
+        }
         _ => return None,
     })
+}
+
+/// One element of a built-in parent: a box and the faces it shows, each as a face name, a UV
+/// rectangle and the texture variable it draws.
+fn part(from: [i32; 3], to: [i32; 3], faces: &[(&str, [i32; 4], &str)]) -> Value {
+    let faces: Map<String, Value> = faces
+        .iter()
+        .map(|(face, uv, texture)| {
+            (
+                (*face).to_owned(),
+                json!({ "uv": uv, "texture": format!("#{texture}") }),
+            )
+        })
+        .collect();
+    json!({ "from": from, "to": to, "faces": faces })
 }
 
 /// Strips a `minecraft:` namespace and any `.json`.
@@ -181,7 +237,11 @@ pub fn resolve(name: &str, load: &dyn Fn(&str) -> Option<Value>) -> Option<Model
     for document in chain.iter().rev() {
         if let Some(textures) = document.get("textures").and_then(Value::as_object) {
             for (key, value) in textures {
-                if let Some(value) = value.as_str() {
+                // Current Java wraps a texture in an object naming its `sprite`.
+                if let Some(value) = value
+                    .as_str()
+                    .or_else(|| value.get("sprite").and_then(Value::as_str))
+                {
                     model.textures.insert(key.clone(), value.to_owned());
                 }
             }
@@ -207,6 +267,90 @@ impl Model {
         }
         None
     }
+}
+
+/// Where a face lands after one quarter turn about the vertical axis (Java's `y`, clockwise
+/// seen from above) and one about the east-west axis (Java's `x`).
+const TURN_Y: [(&str, &str); 4] = [
+    ("north", "east"),
+    ("east", "south"),
+    ("south", "west"),
+    ("west", "north"),
+];
+const TURN_X: [(&str, &str); 4] = [
+    ("north", "down"),
+    ("down", "south"),
+    ("south", "up"),
+    ("up", "north"),
+];
+
+impl Model {
+    /// The model after Java's blockstate turns: `x` then `y` degrees, each a multiple of 90.
+    /// `None` for other angles and for models with element rotations, whose rescaling is not
+    /// translated. Faces keep their UVs, as with Java's `uvlock` off for side faces.
+    pub fn turned(&self, x: i64, y: i64) -> Option<Model> {
+        if x % 90 != 0 || y % 90 != 0 || self.elements.iter().any(|e| e.rotation.is_some()) {
+            return None;
+        }
+        let mut model = self.clone();
+        // A face's own box decides its default UVs, so they are fixed before the box moves.
+        for element in &mut model.elements {
+            let (from, to) = (element.from, element.to);
+            for (name, face) in &mut element.faces {
+                face.uv.get_or_insert_with(|| default_uv(name, from, to));
+            }
+        }
+        for _ in 0..(x.rem_euclid(360) / 90) {
+            for element in &mut model.elements {
+                // (y, z) -> (z, -y) about the block centre; x is untouched.
+                turn_element(element, |[px, py, pz]| [px, pz, 16.0 - py], &TURN_X);
+            }
+        }
+        for _ in 0..(y.rem_euclid(360) / 90) {
+            for element in &mut model.elements {
+                // (x, z) -> (-z, x) about the block centre; y is untouched.
+                turn_element(element, |[px, py, pz]| [16.0 - pz, py, px], &TURN_Y);
+            }
+        }
+        Some(model)
+    }
+
+    /// The same model with every face naming a variable derived from the texture it shows, so
+    /// models whose variables differ can be merged. `None` when a face shows no texture.
+    pub fn flattened(&self) -> Option<Model> {
+        let mut model = Model::default();
+        let mut elements = self.elements.clone();
+        for element in &mut elements {
+            for face in element.faces.values_mut() {
+                let texture = self.texture(&face.texture)?;
+                let variable = texture.replace('/', "_");
+                model.textures.insert(variable.clone(), texture.to_owned());
+                face.texture = variable;
+            }
+        }
+        model.elements = elements;
+        Some(model)
+    }
+}
+
+/// Moves one element's box through `map` and renames its faces by `faces`.
+fn turn_element(
+    element: &mut Element,
+    map: impl Fn([f64; 3]) -> [f64; 3],
+    faces: &[(&str, &'static str); 4],
+) {
+    let (a, b) = (map(element.from), map(element.to));
+    element.from = std::array::from_fn(|axis| a[axis].min(b[axis]));
+    element.to = std::array::from_fn(|axis| a[axis].max(b[axis]));
+    let mut turned = BTreeMap::new();
+    for (name, face) in std::mem::take(&mut element.faces) {
+        let name = faces
+            .iter()
+            .find(|(from, _)| *from == name)
+            .map_or(name, |(_, to)| to);
+        turned.insert(name, face);
+    }
+    element.faces = turned;
 }
 
 /// The UV rectangle a face with no `uv` of its own shows: its box, as Java derives it.
@@ -376,5 +520,38 @@ mod tests {
         );
         let tinted = resolve("block/tinted_cross", &none).unwrap();
         assert!(tinted.elements[0].faces["north"].tint);
+    }
+
+    #[test]
+    fn quarter_turns_move_boxes_and_rename_faces_keeping_their_uvs() {
+        let side = resolve("block/fence_side", &none).unwrap();
+        let east = side.turned(0, 90).unwrap();
+        let bar = &east.elements[0];
+        // A bar reaching north reaches east after a clockwise quarter turn.
+        assert_eq!((bar.from, bar.to), ([7.0, 12.0, 7.0], [16.0, 15.0, 9.0]));
+        assert_eq!(
+            bar.faces.keys().copied().collect::<Vec<_>>(),
+            ["down", "east", "north", "south", "up"]
+        );
+        assert_eq!(bar.faces["east"].uv, Some([7.0, 1.0, 9.0, 4.0]));
+        assert_eq!(side.turned(0, 360).unwrap(), side.turned(0, 0).unwrap());
+        assert!(side.turned(0, 45).is_none());
+        let down = side.turned(90, 0).unwrap();
+        assert!(down.elements[0].faces.contains_key("down"));
+    }
+
+    #[test]
+    fn texture_objects_and_flattening_name_variables_after_their_textures() {
+        let pack = |name: &str| match name {
+            "block/pane" => Some(json!({ "parent": "block/template_glass_pane_noside",
+                "textures": { "pane": { "force_translucent": true, "sprite": "minecraft:block/glass" },
+                    "edge": "block/glass_pane_top" } })),
+            _ => None,
+        };
+        let model = resolve("block/pane", &pack).unwrap();
+        assert_eq!(model.texture("pane"), Some("block/glass"));
+        let flat = model.flattened().unwrap();
+        assert_eq!(flat.elements[0].faces["north"].texture, "block_glass");
+        assert_eq!(flat.texture("block_glass"), Some("block/glass"));
     }
 }
