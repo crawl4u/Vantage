@@ -711,7 +711,16 @@ pub(crate) fn translate_within(
             continue;
         };
         if let Some(bedrock) = extras::bedrock_path(&java, width, height) {
-            out.insert(format!("textures/{bedrock}.png"), Output::Raw(bytes));
+            // Java draws a chest upside down, so its box faces need turning to Bedrock's way up.
+            let reoriented = extras::flipped_box_faces(bedrock).and_then(|faces| {
+                let mut image = decode(&bytes, budget)?;
+                extras::reorient_faces(&mut image, faces);
+                Some(image)
+            });
+            out.insert(
+                format!("textures/{bedrock}.png"),
+                reoriented.map_or(Output::Raw(bytes), Output::Image),
+            );
         } else if let Some(bedrock) = extras::top_half_path(&java, width, height)
             && let Some(image) = decode(&bytes, budget)
             && let Some(top) = crop(&image, 0, 0, width, height / 2, budget)

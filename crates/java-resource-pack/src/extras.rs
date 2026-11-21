@@ -141,9 +141,126 @@ pub(crate) fn top_half_path(java: &str, width: u32, height: u32) -> Option<&'sta
     })
 }
 
+/// The top and bottom face regions, at the vanilla 64 by 64 size, of each box in a Bedrock
+/// texture whose Java namesake stores them swapped and flipped. Java draws these models upside
+/// down, so its lid-top picture sits where Bedrock keeps the lid's underside; a Java texture
+/// used as it is shows a chest's dark underside on top.
+///
+/// A box of width `w` and depth `d` at `(u, v)` has its top at `(u + d, v)` and its bottom at
+/// `(u + d + w, v)`, each `w` by `d`.
+pub(crate) fn flipped_box_faces(bedrock: &str) -> Option<&'static [[u32; 4]]> {
+    /// The lid and body of a single chest.
+    const CHEST: [[u32; 4]; 4] = [
+        [14, 0, 14, 14],
+        [28, 0, 14, 14],
+        [14, 19, 14, 14],
+        [28, 19, 14, 14],
+    ];
+    const CHEST_TEXTURES: [&str; 7] = [
+        "entity/chest/normal",
+        "entity/chest/trapped",
+        "entity/chest/ender",
+        "entity/chest/copper_default",
+        "entity/chest/copper_exposed",
+        "entity/chest/copper_weathered",
+        "entity/chest/copper_oxidized",
+    ];
+    CHEST_TEXTURES.contains(&bedrock).then_some(&CHEST[..])
+}
+
+/// Puts a Java texture's box faces in Bedrock's orientation: each top and bottom pair
+/// (`faces`, two regions per box, at the vanilla 64 by 64 size scaled to `image`) swaps places,
+/// and each picture turns over vertically.
+pub(crate) fn reorient_faces(image: &mut image::RgbaImage, faces: &[[u32; 4]]) {
+    let scale = image.width() / 64;
+    if scale == 0 || image.width() != image.height() {
+        return;
+    }
+    for pair in faces.chunks_exact(2) {
+        let [top, bottom] = [pair[0], pair[1]].map(|region| region.map(|value| value * scale));
+        let (width, height) = (top[2], top[3]);
+        if bottom[2] != width || bottom[3] != height {
+            continue;
+        }
+        let fits = |region: [u32; 4]| {
+            region[0] + width <= image.width() && region[1] + height <= image.height()
+        };
+        if !fits(top) || !fits(bottom) {
+            continue;
+        }
+        for y in 0..height {
+            for x in 0..width {
+                let upper = *image.get_pixel(top[0] + x, top[1] + y);
+                let lower = *image.get_pixel(bottom[0] + x, bottom[1] + height - 1 - y);
+                image.put_pixel(top[0] + x, top[1] + y, lower);
+                image.put_pixel(bottom[0] + x, bottom[1] + height - 1 - y, upper);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A chest unwrap whose every top and bottom face is its own flat colour, with a corner
+    /// marked on the lid top so a flip is visible.
+    fn chest_unwrap(scale: u32) -> image::RgbaImage {
+        let mut image = image::RgbaImage::new(64 * scale, 64 * scale);
+        for ([x, y, w, h], colour) in flipped_box_faces("entity/chest/normal")
+            .unwrap()
+            .iter()
+            .zip([[10, 0, 0], [20, 0, 0], [30, 0, 0], [40, 0, 0]])
+        {
+            for dy in 0..h * scale {
+                for dx in 0..w * scale {
+                    image.put_pixel(
+                        x * scale + dx,
+                        y * scale + dy,
+                        image::Rgba([colour[0], 0, 0, 255]),
+                    );
+                }
+            }
+        }
+        // The lid top's first row is brighter.
+        for dx in 0..14 * scale {
+            image.put_pixel(14 * scale + dx, 0, image::Rgba([11, 0, 0, 255]));
+        }
+        image
+    }
+
+    #[test]
+    fn a_java_chest_has_its_top_and_bottom_swapped_and_turned_over() {
+        for scale in [1, 2] {
+            let mut image = chest_unwrap(scale);
+            reorient_faces(
+                &mut image,
+                flipped_box_faces("entity/chest/normal").unwrap(),
+            );
+            let red = |x: u32, y: u32| image.get_pixel(x * scale, y * scale)[0];
+            // The lid's top now holds the old bottom, and the old top's bright row is at its end.
+            assert_eq!(red(14, 5), 20);
+            assert_eq!(red(28, 5), 10);
+            assert_eq!(image.get_pixel(28 * scale, 14 * scale - 1)[0], 11);
+            assert_eq!(red(14, 19 + 5), 40);
+            assert_eq!(red(28, 19 + 5), 30);
+            // Outside the faces nothing moves.
+            assert_eq!(image.get_pixel(0, 40 * scale)[3], 0);
+        }
+    }
+
+    #[test]
+    fn reorienting_twice_restores_the_original_and_other_textures_are_untouched() {
+        let original = chest_unwrap(1);
+        let mut image = original.clone();
+        let faces = flipped_box_faces("entity/chest/trapped").unwrap();
+        reorient_faces(&mut image, faces);
+        assert_ne!(image, original);
+        reorient_faces(&mut image, faces);
+        assert_eq!(image, original);
+        assert!(flipped_box_faces("entity/zombie/zombie").is_none());
+        assert!(flipped_box_faces("entity/boat/chest_boat_oak").is_none());
+    }
 
     #[test]
     fn every_entry_is_well_formed_and_every_java_path_is_listed_once() {
