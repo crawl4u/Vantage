@@ -114,6 +114,8 @@ struct Placed {
     origin: [i32; 2],
     /// Source rect in font-page texels `[x0, y0, x1, y1]`.
     source: [u16; 4],
+    /// The glyph's drawn size in canvas pixels, whatever resolution its texels have.
+    size: [i32; 2],
     page: usize,
     rgb: [u8; 3],
 }
@@ -154,6 +156,11 @@ pub(super) fn rasterize(
                     top + (glyph.bounds_64[1] as f32 / texel_64).round() as i32,
                 ],
                 source: glyph.uv,
+                size: [
+                    (glyph.bounds_64[2] - glyph.bounds_64[0]) as f32,
+                    (glyph.bounds_64[3] - glyph.bounds_64[1]) as f32,
+                ]
+                .map(|extent| ((extent / texel_64).round() as i32).max(1)),
                 page: usize::from(glyph.page),
                 rgb: glyph.style.color.rgb().unwrap_or_else(|| spec.base_rgb()),
             });
@@ -180,16 +187,25 @@ fn blit(canvas: &mut [u8], font: &CompiledFontCatalog, glyph: &Placed, rgb: [u8;
     };
     let [width, height] = TEXT_CELL.map(|value| value as i32);
     let [x0, y0, x1, y1] = glyph.source.map(i32::from);
-    let columns = (x1 - x0 + 1) / TEXELS_PER_PIXEL as i32;
-    let rows = (y1 - y0 + 1) / TEXELS_PER_PIXEL as i32;
+    let [columns, rows] = glyph.size;
+    let (source_width, source_height) = (x1 - x0 + 1, y1 - y0 + 1);
     for row in 0..rows {
         for column in 0..columns {
-            let source_x = x0 + column * TEXELS_PER_PIXEL as i32;
-            let source_y = y0 + row * TEXELS_PER_PIXEL as i32;
-            let Some(alpha) = page_alpha(page, source_x, source_y) else {
-                continue;
-            };
-            if alpha == 0 {
+            // The texels under this canvas pixel: two across for the built-in font, many more
+            // for a high-resolution pack font, which draws where its cell says it should.
+            let first_x = x0 + column * source_width / columns;
+            let last_x = (x0 + (column + 1) * source_width / columns).max(first_x + 1);
+            let first_y = y0 + row * source_height / rows;
+            let last_y = (y0 + (row + 1) * source_height / rows).max(first_y + 1);
+            let (mut covered, mut texels) = (0u32, 0u32);
+            for source_y in first_y..last_y {
+                for source_x in first_x..last_x {
+                    covered += u32::from(page_alpha(page, source_x, source_y).unwrap_or(0));
+                    texels += 1;
+                }
+            }
+            // Half covered or more is ink.
+            if covered * 2 < texels * 255 {
                 continue;
             }
             let (x, y) = (glyph.origin[0] + column, glyph.origin[1] + row);
@@ -299,5 +315,39 @@ mod font_tests {
         );
         assert!(packed > 0);
         assert_eq!(ink(&base, "B", &mut layouts), ink(&pack, "B", &mut layouts));
+    }
+
+    /// A high-resolution font's glyph is drawn at the size its cell asks for, not at one canvas
+    /// pixel per two texels, which would overrun its neighbours.
+    #[test]
+    fn a_high_resolution_glyph_keeps_its_drawn_size() {
+        let base = ui_engine::test_support::fixture_font();
+        let wide = |side: u32| CellGlyph {
+            codepoint: 'A',
+            size: [side, side],
+            rgba8: vec![255; (side * side * 4) as usize].into(),
+            bearing: [0, 0],
+            advance_64: 9 * 64,
+            draw_size_64: [8 * 64, 8 * 64],
+        };
+        let mut layouts = TextLayoutCache::new(64, 1 << 20);
+        let extent = |side: u32, layouts: &mut TextLayoutCache| {
+            let font = SessionGlyphSheets::new(vec![wide(side)]).font_over(&base);
+            let canvas = rasterize(
+                &SignTextSpec::new("A".into(), -0x1000000, false, false),
+                &font,
+                layouts,
+            )
+            .unwrap();
+            let columns: Vec<usize> = canvas
+                .chunks_exact(4)
+                .enumerate()
+                .filter(|(_, pixel)| pixel[3] != 0)
+                .map(|(index, _)| index % TEXT_CELL[0] as usize)
+                .collect();
+            columns.iter().max().unwrap() - columns.iter().min().unwrap() + 1
+        };
+        // The same drawn glyph from a 8-texel cell and from a 32-texel one is the same width.
+        assert_eq!(extent(8, &mut layouts), extent(32, &mut layouts));
     }
 }
