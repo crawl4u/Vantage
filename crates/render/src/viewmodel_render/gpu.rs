@@ -244,8 +244,8 @@ pub(super) fn prepare(params: PrepareViewmodel) {
             &TextureDescriptor {
                 label: Some("validated neutral hand skin"),
                 size: Extent3d {
-                    width: render_model::viewmodel::VIEWMODEL_TEXTURE_SIDE,
-                    height: render_model::viewmodel::VIEWMODEL_TEXTURE_SIDE,
+                    width: frame.skin.side,
+                    height: frame.skin.side,
                     depth_or_array_layers: 1,
                 },
                 mip_level_count: 1,

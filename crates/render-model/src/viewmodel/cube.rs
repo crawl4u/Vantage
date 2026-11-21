@@ -8,9 +8,9 @@ use assets::{
 use sha2::Digest;
 use sha2::Sha256;
 
-const TILE_SIDE: usize = assets::BLOCK_ITEM_FACE_SIDE as usize;
-const TILE_PITCH: usize = TILE_SIDE + 2;
 const TILE_COLUMNS: usize = assets::BLOCK_ITEM_SHEET_GRID[0] as usize;
+/// The finest face a held cube draws; finer pack art is filtered down to it.
+const MAX_FACE_SIDE: usize = 128;
 
 #[cfg(test)]
 #[path = "cube_tests.rs"]
@@ -48,8 +48,9 @@ impl ViewmodelGeometry {
             return None;
         }
         // Admit the whole source before allocating or copying any pixels.
-        let mut tiles = [&[][..]; 6];
+        let mut sources = [(&[][..], 0usize); 6];
         let mut materials = [0; 6];
+        let mut finest = assets::BLOCK_ITEM_FACE_SIDE as usize;
         for (index, face) in BlockFace::ALL.into_iter().enumerate() {
             let id = block.face(face).material_id();
             if id == assets::DIAGNOSTIC_MATERIAL {
@@ -65,33 +66,55 @@ impl ViewmodelGeometry {
             let page = assets
                 .texture_pages()
                 .get(material.texture.page() as usize)?;
-            let mip = page.texture.mips.first()?;
-            if mip.size != TILE_SIDE as u32 || material.texture.layer() >= page.texture.layers {
+            let first = page.texture.mips.first()?;
+            if !first.size.is_power_of_two() || material.texture.layer() >= page.texture.layers {
                 return None;
             }
-            let first =
-                (material.texture.layer() as usize).checked_mul(TILE_SIDE * TILE_SIDE * 4)?;
-            let tile = mip
-                .rgba8
-                .get(first..first.checked_add(TILE_SIDE * TILE_SIDE * 4)?)?;
+            finest = finest.max(first.size as usize);
+            materials[index] = id;
+        }
+        // Every face is the finest face's size, within the cap, taken from the mip of that size
+        // so a finer source is filtered rather than skipped.
+        let side_of_face = finest.min(MAX_FACE_SIDE);
+        for (index, id) in materials.into_iter().enumerate() {
+            let material = assets.materials().get(id as usize)?;
+            let page = assets
+                .texture_pages()
+                .get(material.texture.page() as usize)?;
+            let first = page.texture.mips.first()?.size as usize;
+            let level = first
+                .ilog2()
+                .saturating_sub(side_of_face.ilog2())
+                .min(page.texture.mips.len() as u32 - 1);
+            let mip = page.texture.mips.get(level as usize)?;
+            let size = mip.size as usize;
+            let bytes = size.checked_mul(size)?.checked_mul(4)?;
+            let start = (material.texture.layer() as usize).checked_mul(bytes)?;
+            let tile = mip.rgba8.get(start..start.checked_add(bytes)?)?;
             if !tile.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 255) {
                 return None;
             }
-            tiles[index] = tile;
-            materials[index] = id;
+            sources[index] = (tile, size);
         }
-        let side = VIEWMODEL_TEXTURE_SIDE as usize;
-        let mut pixels = vec![0; VIEWMODEL_TEXTURE_BYTES];
-        for (index, tile) in tiles.into_iter().enumerate() {
+        let tile_side = side_of_face;
+        let tile_pitch = tile_side + 2;
+        let side = (TILE_COLUMNS * tile_pitch)
+            .next_power_of_two()
+            .max(VIEWMODEL_TEXTURE_SIDE as usize);
+        let mut pixels = vec![0; side * side * 4];
+        for (index, (tile, size)) in sources.into_iter().enumerate() {
             let [x, y] = [
-                (index % TILE_COLUMNS) * TILE_PITCH,
-                (index / TILE_COLUMNS) * TILE_PITCH,
+                (index % TILE_COLUMNS) * tile_pitch,
+                (index / TILE_COLUMNS) * tile_pitch,
             ];
-            for row in 0..TILE_PITCH {
-                for column in 0..TILE_PITCH {
-                    let source = (row.saturating_sub(1).min(TILE_SIDE - 1) * TILE_SIDE
-                        + column.saturating_sub(1).min(TILE_SIDE - 1))
-                        * 4;
+            for row in 0..tile_pitch {
+                for column in 0..tile_pitch {
+                    // A one-texel border repeats the edge so sampling never bleeds a neighbour.
+                    let (face_y, face_x) = (
+                        row.saturating_sub(1).min(tile_side - 1) * size / tile_side,
+                        column.saturating_sub(1).min(tile_side - 1) * size / tile_side,
+                    );
+                    let source = (face_y * size + face_x) * 4;
                     let target = ((y + row) * side + x + column) * 4;
                     pixels[target..target + 4].copy_from_slice(&tile[source..source + 4]);
                 }
@@ -131,12 +154,12 @@ impl ViewmodelGeometry {
                 vertices.push(HandVertex {
                     position: p.to_array(),
                     uv: [
-                        ((face % TILE_COLUMNS * TILE_PITCH + 1) as f32
-                            + uv[corner][0] * TILE_SIDE as f32)
-                            / VIEWMODEL_TEXTURE_SIDE as f32,
-                        ((face / TILE_COLUMNS * TILE_PITCH + 1) as f32
-                            + uv[corner][1] * TILE_SIDE as f32)
-                            / VIEWMODEL_TEXTURE_SIDE as f32,
+                        ((face % TILE_COLUMNS * tile_pitch + 1) as f32
+                            + uv[corner][0] * tile_side as f32)
+                            / side as f32,
+                        ((face / TILE_COLUMNS * tile_pitch + 1) as f32
+                            + uv[corner][1] * tile_side as f32)
+                            / side as f32,
                     ],
                 });
             }
@@ -158,7 +181,7 @@ impl ViewmodelGeometry {
             allowed_rigs: Arc::from([]),
             cube_origin: true,
         };
-        let skin = ViewmodelSkin::new(pixels.into(), pixel_identity)?;
+        let skin = ViewmodelSkin::with_side(pixels.into(), pixel_identity, side as u32)?;
         Some((geometry, skin))
     }
 }

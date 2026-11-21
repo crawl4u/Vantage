@@ -91,14 +91,14 @@ fn opaque_barrel_models_remain_available_in_first_person() {
         let template = runtime.model_templates()[visual.model_template().unwrap() as usize];
         let quads =
             &runtime.model_quads()[template.quad_start as usize..][..template.quad_count as usize];
+        let tile_side = usize::from(assets::BLOCK_ITEM_FACE_SIDE);
+        let tile_pitch = tile_side + 2;
         for vertex in geometry.vertices.iter() {
-            let pixel = vertex
-                .uv
-                .map(|coordinate| coordinate * VIEWMODEL_TEXTURE_SIDE as f32);
-            let slot = pixel.map(|coordinate| coordinate as usize / TILE_PITCH);
+            let pixel = vertex.uv.map(|coordinate| coordinate * skin.side as f32);
+            let slot = pixel.map(|coordinate| coordinate as usize / tile_pitch);
             let face = slot[1] * TILE_COLUMNS + slot[0];
             let uv = std::array::from_fn::<_, 2, _>(|axis| {
-                ((pixel[axis] - (slot[axis] * TILE_PITCH + 1) as f32) / TILE_SIDE as f32 * 4096.0)
+                ((pixel[axis] - (slot[axis] * tile_pitch + 1) as f32) / tile_side as f32 * 4096.0)
                     .round() as u16
             });
             let position = (opaque_cube_pose()
@@ -144,5 +144,43 @@ fn held_barrel_cube_admission_rejects_inset_or_folded_models() {
         }
         let runtime = RuntimeAssets::decode(&assets::encode_blob(&invalid).unwrap()).unwrap();
         assert!(ViewmodelGeometry::opaque_cube(&runtime, id).is_none());
+    }
+}
+
+/// A held cube packs faces of whatever resolution its art has, up to the cap, into a texture
+/// sized to hold them, and its UVs address the same texels.
+#[test]
+fn a_held_cube_texture_grows_with_the_resolution_of_its_faces() {
+    for source in [16, 32, 64] {
+        let (compiled, records) = barrels_with_size(source);
+        let runtime = RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap();
+        let record = records
+            .iter()
+            .find(|r| r.name.as_ref() == "minecraft:barrel")
+            .unwrap();
+        let visual = BlockVisualId(record.sequential_id);
+        let block = runtime.resolve(assets::NetworkIdMode::Sequential, visual.0);
+        let material = runtime
+            .materials()
+            .get(block.face(BlockFace::Up).material_id() as usize)
+            .unwrap();
+        let face = runtime.texture_pages()[material.texture.page() as usize]
+            .texture
+            .mips[0]
+            .size as usize;
+        let (geometry, skin) = ViewmodelGeometry::opaque_cube(&runtime, visual)
+            .unwrap_or_else(|| panic!("a {source}-texel barrel is held"));
+        let face = face.clamp(16, 128);
+        let expected = (TILE_COLUMNS * (face + 2))
+            .next_power_of_two()
+            .max(VIEWMODEL_TEXTURE_SIDE as usize);
+        assert_eq!(skin.side as usize, expected, "source {source}");
+        assert_eq!(skin.rgba8.len(), expected * expected * 4);
+        assert!(
+            geometry
+                .vertices
+                .iter()
+                .all(|vertex| vertex.uv.iter().all(|uv| (0.0..=1.0).contains(uv)))
+        );
     }
 }
