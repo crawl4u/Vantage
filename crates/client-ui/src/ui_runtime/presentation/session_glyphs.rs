@@ -25,6 +25,8 @@ pub struct SessionGlyphSheets {
 #[derive(Debug)]
 struct PreparedGlyphs {
     pages: Vec<UiTexturePage>,
+    /// The same pages as RGBA8 texels, for text rasterized on the CPU.
+    raw_pages: Vec<Arc<[u8]>>,
     glyphs: Vec<assets::SheetGlyph>,
     named: std::collections::BTreeMap<String, Vec<assets::SheetGlyph>>,
 }
@@ -55,6 +57,38 @@ impl SessionGlyphSheets {
     /// Returns the immutable source cells used to prepare this font.
     pub fn cells(&self) -> &[CellGlyph] {
         &self.cells
+    }
+
+    /// `base` with these sheets' glyphs and the pages they live on appended, for text drawn
+    /// outside the UI, such as a sign's, whose canvases copy texels from the font's own pages.
+    pub fn font_over(&self, base: &assets::RuntimeFontCatalog) -> assets::RuntimeFontCatalog {
+        let atlas = self.prepared();
+        let first = base.pages().len() as u16;
+        let side = PAGE_SIDE;
+        let pages = atlas
+            .raw_pages
+            .iter()
+            .enumerate()
+            .map(|(index, pixels)| assets::FontTexturePage {
+                source_path: format!("session_glyphs/{index}").into(),
+                source_bytes: pixels.len() as u32,
+                source_sha256: [0; 32],
+                pixels_sha256: <sha2::Sha256 as sha2::Digest>::digest(pixels).into(),
+                width: side,
+                height: side,
+                pixels: assets::FontPixels::Rgba8(Arc::clone(pixels)),
+            })
+            .collect();
+        let glyphs: Vec<_> = atlas
+            .glyphs
+            .iter()
+            .map(|glyph| {
+                let mut glyph = *glyph;
+                glyph.metrics.page += first;
+                glyph
+            })
+            .collect();
+        base.with_pages(pages).with_glyphs(&glyphs, |_| true)
     }
 
     /// Returns the immutable named sources packed alongside the default cells.
@@ -112,7 +146,13 @@ impl SessionGlyphSheets {
                 atlas.pages.extend(next.pages);
                 named.insert(name.clone(), next.glyphs);
             }
+            let raw_pages = atlas
+                .pages
+                .iter()
+                .map(|pixels| Arc::<[u8]>::from(&pixels[..]))
+                .collect();
             PreparedGlyphs {
+                raw_pages,
                 glyphs: atlas.glyphs,
                 named,
                 pages: atlas

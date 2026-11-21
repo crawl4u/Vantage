@@ -75,6 +75,7 @@ impl Fixture {
             delta_seconds: delta,
             now_seconds: now,
             font: &self.font,
+            font_generation: 0,
             readers: &self.readers,
         };
         resolve(

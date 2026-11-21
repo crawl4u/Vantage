@@ -259,3 +259,45 @@ mod tests {
         assert!(base.is_visible());
     }
 }
+
+#[cfg(test)]
+mod font_tests {
+    use super::*;
+    use assets::CellGlyph;
+    use client_ui::ui_runtime::presentation::SessionGlyphSheets;
+
+    /// A pack's glyph for a letter changes what a sign draws for it, and only for that letter.
+    #[test]
+    fn a_pack_font_reaches_sign_canvases() {
+        let base = ui_engine::test_support::fixture_font();
+        let block = CellGlyph {
+            codepoint: 'A',
+            size: [8, 8],
+            rgba8: vec![255; 8 * 8 * 4].into(),
+            bearing: [0, 0],
+            advance_64: 9 * 64,
+            draw_size_64: [8 * 64, 8 * 64],
+        };
+        let sheets = SessionGlyphSheets::new(vec![block]);
+        let pack = sheets.font_over(&base);
+        let mut layouts = TextLayoutCache::new(64, 1 << 20);
+        let ink = |font: &CompiledFontCatalog, text: &str, layouts: &mut TextLayoutCache| {
+            rasterize(
+                &SignTextSpec::new(text.into(), -0x1000000, false, false),
+                font,
+                layouts,
+            )
+            .unwrap()
+            .chunks_exact(4)
+            .filter(|pixel| pixel[3] != 0)
+            .count()
+        };
+        let (plain, packed) = (ink(&base, "A", &mut layouts), ink(&pack, "A", &mut layouts));
+        assert_ne!(
+            plain, packed,
+            "the pack's A is drawn instead of the built-in one"
+        );
+        assert!(packed > 0);
+        assert_eq!(ink(&base, "B", &mut layouts), ink(&pack, "B", &mut layouts));
+    }
+}

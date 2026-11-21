@@ -140,6 +140,11 @@ pub(crate) struct BlockEntityRuntime {
     piston_motions: HashMap<[i32; 3], piston_arms::PistonMotion>,
     /// Framed map ids seen this frame without an image.
     missing_maps: Vec<i64>,
+    /// The glyph sheets sign text was last drawn with and the font made from them; a pack that
+    /// brings its own font changes both, and a changed generation re-keys every sign canvas.
+    sign_glyphs: Option<Arc<client_ui::ui_runtime::presentation::SessionGlyphSheets>>,
+    sign_font: Option<Arc<RuntimeFontCatalog>>,
+    font_generation: u64,
     /// Session and dimension the runtime-id keyed caches were filled from.
     session: Option<(u64, i32)>,
     beam_source: Option<(Arc<assets::RuntimeAssets>, Option<protocol::DimensionRange>)>,
@@ -164,6 +169,9 @@ impl BlockEntityRuntime {
             bell_rings: HashMap::new(),
             piston_motions: HashMap::new(),
             missing_maps: Vec::new(),
+            sign_glyphs: None,
+            sign_font: None,
+            font_generation: 0,
             session: None,
             beam_source: None,
             books: books::TableBooks::default(),
@@ -402,6 +410,21 @@ pub(crate) fn update_block_entity_scene(
         return;
     };
     let runtime = &mut *runtime;
+    let glyphs = ui.0.session_glyphs();
+    if runtime
+        .sign_glyphs
+        .as_ref()
+        .is_none_or(|current| !Arc::ptr_eq(current, glyphs))
+    {
+        runtime.sign_font = Some(Arc::new(glyphs.font_over(&font.0)));
+        runtime.sign_glyphs = Some(Arc::clone(glyphs));
+        runtime.font_generation = runtime.font_generation.wrapping_add(1);
+    }
+    let sign_font = runtime
+        .sign_font
+        .clone()
+        .unwrap_or_else(|| Arc::clone(&font.0));
+    let font_generation = runtime.font_generation;
     runtime.bind_session(Some((
         stream.authority().actor_session_id(),
         stream.current_dimension(),
@@ -632,7 +655,8 @@ pub(crate) fn update_block_entity_scene(
                     eye,
                     delta_seconds: delta,
                     now_seconds,
-                    font: &font.0,
+                    font: &sign_font,
+                    font_generation,
                     readers: &readers,
                 };
                 let kind = if matches!(template, Template::Beacon) {
@@ -761,6 +785,8 @@ struct FrameContext<'a> {
     delta_seconds: f32,
     now_seconds: f64,
     font: &'a RuntimeFontCatalog,
+    /// Changes whenever `font` does, so cached sign canvases are not reused across fonts.
+    font_generation: u64,
     /// Eye-level positions of every player who could read an enchanting table's book.
     readers: &'a [Vec3],
 }
@@ -961,16 +987,17 @@ fn resolve(
                 if hidden {
                     // Not drawn now: ready its canvas for when it turns into view, without
                     // taking a slot from the signs that are drawn.
-                    scene.text_warm(spec.cache_key(), || {
+                    scene.text_warm(spec.cache_key() ^ context.font_generation, || {
                         sign_text::rasterize(spec, context.font, &mut runtime.layouts)
                             .unwrap_or_default()
                     });
                     return None;
                 }
-                let rect: AtlasRect = scene.text_rect(spec.cache_key(), || {
-                    sign_text::rasterize(spec, context.font, &mut runtime.layouts)
-                        .unwrap_or_default()
-                })?;
+                let rect: AtlasRect =
+                    scene.text_rect(spec.cache_key() ^ context.font_generation, || {
+                        sign_text::rasterize(spec, context.font, &mut runtime.layouts)
+                            .unwrap_or_default()
+                    })?;
                 Some(SignFace {
                     rect,
                     glowing: spec.glowing(),

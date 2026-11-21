@@ -223,6 +223,26 @@ impl CompiledFontCatalog {
         })
     }
 
+    /// A catalog whose texture pages are followed by `extra`, the pages glyphs added with
+    /// [`Self::with_glyphs`] may name after the existing ones; its identity changes with them.
+    pub fn with_pages(&self, extra: Vec<FontTexturePage>) -> Self {
+        let mut hash = Sha256::new();
+        hash.update(self.identity.carrier_sha256);
+        let mut pages = self.pages.to_vec();
+        for page in extra {
+            hash.update(page.pixels_sha256);
+            pages.push(page);
+        }
+        Self {
+            identity: FontCatalogIdentity {
+                carrier_sha256: hash.finalize().into(),
+                ..self.identity
+            },
+            pages: pages.into(),
+            ..self.clone()
+        }
+    }
+
     /// A catalog that also draws `extra` glyphs, which replace same-codepoint entries when
     /// `replace` allows; its identity changes with them so layout caches never alias.
     pub fn with_glyphs(&self, extra: &[crate::SheetGlyph], replace: impl Fn(char) -> bool) -> Self {
