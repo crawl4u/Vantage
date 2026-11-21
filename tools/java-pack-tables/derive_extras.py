@@ -273,6 +273,47 @@ def opaque_equality(java_image, bedrock_image):
     return equal / drawn if drawn else 1.0
 
 
+def decode_tga(data):
+    """Returns (width, height, rgba bytes) for an uncompressed or run-length true-colour TGA."""
+    if len(data) < 18:
+        return None
+    id_length, colour_map, kind = data[0], data[1], data[2]
+    width, height = struct.unpack("<HH", data[12:16])
+    depth, descriptor = data[16], data[17]
+    if colour_map or kind not in (2, 10) or depth not in (24, 32) or not width or not height:
+        return None
+    bytes_per = depth // 8
+    pos = 18 + id_length
+    pixels = bytearray()
+    total = width * height
+    if kind == 2:
+        pixels = data[pos : pos + total * bytes_per]
+    else:
+        count = 0
+        while count < total and pos < len(data):
+            header = data[pos]
+            pos += 1
+            run = (header & 127) + 1
+            if header & 128:
+                pixels += data[pos : pos + bytes_per] * run
+                pos += bytes_per
+            else:
+                pixels += data[pos : pos + run * bytes_per]
+                pos += run * bytes_per
+            count += run
+    if len(pixels) < total * bytes_per:
+        return None
+    out = bytearray(total * 4)
+    for i in range(total):
+        b, g, r = pixels[i * bytes_per : i * bytes_per + 3]
+        a = pixels[i * bytes_per + 3] if bytes_per == 4 else 255
+        out[i * 4 : i * 4 + 4] = bytes((r, g, b, a))
+    if not descriptor & 0x20:  # bottom-up rows
+        rows = [out[y * width * 4 : (y + 1) * width * 4] for y in range(height)]
+        out = bytearray(b"".join(reversed(rows)))
+    return width, height, bytes(out)
+
+
 def digest(image):
     width, height, rgba = image
     return hashlib.sha1(struct.pack(">II", width, height) + rgba).hexdigest()
@@ -293,11 +334,14 @@ def main(jar_path, bedrock_root, out_path):
     textures = os.path.join(bedrock_root, "textures")
     for folder, _, files in os.walk(textures):
         for file in files:
-            if file.endswith(".png"):
+            if file.endswith((".png", ".tga")) and not file.endswith("_mers.tga"):
                 path = os.path.join(folder, file)
                 relative = os.path.relpath(path, textures).replace(os.sep, "/")[:-4]
+                if relative in bedrock:
+                    continue
                 with open(path, "rb") as handle:
-                    image = decode(handle.read())
+                    raw = handle.read()
+                image = decode_tga(raw) if file.endswith(".tga") else decode(raw)
                 if image:
                     bedrock[relative] = image
     by_pixels = {}
