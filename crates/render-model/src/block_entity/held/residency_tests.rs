@@ -354,3 +354,34 @@ fn prepared_special_drop_meshes_preserve_held_positions_and_texture_tiles() {
         }
     }
 }
+
+#[test]
+fn a_held_bed_keeps_its_two_block_length() {
+    use assets::block_entity_geometry::{
+        BoxSpec,
+        heads::{HeadBox, HeadModel},
+    };
+    let long = HeadModel {
+        boxes: vec![HeadBox {
+            matrix: glam::Mat4::IDENTITY,
+            spec: BoxSpec::new([0.0; 3], [2.0, 2.0, 30.0], [0.0; 2]),
+        }],
+        texture: [64.0; 2],
+    };
+    let heads = HeadModels {
+        bed: Some(long),
+        ..head_models()
+    };
+    let kind = HeldBlockEntity::Bed("red");
+    let atlas = atlas_with_textures(texture_names(kind).into_iter());
+    let model = model_with_heads(EntityRigId(1), &atlas, kind, &heads).unwrap();
+    let length = (0..3)
+        .map(|axis| {
+            let values = model.geometry.vertices.iter().map(|v| v.position[axis]);
+            values.clone().fold(f32::NEG_INFINITY, f32::max)
+                - values.fold(f32::INFINITY, f32::min)
+        })
+        .fold(0.0, f32::max);
+    assert!(length > 1.5, "a held bed is {length} blocks long");
+    assert!(model.dropped.is_some());
+}
