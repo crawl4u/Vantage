@@ -60,7 +60,8 @@ impl NativeDrawing {
         }
         self.session = session;
         self.store.revoke();
-        self.store.bind_session(session.connection, session.dimension);
+        self.store
+            .bind_session(session.connection, session.dimension);
         self.masks.revoke();
         self.masks.bind(session);
         self.output = RenderOutput::default();
@@ -129,13 +130,22 @@ impl NativeDrawing {
     }
 
     /// Counts one call and logs the first few refusals, which would otherwise be silent.
-    fn note<T>(&mut self, which: usize, what: &str, result: Result<T, wit::DrawError>) -> Result<T, wit::DrawError> {
+    fn note<T>(
+        &mut self,
+        which: usize,
+        what: &str,
+        result: Result<T, wit::DrawError>,
+    ) -> Result<T, wit::DrawError> {
         self.calls[which] += 1;
         if let Err(error) = &result
             && self.errors_logged < 16
         {
             self.errors_logged += 1;
-            bevy::log::info!("VANTAGE_DRAW {what} refused: {:?} {}", error.code as u8, error.detail);
+            bevy::log::info!(
+                "VANTAGE_DRAW {what} refused: {:?} {}",
+                error.code as u8,
+                error.detail
+            );
         }
         result
     }
@@ -187,10 +197,19 @@ fn mask_error(value: MaskError) -> wit::DrawError {
     let (code, detail) = match value {
         MaskError::Invalid => (wit::ErrorCode::Invalid, "invalid mask appearance"),
         MaskError::Denied => (wit::ErrorCode::Denied, "entity mask authority denied"),
-        MaskError::StaleHandle => (wit::ErrorCode::StaleHandle, "unknown owner or actor incarnation"),
-        MaskError::BudgetExceeded => (wit::ErrorCode::BudgetExceeded, "entity mask selection budget exceeded"),
+        MaskError::StaleHandle => (
+            wit::ErrorCode::StaleHandle,
+            "unknown owner or actor incarnation",
+        ),
+        MaskError::BudgetExceeded => (
+            wit::ErrorCode::BudgetExceeded,
+            "entity mask selection budget exceeded",
+        ),
     };
-    wit::DrawError { code, detail: detail.into() }
+    wit::DrawError {
+        code,
+        detail: detail.into(),
+    }
 }
 
 fn vertex(v: &wit::Vertex) -> domain::Vertex {
@@ -262,7 +281,10 @@ impl wit::Api for NativeDrawing {
             (p.world_draw, wit::Permissions::WORLD_DRAW),
             (p.entity_observe, wit::Permissions::ENTITY_OBSERVE),
             (p.entity_highlight, wit::Permissions::ENTITY_HIGHLIGHT),
-            (p.render_through_walls, wit::Permissions::RENDER_THROUGH_WALLS),
+            (
+                p.render_through_walls,
+                wit::Permissions::RENDER_THROUGH_WALLS,
+            ),
             (p.render_material, wit::Permissions::RENDER_MATERIAL),
             (p.render_post, wit::Permissions::RENDER_POST),
         ] {
@@ -299,23 +321,38 @@ impl wit::Api for NativeDrawing {
     fn create(&mut self, spec: &wit::Instance) -> Result<wit::Handle, wit::DrawError> {
         let permissions = self.allowed()?;
         self.changed = true;
-        let result = self.store.create(instance(spec), permissions).map(token).map_err(error);
+        let result = self
+            .store
+            .create(instance(spec), permissions)
+            .map(token)
+            .map_err(error);
         self.note(1, "create", result)
     }
 
     fn update(&mut self, id: wit::Handle, spec: &wit::Instance) -> Result<(), wit::DrawError> {
         let permissions = self.allowed()?;
         self.changed = true;
-        let result = self.store.update(handle(id), instance(spec), permissions).map_err(error);
+        let result = self
+            .store
+            .update(handle(id), instance(spec), permissions)
+            .map_err(error);
         self.note(2, "update", result)
     }
 
-    fn replace_frame_group(&mut self, name: &str, draws: &[wit::Instance]) -> Result<(), wit::DrawError> {
+    fn replace_frame_group(
+        &mut self,
+        name: &str,
+        draws: &[wit::Instance],
+    ) -> Result<(), wit::DrawError> {
         let permissions = self.allowed()?;
         self.changed = true;
         let result = self
             .store
-            .replace_group(name.to_owned(), draws.iter().map(instance).collect(), permissions)
+            .replace_group(
+                name.to_owned(),
+                draws.iter().map(instance).collect(),
+                permissions,
+            )
             .map_err(error);
         self.note(3, "replace_frame_group", result)
     }
@@ -364,10 +401,17 @@ impl wit_masks::Api for NativeDrawing {
         self.masks.entity(runtime_id).map(token).map_err(mask_error)
     }
 
-    fn select(&mut self, mask: wit::Handle, entities: &[wit::Handle]) -> Result<(), wit::DrawError> {
+    fn select(
+        &mut self,
+        mask: wit::Handle,
+        entities: &[wit::Handle],
+    ) -> Result<(), wit::DrawError> {
         self.changed = true;
         self.masks
-            .select(handle(mask), &entities.iter().copied().map(handle).collect::<Vec<_>>())
+            .select(
+                handle(mask),
+                &entities.iter().copied().map(handle).collect::<Vec<_>>(),
+            )
             .map_err(mask_error)
     }
 
@@ -376,7 +420,11 @@ impl wit_masks::Api for NativeDrawing {
         self.masks.remove(handle(mask)).map_err(mask_error)
     }
 
-    fn set_style(&mut self, mask: wit::Handle, appearance: Option<wit_masks::Style>) -> Result<(), wit::DrawError> {
+    fn set_style(
+        &mut self,
+        mask: wit::Handle,
+        appearance: Option<wit_masks::Style>,
+    ) -> Result<(), wit::DrawError> {
         let rgba = |value: wit_masks::Rgba| [value.r, value.g, value.b, value.a];
         let style = appearance.map(|value| MaskStyle {
             fill: None,
@@ -386,6 +434,8 @@ impl wit_masks::Api for NativeDrawing {
             glow_radius: value.glow_radius,
         });
         self.changed = true;
-        self.masks.set_style(handle(mask), style).map_err(mask_error)
+        self.masks
+            .set_style(handle(mask), style)
+            .map_err(mask_error)
     }
 }

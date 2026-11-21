@@ -46,9 +46,9 @@ pub(crate) fn drive_menu_panorama(
     };
     // The Java style shows Java's own panorama, read from the player's Java install, when it is
     // cached; the Bedrock style, and a Java style without the cache, show the pack's.
-    let java_style = menu.as_deref().is_some_and(|menu| {
-        menu.settings_snapshot().0.menu_style() == MenuStyle::Java
-    });
+    let java_style = menu
+        .as_deref()
+        .is_some_and(|menu| menu.settings_snapshot().0.menu_style() == MenuStyle::Java);
     let stack = packs.as_deref().map(|packs| packs.global_stack().clone());
     let faces = |java: bool| {
         java.then(|| java_faces(stack.as_ref()))

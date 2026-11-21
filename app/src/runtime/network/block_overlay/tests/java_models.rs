@@ -367,7 +367,10 @@ fn tall_box(name: &str, tall: f64) -> (String, Vec<u8>) {
 }
 
 /// A pack binding `blocks` with `geometries` and one flat texture.
-fn pack_with_bindings(geometries: Vec<(String, Vec<u8>)>, blocks: serde_json::Value) -> LayeredPackView {
+fn pack_with_bindings(
+    geometries: Vec<(String, Vec<u8>)>,
+    blocks: serde_json::Value,
+) -> LayeredPackView {
     let mut files = geometries;
     files.push((
         java_resource_pack::block_models::BINDINGS.to_owned(),

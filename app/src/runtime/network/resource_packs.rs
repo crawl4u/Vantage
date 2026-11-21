@@ -453,6 +453,7 @@ fn compile_application(
                             grass,
                         );
                     }
+                    super::item_icons::vanilla_block_entities::append(view, &mut block_icons);
                     block_icons
                 },
             );

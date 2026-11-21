@@ -109,7 +109,9 @@ pub(crate) fn update_atmosphere_frame(
     let skybox = preferences.skybox;
     if let Some(mut follows) = preferences.follows_time {
         // A time the player forced shows in a pack's sky too.
-        follows.0 = time_override.as_deref().is_some_and(|visual| visual.0.is_some());
+        follows.0 = time_override
+            .as_deref()
+            .is_some_and(|visual| visual.0.is_some());
     }
     let cloud_chunks = options
         .as_ref()

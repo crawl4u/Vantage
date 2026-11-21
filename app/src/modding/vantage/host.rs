@@ -4,8 +4,11 @@
 
 use std::{path::PathBuf, sync::Arc};
 use ui::mod_panel::{HudIndex, Panel, PanelPatch, Surface, SurfacePatch};
-use vantage::host::{budget, camera, clock, drawing, environment, facts, gameplay, hud, input, item_use, masks, panel, player_state, presentation, settings, terrain, touch};
 use ui::mod_presentation as client_presentation;
+use vantage::host::{
+    budget, camera, clock, drawing, environment, facts, gameplay, hud, input, item_use, masks,
+    panel, player_state, presentation, settings, terrain, touch,
+};
 
 /// Gameplay and presentation requests that stay in force until the guest changes them.
 #[derive(Default)]
@@ -138,7 +141,8 @@ impl hud::Api for Frame<'_> {
         if json.is_empty() {
             self.surface.current = None;
         } else {
-            let surface: Surface = serde_json::from_str(json).map_err(|e| format!("invalid HUD surface: {e}"))?;
+            let surface: Surface =
+                serde_json::from_str(json).map_err(|e| format!("invalid HUD surface: {e}"))?;
             let index = HudIndex::new(&surface)?;
             self.surface.current = Some((Arc::new(surface), index));
         }
@@ -148,7 +152,11 @@ impl hud::Api for Frame<'_> {
 
     fn update_surface(&mut self, json: &str) -> Result<(), String> {
         let patch = SurfacePatch::parse(json)?;
-        let (surface, index) = self.surface.current.as_ref().ok_or("no HUD surface to update")?;
+        let (surface, index) = self
+            .surface
+            .current
+            .as_ref()
+            .ok_or("no HUD surface to update")?;
         let (next, index) = patch.apply_hud(surface, index)?;
         self.surface.current = Some((Arc::new(next), index));
         self.surface.changed = true;
@@ -156,12 +164,20 @@ impl hud::Api for Frame<'_> {
     }
 
     fn read_viewport(&mut self) -> Option<hud::Viewport> {
-        self.viewport.map(|[width, height, scale]| hud::Viewport { width, height, scale })
+        self.viewport.map(|[width, height, scale]| hud::Viewport {
+            width,
+            height,
+            scale,
+        })
     }
 
     fn measure_text(&mut self, text: &str, _font: hud::Font) -> Result<f32, String> {
         METRICS
-            .with_borrow(|metrics| metrics.as_ref()?.width(text, ui::mod_panel::LabelFont::Native))
+            .with_borrow(|metrics| {
+                metrics
+                    .as_ref()?
+                    .width(text, ui::mod_panel::LabelFont::Native)
+            })
             .ok_or_else(|| "text metrics are not ready".to_owned())
     }
 
@@ -173,14 +189,21 @@ impl hud::Api for Frame<'_> {
                 hud::ElementState {
                     element: wire_element(kind),
                     visible: state.visible,
-                    bounds: state.bounds.map(|[x, y, width, height]| hud::Rect { x, y, width, height }),
+                    bounds: state.bounds.map(|[x, y, width, height]| hud::Rect {
+                        x,
+                        y,
+                        width,
+                        height,
+                    }),
                 }
             })
             .collect())
     }
 
     fn set_hidden_elements(&mut self, elements: &[hud::VanillaElement]) -> Result<(), String> {
-        let next = ui::mod_hud::HiddenElements::from_elements(elements.iter().copied().map(unwire_element));
+        let next = ui::mod_hud::HiddenElements::from_elements(
+            elements.iter().copied().map(unwire_element),
+        );
         if next != self.hidden.0 {
             *self.hidden = (next, true);
         }
@@ -228,14 +251,27 @@ impl player_state::Api for Frame<'_> {
         Ok(self.observed.equipment.clone())
     }
 
-    fn read_actors_limited(&mut self, limit: u32) -> Result<Vec<player_state::ObservedActor>, String> {
+    fn read_actors_limited(
+        &mut self,
+        limit: u32,
+    ) -> Result<Vec<player_state::ObservedActor>, String> {
         if limit == 0 {
             return Err("actor observation limit exceeds bounds".into());
         }
-        Ok(self.observed.actors.iter().take(limit as usize).cloned().collect())
+        Ok(self
+            .observed
+            .actors
+            .iter()
+            .take(limit as usize)
+            .cloned()
+            .collect())
     }
 
-    fn read_combat(&mut self, after: u64, limit: u32) -> Result<Vec<player_state::CombatEvent>, String> {
+    fn read_combat(
+        &mut self,
+        after: u64,
+        limit: u32,
+    ) -> Result<Vec<player_state::CombatEvent>, String> {
         if limit == 0 {
             return Err("combat import limit exceeds bounds".into());
         }
@@ -249,11 +285,22 @@ impl player_state::Api for Frame<'_> {
             .collect())
     }
 
-    fn read_chat(&mut self, after: u64, limit: u32) -> Result<Vec<player_state::ChatMessage>, String> {
+    fn read_chat(
+        &mut self,
+        after: u64,
+        limit: u32,
+    ) -> Result<Vec<player_state::ChatMessage>, String> {
         if limit == 0 {
             return Err("chat import limit exceeds bounds".into());
         }
-        Ok(self.observed.chat.iter().filter(|message| message.sequence > after).take(limit as usize).cloned().collect())
+        Ok(self
+            .observed
+            .chat
+            .iter()
+            .filter(|message| message.sequence > after)
+            .take(limit as usize)
+            .cloned()
+            .collect())
     }
 
     fn read_sidebar(&mut self) -> Result<Option<player_state::Sidebar>, String> {
@@ -287,18 +334,29 @@ impl input::Api for Frame<'_> {
         Ok(())
     }
 
-    fn read_selected_controls(&mut self, selection: &input::Selection) -> Result<input::Controls, String> {
+    fn read_selected_controls(
+        &mut self,
+        selection: &input::Selection,
+    ) -> Result<input::Controls, String> {
         let pick = |keys: &[String], names: &Option<Vec<String>>| -> Vec<String> {
             match names {
                 None => keys.to_vec(),
-                Some(names) => keys.iter().filter(|key| names.contains(key)).cloned().collect(),
+                Some(names) => keys
+                    .iter()
+                    .filter(|key| names.contains(key))
+                    .cloned()
+                    .collect(),
             }
         };
         let frame = self.native.controls.clone();
         if !frame.keys_held.is_empty() || !frame.keys_pressed.is_empty() {
             let line = format!(
                 "controls held={:?} pressed={:?} focused={} panel_open={} asked_held={:?}",
-                frame.keys_held, frame.keys_pressed, frame.focused, self.panel.open, selection.keys_held
+                frame.keys_held,
+                frame.keys_pressed,
+                frame.focused,
+                self.panel.open,
+                selection.keys_held
             );
             if self.said.len() < 512 && self.said.insert(line.clone()) {
                 bevy::log::info!("VANTAGE_INPUT {line}");
@@ -313,7 +371,14 @@ impl input::Api for Frame<'_> {
             keys_held: pick(&frame.keys_held, &selection.keys_held),
             keys_admitted: pick(&frame.keys_admitted, &selection.keys_admitted),
             events: if selection.events {
-                frame.events.iter().map(|event| input::Event { id: event.id.clone(), value: event.value }).collect()
+                frame
+                    .events
+                    .iter()
+                    .map(|event| input::Event {
+                        id: event.id.clone(),
+                        value: event.value,
+                    })
+                    .collect()
             } else {
                 Vec::new()
             },
@@ -334,7 +399,12 @@ impl input::Api for Frame<'_> {
 
     fn read_scroll(&mut self) -> Result<input::Scroll, String> {
         let [line_x, line_y, pixel_x, pixel_y] = std::mem::take(&mut self.native.scroll);
-        Ok(input::Scroll { line_x, line_y, pixel_x, pixel_y })
+        Ok(input::Scroll {
+            line_x,
+            line_y,
+            pixel_x,
+            pixel_y,
+        })
     }
 
     fn read_native_editing(&mut self) -> Result<bool, String> {
@@ -346,8 +416,14 @@ impl input::Api for Frame<'_> {
         Ok(std::mem::take(&mut self.native.field_events)
             .into_iter()
             .map(|event| match event {
-                FieldEvent::Change(e) => input::FieldEvent::Change(input::TextEvent { id: e.id, value: e.value }),
-                FieldEvent::Submit(e) => input::FieldEvent::Submit(input::TextEvent { id: e.id, value: e.value }),
+                FieldEvent::Change(e) => input::FieldEvent::Change(input::TextEvent {
+                    id: e.id,
+                    value: e.value,
+                }),
+                FieldEvent::Submit(e) => input::FieldEvent::Submit(input::TextEvent {
+                    id: e.id,
+                    value: e.value,
+                }),
                 FieldEvent::Key(e) => input::FieldEvent::Key(input::FieldKey {
                     id: e.id,
                     key: e.key,
@@ -360,7 +436,12 @@ impl input::Api for Frame<'_> {
             .collect())
     }
 
-    fn read_bindings(&mut self, after: Option<u64>, offset: u32, limit: u32) -> Result<Option<input::Bindings>, String> {
+    fn read_bindings(
+        &mut self,
+        after: Option<u64>,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Option<input::Bindings>, String> {
         let bindings = self.bindings.as_ref().ok_or("input bindings unavailable")?;
         let start = offset as usize;
         if start > bindings.entries.len() || limit == 0 {
@@ -401,7 +482,10 @@ impl input::Api for Frame<'_> {
         };
         // One change per action, the latest, as the guest intends.
         self.writes.retain(|write| write.action != action);
-        self.writes.push(mod_host::InputBindingWrite { action: action.to_owned(), change });
+        self.writes.push(mod_host::InputBindingWrite {
+            action: action.to_owned(),
+            change,
+        });
         Ok(())
     }
 }
@@ -421,8 +505,11 @@ impl panel::Api for Frame<'_> {
         if json.is_empty() {
             self.panel.panel = None;
         } else {
-            let panel: Panel = serde_json::from_str(json).map_err(|e| format!("invalid mod panel: {e}"))?;
-            panel.validate().map_err(|e| format!("invalid mod panel: {e}"))?;
+            let panel: Panel =
+                serde_json::from_str(json).map_err(|e| format!("invalid mod panel: {e}"))?;
+            panel
+                .validate()
+                .map_err(|e| format!("invalid mod panel: {e}"))?;
             self.panel.panel = Some(panel);
         }
         self.panel.changed = true;
@@ -430,7 +517,11 @@ impl panel::Api for Frame<'_> {
     }
 
     fn update_content(&mut self, json: &str) -> Result<(), String> {
-        let current = self.panel.panel.as_ref().ok_or("panel update requires retained content")?;
+        let current = self
+            .panel
+            .panel
+            .as_ref()
+            .ok_or("panel update requires retained content")?;
         let patch = PanelPatch::parse(json)?;
         let next = patch
             .apply(current, &std::collections::BTreeMap::new())
@@ -441,12 +532,14 @@ impl panel::Api for Frame<'_> {
     }
 
     fn read_layout(&mut self) -> Option<panel::PanelLayout> {
-        self.layout.filter(|_| self.panel.open).map(|layout| panel::PanelLayout {
-            width: layout.size[0],
-            height: layout.size[1],
-            scale: layout.scale,
-            offset: (layout.offset[0], layout.offset[1]),
-        })
+        self.layout
+            .filter(|_| self.panel.open)
+            .map(|layout| panel::PanelLayout {
+                width: layout.size[0],
+                height: layout.size[1],
+                scale: layout.scale,
+                offset: (layout.offset[0], layout.offset[1]),
+            })
     }
 
     fn read_press(&mut self) -> Option<panel::PanelPress> {
@@ -489,30 +582,40 @@ fn unwire_element(element: hud::VanillaElement) -> ui::mod_hud::VanillaElement {
 }
 
 impl facts::Api for Frame<'_> {
-    fn read_item(&mut self, identifier: &str, metadata: u32) -> Result<Option<facts::ItemFacts>, String> {
-        Ok(mod_host::item_facts(identifier, metadata, self.food.as_deref()).map(|item| facts::ItemFacts {
-            max_durability: item.max_durability,
-            food: item.food.map(|food| facts::Food {
-                nutrition: food.nutrition,
-                saturation_modifier: food.saturation_modifier,
+    fn read_item(
+        &mut self,
+        identifier: &str,
+        metadata: u32,
+    ) -> Result<Option<facts::ItemFacts>, String> {
+        Ok(
+            mod_host::item_facts(identifier, metadata, self.food.as_deref()).map(|item| {
+                facts::ItemFacts {
+                    max_durability: item.max_durability,
+                    food: item.food.map(|food| facts::Food {
+                        nutrition: food.nutrition,
+                        saturation_modifier: food.saturation_modifier,
+                    }),
+                    potion_effects: item
+                        .potion_effects
+                        .into_iter()
+                        .map(|effect| facts::PotionEffect {
+                            effect_id: effect.effect_id,
+                            amplifier: effect.amplifier,
+                            duration_ticks: effect.duration_ticks,
+                        })
+                        .collect(),
+                }
             }),
-            potion_effects: item
-                .potion_effects
-                .into_iter()
-                .map(|effect| facts::PotionEffect {
-                    effect_id: effect.effect_id,
-                    amplifier: effect.amplifier,
-                    duration_ticks: effect.duration_ticks,
-                })
-                .collect(),
-        }))
+        )
     }
 
     fn read_effect(&mut self, effect_id: i32) -> Result<Option<facts::EffectFacts>, String> {
-        Ok(mod_host::effect_facts(effect_id).map(|effect| facts::EffectFacts {
-            name_key: effect.name_key,
-            texture: effect.texture,
-        }))
+        Ok(
+            mod_host::effect_facts(effect_id).map(|effect| facts::EffectFacts {
+                name_key: effect.name_key,
+                texture: effect.texture,
+            }),
+        )
     }
 }
 
@@ -523,7 +626,8 @@ impl camera::Api for Frame<'_> {
     }
 
     fn set_view_scale(&mut self, fov_scale: f32, look_scale: f32) -> Result<(), String> {
-        self.out.view_scale = ((fov_scale - 1.0).abs() > f32::EPSILON || (look_scale - 1.0).abs() > f32::EPSILON)
+        self.out.view_scale = ((fov_scale - 1.0).abs() > f32::EPSILON
+            || (look_scale - 1.0).abs() > f32::EPSILON)
             .then_some([fov_scale, look_scale]);
         Ok(())
     }
@@ -543,7 +647,9 @@ impl camera::Api for Frame<'_> {
     }
 
     fn read_damage_shake(&mut self) -> Result<Option<camera::DamageShake>, String> {
-        Ok(self.damage_shake.map(|(roll, pitch)| camera::DamageShake { roll, pitch }))
+        Ok(self
+            .damage_shake
+            .map(|(roll, pitch)| camera::DamageShake { roll, pitch }))
     }
 }
 
@@ -571,33 +677,48 @@ impl environment::Api for Frame<'_> {
 impl gameplay::Api for Frame<'_> {
     fn read_camera(&mut self) -> Result<Option<gameplay::CameraPose>, String> {
         Ok(self.facts.camera.map(|pose| gameplay::CameraPose {
-            position: gameplay::Vector3 { x: pose.position.x, y: pose.position.y, z: pose.position.z },
+            position: gameplay::Vector3 {
+                x: pose.position.x,
+                y: pose.position.y,
+                z: pose.position.z,
+            },
             yaw: pose.yaw,
             pitch: pose.pitch,
         }))
     }
 
     fn read_block_target(&mut self) -> Result<Option<gameplay::Vector3>, String> {
-        Ok(self.facts.block_target.map(|target| gameplay::Vector3 { x: target.x, y: target.y, z: target.z }))
-    }
-
-    fn read_movement_input(&mut self) -> Result<Option<gameplay::MovementInput>, String> {
-        Ok(self.facts.movement_input.map(|input| gameplay::MovementInput {
-            right: input.right,
-            forward: input.forward,
-            jump: input.jump,
-            sneak: input.sneak,
-            sprint: input.sprint,
+        Ok(self.facts.block_target.map(|target| gameplay::Vector3 {
+            x: target.x,
+            y: target.y,
+            z: target.z,
         }))
     }
 
-    fn set_movement_intents(&mut self, intents: Option<gameplay::MovementIntents>) -> Result<(), String> {
+    fn read_movement_input(&mut self) -> Result<Option<gameplay::MovementInput>, String> {
+        Ok(self
+            .facts
+            .movement_input
+            .map(|input| gameplay::MovementInput {
+                right: input.right,
+                forward: input.forward,
+                jump: input.jump,
+                sneak: input.sneak,
+                sprint: input.sprint,
+            }))
+    }
+
+    fn set_movement_intents(
+        &mut self,
+        intents: Option<gameplay::MovementIntents>,
+    ) -> Result<(), String> {
         self.gp.intents = intents.map(|intents| (intents.sprint, intents.sneak));
         Ok(())
     }
 
     fn set_control_modes(&mut self, modes: Option<gameplay::ControlModes>) -> Result<(), String> {
-        self.gp.modes = modes.map(|modes| (modes.toggle_sprint, modes.toggle_sneak, modes.always_sprint));
+        self.gp.modes =
+            modes.map(|modes| (modes.toggle_sprint, modes.toggle_sneak, modes.always_sprint));
         Ok(())
     }
 
@@ -614,7 +735,10 @@ impl gameplay::Api for Frame<'_> {
 }
 
 impl presentation::Api for Frame<'_> {
-    fn set_nametag_style(&mut self, style: Option<presentation::NametagStyle>) -> Result<(), String> {
+    fn set_nametag_style(
+        &mut self,
+        style: Option<presentation::NametagStyle>,
+    ) -> Result<(), String> {
         self.gp.nametag_style = style.map(|style| client_presentation::NametagStyle {
             opacity: style.opacity,
             scale: style.scale,
@@ -636,9 +760,15 @@ impl presentation::Api for Frame<'_> {
                 actors: selector(rule.actors),
                 hud_hidden: rule.hud_hidden,
                 visibility: match rule.visibility {
-                    presentation::NametagVisibility::Native => client_presentation::NametagVisibility::Native,
-                    presentation::NametagVisibility::Shown => client_presentation::NametagVisibility::Shown,
-                    presentation::NametagVisibility::Hidden => client_presentation::NametagVisibility::Hidden,
+                    presentation::NametagVisibility::Native => {
+                        client_presentation::NametagVisibility::Native
+                    }
+                    presentation::NametagVisibility::Shown => {
+                        client_presentation::NametagVisibility::Shown
+                    }
+                    presentation::NametagVisibility::Hidden => {
+                        client_presentation::NametagVisibility::Hidden
+                    }
                 },
             })
             .collect();
@@ -732,8 +862,12 @@ macro_rules! refuse {
     ($($module:ident),*) => {$(impl vantage::host::$module::Api for Frame<'_> {})*};
 }
 refuse!(
-    action_filter, events,
-    render, screen, sound_handling, teleport_handling
+    action_filter,
+    events,
+    render,
+    screen,
+    sound_handling,
+    teleport_handling
 );
 
 impl drawing::Api for Frame<'_> {
@@ -741,7 +875,10 @@ impl drawing::Api for Frame<'_> {
         drawing::Api::capabilities(&mut *self.draw)
     }
 
-    fn create_geometry(&mut self, spec: &drawing::GeometrySpec) -> Result<drawing::Handle, drawing::DrawError> {
+    fn create_geometry(
+        &mut self,
+        spec: &drawing::GeometrySpec,
+    ) -> Result<drawing::Handle, drawing::DrawError> {
         drawing::Api::create_geometry(&mut *self.draw, spec)
     }
 
@@ -749,11 +886,19 @@ impl drawing::Api for Frame<'_> {
         drawing::Api::create(&mut *self.draw, spec)
     }
 
-    fn update(&mut self, id: drawing::Handle, spec: &drawing::Instance) -> Result<(), drawing::DrawError> {
+    fn update(
+        &mut self,
+        id: drawing::Handle,
+        spec: &drawing::Instance,
+    ) -> Result<(), drawing::DrawError> {
         drawing::Api::update(&mut *self.draw, id, spec)
     }
 
-    fn replace_frame_group(&mut self, name: &str, draws: &[drawing::Instance]) -> Result<(), drawing::DrawError> {
+    fn replace_frame_group(
+        &mut self,
+        name: &str,
+        draws: &[drawing::Instance],
+    ) -> Result<(), drawing::DrawError> {
         drawing::Api::replace_frame_group(&mut *self.draw, name, draws)
     }
 
@@ -775,7 +920,11 @@ impl masks::Api for Frame<'_> {
         masks::Api::entity(&mut *self.draw, runtime_id)
     }
 
-    fn select(&mut self, mask: drawing::Handle, entities: &[drawing::Handle]) -> Result<(), drawing::DrawError> {
+    fn select(
+        &mut self,
+        mask: drawing::Handle,
+        entities: &[drawing::Handle],
+    ) -> Result<(), drawing::DrawError> {
         masks::Api::select(&mut *self.draw, mask, entities)
     }
 
@@ -783,17 +932,29 @@ impl masks::Api for Frame<'_> {
         masks::Api::remove(&mut *self.draw, mask)
     }
 
-    fn set_style(&mut self, mask: drawing::Handle, appearance: Option<masks::Style>) -> Result<(), drawing::DrawError> {
+    fn set_style(
+        &mut self,
+        mask: drawing::Handle,
+        appearance: Option<masks::Style>,
+    ) -> Result<(), drawing::DrawError> {
         masks::Api::set_style(&mut *self.draw, mask, appearance)
     }
 }
 
 fn host_position(position: terrain::Position) -> mod_host::TerrainPosition {
-    mod_host::TerrainPosition { x: position.x, y: position.y, z: position.z }
+    mod_host::TerrainPosition {
+        x: position.x,
+        y: position.y,
+        z: position.z,
+    }
 }
 
 fn guest_position(position: mod_host::TerrainPosition) -> terrain::Position {
-    terrain::Position { x: position.x, y: position.y, z: position.z }
+    terrain::Position {
+        x: position.x,
+        y: position.y,
+        z: position.z,
+    }
 }
 
 fn guest_error(error: mod_host::TerrainReadError) -> terrain::ReadError {
@@ -818,7 +979,9 @@ fn guest_shape(shape: mod_host::TerrainShape) -> terrain::ResolvedShape {
 fn guest_binding(binding: &mod_host::TerrainShapeBinding) -> terrain::ShapeBinding {
     match binding {
         mod_host::TerrainShapeBinding::NotRequested => terrain::ShapeBinding::NotRequested,
-        mod_host::TerrainShapeBinding::Fixed(shape) => terrain::ShapeBinding::Fixed(guest_shape(*shape)),
+        mod_host::TerrainShapeBinding::Fixed(shape) => {
+            terrain::ShapeBinding::Fixed(guest_shape(*shape))
+        }
         mod_host::TerrainShapeBinding::PerCell => terrain::ShapeBinding::PerCell,
     }
 }
@@ -868,7 +1031,11 @@ fn guest_region(region: &mod_host::TerrainRegion) -> terrain::Region {
         chunks: region
             .chunks
             .iter()
-            .map(|chunk| terrain::ChunkRevision { x: chunk.x, z: chunk.z, revision: chunk.revision })
+            .map(|chunk| terrain::ChunkRevision {
+                x: chunk.x,
+                z: chunk.z,
+                revision: chunk.revision,
+            })
             .collect(),
         layer_count: region.layer_count,
         loaded: region.loaded.clone(),
@@ -892,9 +1059,15 @@ fn guest_region(region: &mod_host::TerrainRegion) -> terrain::Region {
                         mod_host::TerrainSurfaceResponse::Slime => terrain::SurfaceResponse::Slime,
                         mod_host::TerrainSurfaceResponse::Bed => terrain::SurfaceResponse::Bed,
                         mod_host::TerrainSurfaceResponse::Honey => terrain::SurfaceResponse::Honey,
-                        mod_host::TerrainSurfaceResponse::SoulSand => terrain::SurfaceResponse::SoulSand,
-                        mod_host::TerrainSurfaceResponse::BubbleUp => terrain::SurfaceResponse::BubbleUp,
-                        mod_host::TerrainSurfaceResponse::BubbleDown => terrain::SurfaceResponse::BubbleDown,
+                        mod_host::TerrainSurfaceResponse::SoulSand => {
+                            terrain::SurfaceResponse::SoulSand
+                        }
+                        mod_host::TerrainSurfaceResponse::BubbleUp => {
+                            terrain::SurfaceResponse::BubbleUp
+                        }
+                        mod_host::TerrainSurfaceResponse::BubbleDown => {
+                            terrain::SurfaceResponse::BubbleDown
+                        }
                     },
                 }),
                 collision: guest_binding(&state.collision),
@@ -916,7 +1089,11 @@ fn guest_region(region: &mod_host::TerrainRegion) -> terrain::Region {
 }
 
 impl terrain::Api for Frame<'_> {
-    fn read_region(&mut self, query: terrain::RegionQuery, after: Option<terrain::Stamp>) -> Result<terrain::ReadResult, terrain::ReadError> {
+    fn read_region(
+        &mut self,
+        query: terrain::RegionQuery,
+        after: Option<terrain::Stamp>,
+    ) -> Result<terrain::ReadResult, terrain::ReadError> {
         use super::super::terrain::Sample;
         let Some(world) = self.observed.world.as_ref() else {
             return Err(terrain::ReadError::Unavailable);
@@ -934,14 +1111,30 @@ impl terrain::Api for Frame<'_> {
         if !self.terrain.pending.contains(&query) {
             self.terrain.pending.push(query);
         }
-        let sample = self.terrain.subscriptions.iter().find(|(candidate, _)| *candidate == query).map(|(_, sample)| sample);
+        let sample = self
+            .terrain
+            .subscriptions
+            .iter()
+            .find(|(candidate, _)| *candidate == query)
+            .map(|(_, sample)| sample);
         match sample {
             Some(Sample::Failed(error)) => Err(guest_error(*error)),
-            Some(Sample::Region(region)) if (region.stamp.session, region.stamp.dimension) == scope => {
+            Some(Sample::Region(region))
+                if (region.stamp.session, region.stamp.dimension) == scope =>
+            {
                 let stamp = guest_stamp(region.stamp);
                 let same = after.is_some_and(|after| {
-                    (after.session, after.dimension, after.registry, after.revision)
-                        == (stamp.session, stamp.dimension, stamp.registry, stamp.revision)
+                    (
+                        after.session,
+                        after.dimension,
+                        after.registry,
+                        after.revision,
+                    ) == (
+                        stamp.session,
+                        stamp.dimension,
+                        stamp.registry,
+                        stamp.revision,
+                    )
                 });
                 Ok(if same {
                     terrain::ReadResult::Unchanged(stamp)
@@ -953,21 +1146,36 @@ impl terrain::Api for Frame<'_> {
         }
     }
 
-    fn find_blocks(&mut self, identifiers: &[String], range: f32, limit: u32) -> Result<Vec<terrain::Position>, terrain::ReadError> {
+    fn find_blocks(
+        &mut self,
+        identifiers: &[String],
+        range: f32,
+        limit: u32,
+    ) -> Result<Vec<terrain::Position>, terrain::ReadError> {
         let Some(world) = self.observed.world.as_ref() else {
             return Err(terrain::ReadError::Unavailable);
         };
         let scope = (world.session, world.dimension);
-        let search = mod_host::BlockSearch::admit(identifiers.to_vec(), range, limit).map_err(guest_error)?;
+        let search = mod_host::BlockSearch::admit(identifiers.to_vec(), range, limit)
+            .map_err(guest_error)?;
         if !self.terrain.pending_searches.contains(&search) {
             self.terrain.pending_searches.push(search.clone());
         }
-        let sample = self.terrain.searches.iter().find(|(candidate, _)| *candidate == search).and_then(|(_, sample)| sample.as_ref());
+        let sample = self
+            .terrain
+            .searches
+            .iter()
+            .find(|(candidate, _)| *candidate == search)
+            .and_then(|(_, sample)| sample.as_ref());
         Ok(match sample {
             Some(Err(error)) => return Err(guest_error(*error)),
-            Some(Ok(found)) if (found.session, found.dimension) == scope => {
-                found.positions.iter().take(search.limit as usize).copied().map(guest_position).collect()
-            }
+            Some(Ok(found)) if (found.session, found.dimension) == scope => found
+                .positions
+                .iter()
+                .take(search.limit as usize)
+                .copied()
+                .map(guest_position)
+                .collect(),
             _ => Vec::new(),
         })
     }
@@ -988,7 +1196,11 @@ impl terrain::Api for Frame<'_> {
                             .conditions
                             .iter()
                             .map(|condition| Condition {
-                                offset: [condition.offset.0, condition.offset.1, condition.offset.2],
+                                offset: [
+                                    condition.offset.0,
+                                    condition.offset.1,
+                                    condition.offset.2,
+                                ],
                                 present: condition.present,
                             })
                             .collect(),

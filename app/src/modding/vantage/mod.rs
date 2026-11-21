@@ -12,10 +12,13 @@ mod observe;
 mod stats;
 
 use super::{ModRuntime, input::NativePanel};
-use bevy::{prelude::*, window::{CursorOptions, PrimaryWindow}};
+use bevy::{
+    prelude::*,
+    window::{CursorOptions, PrimaryWindow},
+};
 use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
-use mod_api::handled_player_mod::Guest;
 pub(crate) use draw::NativeRenderOutput;
+use mod_api::handled_player_mod::Guest;
 use std::{path::PathBuf, sync::Arc};
 
 /// The layer and menu owner for native Vantage.
@@ -38,7 +41,10 @@ pub(super) fn published(hud: &NativeHud) -> impl Iterator<Item = mod_ui::Publish
         owner: OWNER,
         revision: native.revision,
         surface: &native.surface,
-        authority: mod_ui::ActorAuthority { players: true, entities: true },
+        authority: mod_ui::ActorAuthority {
+            players: true,
+            entities: true,
+        },
     })
 }
 
@@ -99,12 +105,13 @@ pub(super) fn present_touch<'a>(
     }
     if let Some(native) = native.as_deref_mut() {
         native.taps.extend(taps);
-        native.taps.truncate(ui::mod_touch::MAX_QUEUED_TOUCH_PRESSES);
+        native
+            .taps
+            .truncate(ui::mod_touch::MAX_QUEUED_TOUCH_PRESSES);
     }
     let own: &[ui::mod_touch::TouchButton] = native.map_or(&[], |native| &native.buttons);
-    presentation.set_mod_touch_buttons(
-        others.chain(own.iter().map(|button| (NATIVE_TOUCH_OWNER, button))),
-    );
+    presentation
+        .set_mod_touch_buttons(others.chain(own.iter().map(|button| (NATIVE_TOUCH_OWNER, button))));
 }
 
 /// What a Vantage frame changes in the client, beyond the HUD and the menu.
@@ -225,7 +232,11 @@ pub(super) fn update(
     let session = super::packet_render::session(&gameplay);
     state.draw.bind(session);
     if session.permissions.entity_observe
-        && let Some(authority) = gameplay.world.as_ref().and_then(|world| world.stream.as_ref()).map(|stream| stream.authority())
+        && let Some(authority) = gameplay
+            .world
+            .as_ref()
+            .and_then(|world| world.stream.as_ref())
+            .map(|stream| stream.authority())
         && let Some(view) = gameplay.view.as_ref()
     {
         let dimension = authority.current_dimension();
@@ -244,9 +255,13 @@ pub(super) fn update(
     if session.permissions.entity_highlight
         && let Some(actors) = actors.as_deref()
     {
-        state.draw.publish_mask_targets(&render_scene::mod_scene::mask_targets(actors));
+        state
+            .draw
+            .publish_mask_targets(&render_scene::mod_scene::mask_targets(actors));
     }
-    state.sampling.refresh_native(&mut state.terrain, &gameplay, world.as_ref());
+    state
+        .sampling
+        .refresh_native(&mut state.terrain, &gameplay, world.as_ref());
     state.terrain.begin();
     state.draw.begin();
     let container = super::drive::observed_container_screen(&player, &ui);
@@ -261,7 +276,10 @@ pub(super) fn update(
         gp: &mut state.gp,
         bindings,
         writes: &mut state.writes,
-        damage_shake: damage_shake.as_deref().and_then(|shake| shake.0).map(|shake| (shake.roll_degrees, shake.pitch_degrees)),
+        damage_shake: damage_shake
+            .as_deref()
+            .and_then(|shake| shake.0)
+            .map(|shake| (shake.roll_degrees, shake.pitch_degrees)),
         food,
         elements,
         hidden: &mut state.hidden,
@@ -274,7 +292,10 @@ pub(super) fn update(
         press,
         said: &mut state.said,
         container,
-        touch_taps: touch.as_deref_mut().map(|touch| std::mem::take(&mut touch.taps)).unwrap_or_default(),
+        touch_taps: touch
+            .as_deref_mut()
+            .map(|touch| std::mem::take(&mut touch.taps))
+            .unwrap_or_default(),
     };
     vantage::host::scope(&mut frame, || {
         if !state.started {
@@ -308,10 +329,12 @@ pub(super) fn update(
             }));
             let [fov_scale, look_scale] = out.view_scale.unwrap_or([1.0, 1.0]);
             camera.set_view_scale(fov_scale, look_scale);
-            camera.set_view_tilt(out.tilt.map(|(roll, pitch, suppress)| client_presentation::camera::ViewTilt {
-                roll_degrees: roll,
-                pitch_degrees: pitch,
-                suppress_hurt_shake: suppress,
+            camera.set_view_tilt(out.tilt.map(|(roll, pitch, suppress)| {
+                client_presentation::camera::ViewTilt {
+                    roll_degrees: roll,
+                    pitch_degrees: pitch,
+                    suppress_hurt_shake: suppress,
+                }
             }));
         }
         if let Some(time_override) = time_override.as_deref_mut() {
@@ -331,13 +354,13 @@ pub(super) fn update(
             .map(|(sprint, sneak)| mod_host::GameplayMovementIntents { sprint, sneak }),
         input_owned,
     );
-    gameplay.apply_control_modes(state.gp.modes.map(|(toggle_sprint, toggle_sneak, always_sprint)| {
-        mod_host::GameplayControlModes {
+    gameplay.apply_control_modes(state.gp.modes.map(
+        |(toggle_sprint, toggle_sneak, always_sprint)| mod_host::GameplayControlModes {
             toggle_sprint,
             toggle_sneak,
             always_sprint,
-        }
-    }));
+        },
+    ));
     if let Some(suppress) = suppress_outline.as_deref_mut() {
         suppress.0 = vantage::block_outline_on();
     }
@@ -362,8 +385,13 @@ pub(super) fn update(
             &player,
             &ui,
             &presentation,
-            menu.as_deref().is_some_and(client_shell::menu::MenuRuntime::is_visible),
-            super::drive::pointer_focus_available(window.focused, focus.as_deref(), driven.is_some()),
+            menu.as_deref()
+                .is_some_and(client_shell::menu::MenuRuntime::is_visible),
+            super::drive::pointer_focus_available(
+                window.focused,
+                focus.as_deref(),
+                driven.is_some(),
+            ),
         )
         && driven.is_none()
     {
@@ -383,7 +411,10 @@ pub(super) fn update(
     if state.gp.presentation_changed {
         state.gp.presentation_changed = false;
         use ui::mod_presentation::{ActorGrants, Presentation, TintState};
-        let grants = ActorGrants { players: true, entities: true };
+        let grants = ActorGrants {
+            players: true,
+            entities: true,
+        };
         let hurt = |wanted: TintState| {
             state
                 .gp
@@ -396,7 +427,10 @@ pub(super) fn update(
         let merged = Arc::new(Presentation {
             nametag_style: state.gp.nametag_style.clone(),
             nametag_rules: (grants, state.gp.nametag_rules.clone()),
-            tint_rules: [(grants, hurt(TintState::Hurt)), (grants, hurt(TintState::NotHurt))],
+            tint_rules: [
+                (grants, hurt(TintState::Hurt)),
+                (grants, hurt(TintState::NotHurt)),
+            ],
             ..Default::default()
         });
         presentation.set_mod_presentation(Arc::clone(&merged));
@@ -409,7 +443,8 @@ pub(super) fn update(
             break;
         };
         let result = super::bindings::key_change(&write).and_then(|(action, change)| {
-            menu.change_action_key(action, change).map_err(|_| "refused by the Controls settings")
+            menu.change_action_key(action, change)
+                .map_err(|_| "refused by the Controls settings")
         });
         if let Err(error) = result {
             debug!(action = %write.action, error, "Vantage binding change refused");
@@ -417,15 +452,21 @@ pub(super) fn update(
     }
     if state.hidden.1 {
         state.hidden.1 = false;
-        presentation.mod_ui_mut().set_hidden_hud_elements(state.hidden.0);
+        presentation
+            .mod_ui_mut()
+            .set_hidden_hud_elements(state.hidden.0);
     }
     if state.surface.changed {
         state.surface.changed = false;
         state.revision += 1;
-        hud.0 = state.surface.current.as_ref().map(|(surface, _)| Published {
-            surface: Arc::clone(surface),
-            revision: state.revision,
-        });
+        hud.0 = state
+            .surface
+            .current
+            .as_ref()
+            .map(|(surface, _)| Published {
+                surface: Arc::clone(surface),
+                revision: state.revision,
+            });
         // Without a mod runtime nothing else publishes layers, so this is the whole set.
         if runtime.is_none() {
             presentation.mod_ui_mut().set_hud_surfaces(published(&hud));

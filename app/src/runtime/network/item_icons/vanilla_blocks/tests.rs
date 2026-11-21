@@ -122,7 +122,7 @@ fn plain_cube_routes_publish_both_thumbnail_and_held_sheet() {
 }
 
 #[test]
-fn hd_carried_sheets_survive_session_publication_without_thumbnails() {
+fn hd_carried_sheets_survive_session_publication_beside_a_reduced_thumbnail() {
     let mut compiled = textures();
     let side = 256;
     let color = [80, 150, 220, 255];
@@ -137,7 +137,8 @@ fn hd_carried_sheets_survive_session_publication_without_thumbnails() {
         visual: 1,
     };
     append_routes(&block(false), &compiled, &mut output, &[route], None);
-    assert!(output.icons.is_empty());
+    // A tile finer than the thumbnail cap draws its thumbnail from the largest mip within it.
+    assert_eq!(output.icons.len(), 1);
     assert!(output.misses.is_empty());
     assert_eq!(output.block_sheets.len(), 1);
     let expected = output.block_sheets[0].rgba8.clone();
@@ -147,7 +148,7 @@ fn hd_carried_sheets_survive_session_publication_without_thumbnails() {
         output,
     )
     .unwrap();
-    assert!(icons.icons.is_empty());
+    assert_eq!(icons.icons.len(), 1);
     assert!(icons.misses.is_empty());
     assert_eq!(icons.block_sheets.len(), 1);
     assert_eq!(icons.block_sheets[0].metadata, 7);

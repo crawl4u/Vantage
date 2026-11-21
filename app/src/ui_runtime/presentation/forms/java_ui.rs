@@ -45,7 +45,10 @@ pub(crate) fn drive_java_ui(
     let view = LayeredPackView::new(stack.clone());
     let from_packs = |path: &str| read_from_packs(&view, path);
     let cache = cache_dir();
-    if let Err(reason) = presentation.0.reload_java_ui(&[&from_packs], cache.as_deref()) {
+    if let Err(reason) = presentation
+        .0
+        .reload_java_ui(&[&from_packs], cache.as_deref())
+    {
         bevy::log::warn!("Java menu files unusable ({reason})");
     }
     bevy::log::info!(

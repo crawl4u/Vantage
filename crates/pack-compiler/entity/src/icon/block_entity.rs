@@ -53,6 +53,61 @@ pub(super) fn raster(
     metadata: u32,
     geometries: &[EntityGeometry],
 ) -> Result<Option<IconSprite>, AssetError> {
+    raster_with(name, metadata, geometries, &mut |path| {
+        IconBlocks::model_texture(root, path)
+    })
+}
+
+/// The chest texture a block's inventory model draws, or `None` for blocks that are not chests.
+fn chest_texture(name: &str) -> Option<&'static str> {
+    use assets::facts::{BlockEntityRenderer, BlockModelVariant, ChestKind, CopperAge};
+    if renderer(name) == Some(BlockEntityRenderer::EnderChest) {
+        return Some("textures/entity/chest/ender");
+    }
+    let BlockModelVariant::Chest(kind) = assets::facts::block_render_fact(name).variant? else {
+        return None;
+    };
+    Some(match kind {
+        ChestKind::Normal => "textures/entity/chest/normal",
+        ChestKind::Trapped => "textures/entity/chest/trapped",
+        ChestKind::Copper(CopperAge::Unaffected) => "textures/entity/chest/copper_default",
+        ChestKind::Copper(CopperAge::Exposed) => "textures/entity/chest/copper_exposed",
+        ChestKind::Copper(CopperAge::Weathered) => "textures/entity/chest/copper_weathered",
+        ChestKind::Copper(CopperAge::Oxidized) => "textures/entity/chest/copper_oxidized",
+    })
+}
+
+/// A closed chest in the ordinary cube frame, its latch toward the viewer. The boxes follow the
+/// placed model's: body, lid and latch over the 64-texel chest unwrap.
+fn chest(texture: &str) -> Part {
+    let mut part = boxes(
+        texture,
+        [64.0, 64.0],
+        &[
+            ([-7.0, 0.0, -7.0], [14.0, 10.0, 14.0], [0.0, 19.0]),
+            ([-7.0, 9.0, -7.0], [14.0, 5.0, 14.0], [0.0, 0.0]),
+            ([-1.0, 7.0, -8.0], [2.0, 4.0, 1.0], [0.0, 0.0]),
+        ],
+    );
+    for (corners, _) in &mut part.faces {
+        // A half turn about the vertical axis puts the latch on the south face.
+        for [x, y, z] in corners {
+            *x = (8.0 - *x) / 16.0;
+            *y /= 16.0;
+            *z = (8.0 - *z) / 16.0;
+        }
+    }
+    part
+}
+
+/// [`raster`] with the textures supplied by `texture`, which resolves a pack-relative path such
+/// as `textures/entity/chest/normal` to its pixels, so a session can draw from its own pack.
+pub(super) fn raster_with(
+    name: &str,
+    metadata: u32,
+    geometries: &[EntityGeometry],
+    texture: &mut dyn FnMut(&str) -> Result<Option<IconSprite>, AssetError>,
+) -> Result<Option<IconSprite>, AssetError> {
     let mut projection: fn([f32; 3]) -> [f32; 3] = assets::gui_item::project_cube;
     let mut parts = if let Some(color) = geometry::shulker_color_from_block_name(name) {
         let mut part = boxes(
@@ -68,6 +123,8 @@ pub(super) fn raster(
             }
         }
         vec![part]
+    } else if let Some(chest_texture) = chest_texture(name) {
+        vec![chest(chest_texture)]
     } else if let Some(skull_type) = assets::vanilla_skull_type(name) {
         let Some(part) = skull(skull_type, geometries) else {
             return Ok(None);
@@ -157,7 +214,7 @@ pub(super) fn raster(
     };
     let mut textures = Vec::with_capacity(parts.len());
     for part in &parts {
-        let Some(mut texture) = IconBlocks::model_texture(root, &part.texture)? else {
+        let Some(mut texture) = texture(&part.texture)? else {
             return Ok(None);
         };
         if part.color != [255; 3] {
@@ -345,3 +402,69 @@ fn lectern() -> Vec<Part> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod chest_icon_tests {
+    use super::*;
+
+    /// A 64-texel chest unwrap of one colour.
+    fn unwrap_of(colour: [u8; 4]) -> IconSprite {
+        IconSprite {
+            width: 64,
+            height: 64,
+            rgba8: colour.repeat(64 * 64).into(),
+        }
+    }
+
+    /// Every chest block draws the pack's chest texture, so a pack's art reaches its inventory slot.
+    #[test]
+    fn every_chest_icon_is_drawn_from_the_texture_supplied_for_it() {
+        for (name, texture) in [
+            ("minecraft:chest", "textures/entity/chest/normal"),
+            ("minecraft:trapped_chest", "textures/entity/chest/trapped"),
+            ("minecraft:ender_chest", "textures/entity/chest/ender"),
+            (
+                "minecraft:copper_chest",
+                "textures/entity/chest/copper_default",
+            ),
+            (
+                "minecraft:oxidized_copper_chest",
+                "textures/entity/chest/copper_oxidized",
+            ),
+        ] {
+            let mut asked = Vec::new();
+            let red = raster_with(name, 0, &[], &mut |path| {
+                asked.push(path.to_owned());
+                Ok(Some(unwrap_of([200, 20, 20, 255])))
+            })
+            .unwrap()
+            .unwrap_or_else(|| panic!("{name} has an inventory model"));
+            assert_eq!(asked, [texture], "{name}");
+            let blue = raster_with(name, 0, &[], &mut |_| {
+                Ok(Some(unwrap_of([20, 20, 200, 255])))
+            })
+            .unwrap()
+            .unwrap();
+            assert_ne!(red.rgba8, blue.rgba8, "{name} shows its supplied texture");
+            let drawn = red.rgba8.as_chunks::<4>().0.iter().filter(|p| p[3] != 0);
+            assert!(drawn.clone().count() > 100, "{name} fills the slot");
+            assert!(
+                drawn.clone().all(|p| p[0] > p[2]),
+                "{name} is only the red texture, shaded"
+            );
+            assert!(
+                raster_with(name, 0, &[], &mut |_| Ok(None))
+                    .unwrap()
+                    .is_none(),
+                "a pack without the texture keeps the vanilla icon"
+            );
+        }
+        assert!(
+            raster_with("minecraft:stone", 0, &[], &mut |_| Ok(Some(unwrap_of(
+                [1; 4]
+            ))))
+            .unwrap()
+            .is_none()
+        );
+    }
+}

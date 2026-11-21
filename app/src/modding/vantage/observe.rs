@@ -51,7 +51,14 @@ fn actor(observed: &mod_host::ObservedActor) -> guest::ObservedActor {
             runtime_id: a.runtime_id,
             player: a.player,
             position: a.position,
-            boxes: a.boxes.iter().map(|b| guest::Bounds { min: b.min, max: b.max }).collect(),
+            boxes: a
+                .boxes
+                .iter()
+                .map(|b| guest::Bounds {
+                    min: b.min,
+                    max: b.max,
+                })
+                .collect(),
             name: a.name.clone(),
             identifier: a.identifier.clone(),
             yaw: a.yaw,
@@ -156,10 +163,17 @@ pub(super) fn convert(
         }),
         chat: chat
             .iter()
-            .map(|message| guest::ChatMessage { sequence: message.sequence, text: message.text.clone() })
+            .map(|message| guest::ChatMessage {
+                sequence: message.sequence,
+                text: message.text.clone(),
+            })
             .collect(),
         actors: modules.actors.iter().map(actor).collect(),
-        combat: modules.combat.iter().map(|recorded| combat(&recorded.event)).collect(),
+        combat: modules
+            .combat
+            .iter()
+            .map(|recorded| combat(&recorded.event))
+            .collect(),
         sidebar: sidebar.map(|(title, rows)| guest::Sidebar {
             title,
             rows: rows

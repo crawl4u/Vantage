@@ -116,6 +116,9 @@ pub(super) fn block_key(
     )
 }
 
+/// Bumped when the compile of entity-drawn block item icons changes, so cached icon sets rebuild.
+const BLOCK_ENTITY_ICON_REVISION: u32 = 1;
+
 /// Icons additionally depend on registry mappings and the installed item routes and sprites.
 pub(super) fn icon_key(
     stack: &resource_pack::ValidatedPackStack,
@@ -143,6 +146,8 @@ pub(super) fn icon_key(
             installed,
             // The dial strips the compile reads from the pack.
             assets::icon::dial::DIAL_STRIPS,
+            // Entity-drawn block items (chests, shulker boxes) draw from the pack's entity art.
+            BLOCK_ENTITY_ICON_REVISION,
         ),
         max_layers,
         fancy_graphics,

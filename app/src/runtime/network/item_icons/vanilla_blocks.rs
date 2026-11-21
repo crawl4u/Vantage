@@ -33,6 +33,15 @@ pub(super) fn install(entities: &RuntimeEntityAssets) {
     );
 }
 
+/// The item identity of every block item in the installed item carrier.
+pub(super) fn block_item_keys() -> impl Iterator<Item = (&'static Arc<str>, u32)> {
+    ROUTES
+        .get()
+        .into_iter()
+        .flatten()
+        .map(|route| (&route.identifier, route.metadata))
+}
+
 /// Adds changed carried thumbnails and cube sheets while retaining their metadata indices.
 pub(in crate::runtime::network) fn append(
     base: &RuntimeAssets,
