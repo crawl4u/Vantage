@@ -419,7 +419,9 @@ mod tests {
         for target in TABLE.values() {
             let texture = pack.join("textures").join(target.bedrock);
             assert!(
-                texture.with_extension("png").is_file(),
+                ["png", "tga"]
+                    .iter()
+                    .any(|extension| texture.with_extension(extension).is_file()),
                 "{} is not a sample-pack texture",
                 target.bedrock
             );
