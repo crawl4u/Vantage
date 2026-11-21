@@ -160,21 +160,17 @@ pub(crate) fn top_half_path(java: &str, width: u32, height: u32) -> Option<&'sta
     })
 }
 
-/// The top and bottom face regions, at the vanilla 64 by 64 size, of each box in a Bedrock
-/// texture whose Java namesake stores them swapped and flipped. Java draws these models upside
-/// down, so its lid-top picture sits where Bedrock keeps the lid's underside; a Java texture
-/// used as it is shows a chest's dark underside on top.
-///
-/// A box of width `w` and depth `d` at `(u, v)` has its top at `(u + d, v)` and its bottom at
-/// `(u + d + w, v)`, each `w` by `d`.
-pub(crate) fn flipped_box_faces(bedrock: &str) -> Option<&'static [[u32; 4]]> {
-    /// The lid and body of a single chest.
-    const CHEST: [[u32; 4]; 4] = [
-        [14, 0, 14, 14],
-        [28, 0, 14, 14],
-        [14, 19, 14, 14],
-        [28, 19, 14, 14],
-    ];
+/// A box of a model whose texture Java lays out upside down: its texture origin `(u, v)` and its
+/// width, height and depth in texels at the vanilla 64 by 64 size.
+pub(crate) type FlippedBox = [u32; 5];
+
+/// The boxes of a Bedrock texture whose Java namesake stores every face turned over. Java draws
+/// these models upside down, so against Bedrock's picture its side faces are turned half a
+/// revolution with front and back exchanged, and its top and bottom exchange and flip
+/// vertically; used as it is, a chest shows its dark underside on top and upside-down sides.
+pub(crate) fn flipped_boxes(bedrock: &str) -> Option<&'static [FlippedBox]> {
+    /// A single chest's lid, body and latch.
+    const CHEST: [FlippedBox; 3] = [[0, 0, 14, 5, 14], [0, 19, 14, 10, 14], [0, 0, 2, 4, 1]];
     const CHEST_TEXTURES: [&str; 7] = [
         "entity/chest/normal",
         "entity/chest/trapped",
@@ -187,32 +183,58 @@ pub(crate) fn flipped_box_faces(bedrock: &str) -> Option<&'static [[u32; 4]]> {
     CHEST_TEXTURES.contains(&bedrock).then_some(&CHEST[..])
 }
 
-/// Puts a Java texture's box faces in Bedrock's orientation: each top and bottom pair
-/// (`faces`, two regions per box, at the vanilla 64 by 64 size scaled to `image`) swaps places,
-/// and each picture turns over vertically.
-pub(crate) fn reorient_faces(image: &mut image::RgbaImage, faces: &[[u32; 4]]) {
+/// The six face rectangles `(x, y, width, height)` of a box at the vanilla size, in the order
+/// right, front, left, back, top, bottom.
+fn box_faces([u, v, w, h, d]: FlippedBox) -> [[u32; 4]; 6] {
+    [
+        [u, v + d, d, h],
+        [u + d, v + d, w, h],
+        [u + d + w, v + d, d, h],
+        [u + 2 * d + w, v + d, w, h],
+        [u + d, v, w, d],
+        [u + d + w, v, w, d],
+    ]
+}
+
+/// Puts a Java texture's boxes in Bedrock's orientation: for each of `boxes` (scaled to `image`),
+/// right and left turn half a revolution, front and back exchange and turn, and top and bottom
+/// exchange and flip vertically.
+pub(crate) fn reorient_boxes(image: &mut image::RgbaImage, boxes: &[FlippedBox]) {
     let scale = image.width() / 64;
     if scale == 0 || image.width() != image.height() {
         return;
     }
-    for pair in faces.chunks_exact(2) {
-        let [top, bottom] = [pair[0], pair[1]].map(|region| region.map(|value| value * scale));
-        let (width, height) = (top[2], top[3]);
-        if bottom[2] != width || bottom[3] != height {
-            continue;
-        }
-        let fits = |region: [u32; 4]| {
-            region[0] + width <= image.width() && region[1] + height <= image.height()
-        };
-        if !fits(top) || !fits(bottom) {
-            continue;
-        }
-        for y in 0..height {
-            for x in 0..width {
-                let upper = *image.get_pixel(top[0] + x, top[1] + y);
-                let lower = *image.get_pixel(bottom[0] + x, bottom[1] + height - 1 - y);
-                image.put_pixel(top[0] + x, top[1] + y, lower);
-                image.put_pixel(bottom[0] + x, bottom[1] + height - 1 - y, upper);
+    let source = image.clone();
+    // Each Bedrock face (by index) takes the Java face named here, turned as flagged.
+    const TAKES: [(usize, bool, bool); 6] = [
+        (0, true, true),
+        (3, true, true),
+        (2, true, true),
+        (1, true, true),
+        (5, false, true),
+        (4, false, true),
+    ];
+    for boxed in boxes {
+        let faces = box_faces(boxed.map(|value| value * scale));
+        for (target, &(from, flip_x, flip_y)) in faces.iter().zip(&TAKES) {
+            let origin = faces[from];
+            if origin[2] != target[2] || origin[3] != target[3] {
+                continue;
+            }
+            let fits = |r: [u32; 4]| r[0] + r[2] <= image.width() && r[1] + r[3] <= image.height();
+            if !fits(*target) || !fits(origin) {
+                continue;
+            }
+            for y in 0..target[3] {
+                for x in 0..target[2] {
+                    let sx = if flip_x { target[2] - 1 - x } else { x };
+                    let sy = if flip_y { target[3] - 1 - y } else { y };
+                    image.put_pixel(
+                        target[0] + x,
+                        target[1] + y,
+                        *source.get_pixel(origin[0] + sx, origin[1] + sy),
+                    );
+                }
             }
         }
     }
@@ -222,81 +244,83 @@ pub(crate) fn reorient_faces(image: &mut image::RgbaImage, faces: &[[u32; 4]]) {
 mod tests {
     use super::*;
 
-    /// A chest unwrap whose every top and bottom face is its own flat colour, with a corner
-    /// marked on the lid top so a flip is visible.
+    /// A chest unwrap in which every face of every box is its own flat colour, so a face's
+    /// destination shows where it came from.
     fn chest_unwrap(scale: u32) -> image::RgbaImage {
         let mut image = image::RgbaImage::new(64 * scale, 64 * scale);
-        for ([x, y, w, h], colour) in flipped_box_faces("entity/chest/normal")
-            .unwrap()
-            .iter()
-            .zip([[10, 0, 0], [20, 0, 0], [30, 0, 0], [40, 0, 0]])
-        {
-            for dy in 0..h * scale {
-                for dx in 0..w * scale {
-                    image.put_pixel(
-                        x * scale + dx,
-                        y * scale + dy,
-                        image::Rgba([colour[0], 0, 0, 255]),
-                    );
+        let mut colour = 10u8;
+        for boxed in flipped_boxes("entity/chest/normal").unwrap() {
+            for [x, y, w, h] in box_faces(*boxed) {
+                colour += 10;
+                for dy in 0..h * scale {
+                    for dx in 0..w * scale {
+                        image.put_pixel(
+                            x * scale + dx,
+                            y * scale + dy,
+                            image::Rgba([colour, 0, 0, 255]),
+                        );
+                    }
                 }
             }
-        }
-        // The lid top's first row is brighter.
-        for dx in 0..14 * scale {
-            image.put_pixel(14 * scale + dx, 0, image::Rgba([11, 0, 0, 255]));
         }
         image
     }
 
     #[test]
-    fn textures_laid_out_differently_from_bedrocks_never_map() {
-        assert!(!INCOMPATIBLE.is_empty());
-        for java in INCOMPATIBLE.iter() {
-            assert!(
-                !TABLE.contains_key(java),
-                "{java} is both mapped and refused"
-            );
-            for size in [16, 32, 64, 128] {
-                assert_eq!(bedrock_path(java, size, size), None, "{java}");
-                assert_eq!(top_half_path(java, size, size), None, "{java}");
+    fn a_java_chest_has_each_face_moved_and_turned_to_bedrocks_place() {
+        for scale in [1, 2] {
+            let before = chest_unwrap(scale);
+            let mut image = before.clone();
+            reorient_boxes(&mut image, flipped_boxes("entity/chest/normal").unwrap());
+            for boxed in &flipped_boxes("entity/chest/normal").unwrap()[..2] {
+                let faces = box_faces(boxed.map(|value| value * scale));
+                let red = |image: &image::RgbaImage, face: usize| {
+                    image.get_pixel(faces[face][0] + 1, faces[face][1] + 1)[0]
+                };
+                // Bedrock's right, front, left, back, top and bottom hold Java's right, back,
+                // left, front, bottom and top.
+                for (bedrock, java) in [(0, 0), (1, 3), (2, 2), (3, 1), (4, 5), (5, 4)] {
+                    assert_eq!(
+                        red(&image, bedrock),
+                        red(&before, java),
+                        "scale {scale} face {bedrock}"
+                    );
+                }
             }
-            assert!(!is_listed(java), "{java}");
         }
-        assert!(INCOMPATIBLE.contains("entity/villager/villager"));
-        assert!(is_listed("entity/chest/normal"));
     }
 
     #[test]
-    fn a_java_chest_has_its_top_and_bottom_swapped_and_turned_over() {
-        for scale in [1, 2] {
-            let mut image = chest_unwrap(scale);
-            reorient_faces(
-                &mut image,
-                flipped_box_faces("entity/chest/normal").unwrap(),
+    fn a_marked_row_ends_up_on_the_far_edge_of_its_turned_face() {
+        let mut image = image::RgbaImage::from_pixel(64, 64, image::Rgba([0, 0, 0, 255]));
+        // Java's lid front face: mark its top row.
+        let lid = flipped_boxes("entity/chest/normal").unwrap()[0];
+        let java_front = box_faces(lid)[1];
+        for dx in 0..java_front[2] {
+            image.put_pixel(
+                java_front[0] + dx,
+                java_front[1],
+                image::Rgba([255, 0, 0, 255]),
             );
-            let red = |x: u32, y: u32| image.get_pixel(x * scale, y * scale)[0];
-            // The lid's top now holds the old bottom, and the old top's bright row is at its end.
-            assert_eq!(red(14, 5), 20);
-            assert_eq!(red(28, 5), 10);
-            assert_eq!(image.get_pixel(28 * scale, 14 * scale - 1)[0], 11);
-            assert_eq!(red(14, 19 + 5), 40);
-            assert_eq!(red(28, 19 + 5), 30);
-            // Outside the faces nothing moves.
-            assert_eq!(image.get_pixel(0, 40 * scale)[3], 0);
         }
+        reorient_boxes(&mut image, &[lid]);
+        // Bedrock's back face holds it, turned: the marked row is now its bottom row.
+        let back = box_faces(lid)[3];
+        assert_eq!(image.get_pixel(back[0], back[1] + back[3] - 1)[0], 255);
+        assert_eq!(image.get_pixel(back[0], back[1])[0], 0);
     }
 
     #[test]
     fn reorienting_twice_restores_the_original_and_other_textures_are_untouched() {
         let original = chest_unwrap(1);
         let mut image = original.clone();
-        let faces = flipped_box_faces("entity/chest/trapped").unwrap();
-        reorient_faces(&mut image, faces);
+        let boxes = flipped_boxes("entity/chest/trapped").unwrap();
+        reorient_boxes(&mut image, boxes);
         assert_ne!(image, original);
-        reorient_faces(&mut image, faces);
+        reorient_boxes(&mut image, boxes);
         assert_eq!(image, original);
-        assert!(flipped_box_faces("entity/zombie/zombie").is_none());
-        assert!(flipped_box_faces("entity/boat/chest_boat_oak").is_none());
+        assert!(flipped_boxes("entity/zombie/zombie").is_none());
+        assert!(flipped_boxes("entity/boat/chest_boat_oak").is_none());
     }
 
     #[test]
