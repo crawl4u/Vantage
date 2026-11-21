@@ -426,7 +426,7 @@ fn oversized_pack_keeps_fallback_artwork_instead_of_failing_gui_startup() {
 /// sources all keep their native geometry rather than the thumbnails a full atlas leaves.
 #[test]
 fn the_model_atlas_holds_a_high_resolution_packs_sources() {
-    let pages = 24;
+    let pages = 72;
     assert!(pages <= MODEL_PAGES);
     let (entities, icons) = catalog(sheets_at_capacity(1));
     let mut presentation = UiPresentationRuntime::with_hud_and_icons(

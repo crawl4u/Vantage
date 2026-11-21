@@ -40,6 +40,8 @@ pub(super) struct Atlas {
     cursor: [usize; 2],
     row: usize,
     refs: BTreeMap<TextureKey, IconRef>,
+    /// Sources a full atlas refused.
+    rejections: usize,
 }
 
 impl Atlas {
@@ -51,7 +53,13 @@ impl Atlas {
             cursor: [0; 2],
             row: 0,
             refs: BTreeMap::new(),
+            rejections: 0,
         }
+    }
+
+    /// How many sources the atlas had no room for.
+    pub(super) fn rejections(&self) -> usize {
+        self.rejections
     }
 
     /// Finds an existing source without allocating more atlas space.
@@ -87,6 +95,7 @@ impl Atlas {
         }
         if self.pages.is_empty() || self.cursor[1] + padded[1] > SIDE {
             if self.pages.len() == self.limit {
+                self.rejections += 1;
                 return Err(UiPresentationError::InvalidFontTexture);
             }
             self.pages.push(vec![0; SIDE * SIDE * 4]);

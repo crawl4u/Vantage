@@ -319,6 +319,7 @@ impl GuiModelPreparation {
                 }
             }
         }
+        let rejections = atlas.rejections();
         let (pages, mut textures) = atlas.finish()?;
         if let Some(refs) = self.icon_refs.as_deref() {
             for (sprite, icon) in icons.sprites().iter().zip(refs) {
@@ -330,6 +331,7 @@ impl GuiModelPreparation {
         tracing::info!(
             models = models.len(),
             source_pages = pages.len(),
+            atlas_rejections = rejections,
             "native GUI item geometry prepared"
         );
         for hat in cosmetics::Item::all() {

@@ -535,7 +535,9 @@ fn carried_face_uvs(face: usize, [u0, v0, u1, v1]: [u16; 4]) -> [[f32; 2]; 4] {
     }
 }
 
-/// Reads a material's first-mip tile, side and alpha mode from its texture page.
+/// Reads a material's tile, side and alpha mode from its texture page: the first mip, or the
+/// largest mip within [`MAX_GUI_TILE_SIDE`] when the art is finer, so high-resolution packs are
+/// filtered down rather than refused.
 /// World isotropy and lighting metadata preserve isolated tiles; tints and rotated UVs do not.
 pub fn material_tile<'a>(
     materials: &[Material],
@@ -550,9 +552,13 @@ pub fn material_tile<'a>(
         return Err(GuiBlockReject::Material);
     }
     let array = array(material.texture.page()).ok_or(GuiBlockReject::Texture)?;
-    let mip = array.mips.first().ok_or(GuiBlockReject::Texture)?;
+    let mip = array
+        .mips
+        .iter()
+        .find(|mip| mip.size as usize <= MAX_GUI_TILE_SIDE)
+        .ok_or(GuiBlockReject::Texture)?;
     let side = mip.size as usize;
-    if side == 0 || side > MAX_GUI_TILE_SIDE || material.texture.layer() >= array.layers {
+    if side == 0 || material.texture.layer() >= array.layers {
         return Err(GuiBlockReject::Texture);
     }
     let bytes = side * side * 4;

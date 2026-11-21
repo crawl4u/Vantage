@@ -26,7 +26,7 @@ pub const UI_MODEL_ATLAS_PAGE_OFFSET: usize = UI_PLAYER_SKIN_PAGE_OFFSET + 1;
 /// vanilla carriers fill nine pages with mip-aligned item sources and a tenth with flames; a
 /// 128-texel pack fills about thirty, so the rest is headroom for finer art and optional block
 /// meshes before they fall back to thumbnails. Pages upload only once a source occupies them.
-pub const MAX_UI_MODEL_ATLAS_PAGES: usize = 48;
+pub const MAX_UI_MODEL_ATLAS_PAGES: usize = 96;
 pub const UI_SESSION_ICON_PAGE_OFFSET: usize =
     UI_MODEL_ATLAS_PAGE_OFFSET + MAX_UI_MODEL_ATLAS_PAGES;
 /// Bounded session-font allocation, shared by the default and named bitmap fonts.

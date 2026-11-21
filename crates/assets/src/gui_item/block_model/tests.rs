@@ -804,3 +804,50 @@ fn fence_side_diagonal_keeps_the_projected_lower_texel_row() {
         "the opposite diagonal samples the next texture row"
     );
 }
+
+/// Art finer than the GUI tile cap is read from the largest mip within it, with its own layer
+/// stride, instead of being refused.
+#[test]
+fn material_tile_filters_oversized_art_to_the_cap_through_its_mips() {
+    let cap = MAX_GUI_TILE_SIDE;
+    let mip = |side: usize, value: u8| TextureMip {
+        size: side as u32,
+        rgba8: vec![value; side * side * 4 * 2].into(),
+    };
+    let array = TextureArray {
+        layers: 2,
+        mips: vec![mip(cap * 2, 1), mip(cap, 2), mip(cap / 2, 3)].into(),
+    };
+    let materials = [
+        Material::unvaried(),
+        Material {
+            texture: crate::TextureRef::new(0, 1).unwrap(),
+            ..Material::unvaried()
+        },
+    ];
+    let (tile, side, _) = material_tile(&materials, 1, |_| Some(&array)).unwrap();
+    assert_eq!(side, cap);
+    assert_eq!(tile.len(), cap * cap * 4);
+    assert!(
+        tile.iter().all(|&byte| byte == 2),
+        "the cap-sized mip's own layer"
+    );
+    let fine_only = TextureArray {
+        layers: 1,
+        mips: vec![TextureMip {
+            size: cap as u32 * 2,
+            rgba8: vec![9; cap * cap * 16].into(),
+        }]
+        .into(),
+    };
+    assert_eq!(
+        material_tile(&materials[..1], 0, |_| Some(&fine_only)),
+        Err(GuiBlockReject::Material)
+    );
+    let plain = [Material::unvaried(), Material::unvaried()];
+    assert_eq!(
+        material_tile(&plain, 1, |_| Some(&fine_only)),
+        Err(GuiBlockReject::Texture),
+        "art with no mip inside the cap has nothing to read"
+    );
+}
