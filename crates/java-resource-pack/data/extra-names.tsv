@@ -129,6 +129,7 @@ entity/decorated_pot/sheaf_pottery_pattern	blocks/sheaf_pottery_pattern	16	16
 entity/decorated_pot/shelter_pottery_pattern	blocks/shelter_pottery_pattern	16	16
 entity/decorated_pot/skull_pottery_pattern	blocks/skull_pottery_pattern	16	16
 entity/decorated_pot/snort_pottery_pattern	blocks/snort_pottery_pattern	16	16
+entity/dolphin/dolphin	entity/dolphin	64	64
 entity/enchantment/enchanting_table_book	entity/enchanting_table_book	64	32
 entity/end_crystal/end_crystal	entity/endercrystal/endercrystal	128	64
 entity/end_crystal/end_crystal_beam	entity/endercrystal/endercrystal_beam	16	256
@@ -186,15 +187,13 @@ entity/experience/experience_orb	entity/experience_orb	64	64
 entity/fish/cod	entity/fish/cod	32	32
 entity/fish/pufferfish	entity/fish/pufferfish	32	32
 entity/fish/salmon	entity/fish/salmon	32	32
-entity/fish/tropical_a	entity/fish/tropical_a	32	32
+entity/fish/tropical_a_pattern_1	entity/fish/tropical_a_pattern_1	32	32
 entity/fish/tropical_a_pattern_2	entity/fish/tropical_a_pattern_2	32	32
 entity/fish/tropical_a_pattern_3	entity/fish/tropical_a_pattern_3	32	32
-entity/fish/tropical_a_pattern_4	entity/fish/tropical_a_pattern_4	32	32
-entity/fish/tropical_a_pattern_6	entity/fish/tropical_a_pattern_6	32	32
-entity/fish/tropical_b_pattern_1	entity/fish/tropical_b_pattern_1	32	32
+entity/fish/tropical_a_pattern_5	entity/fish/tropical_a_pattern_5	32	32
 entity/fish/tropical_b_pattern_2	entity/fish/tropical_b_pattern_2	32	32
-entity/fish/tropical_b_pattern_3	entity/fish/tropical_b_pattern_3	32	32
-entity/fish/tropical_b_pattern_6	entity/fish/tropical_b_pattern_6	32	32
+entity/fish/tropical_b_pattern_4	entity/fish/tropical_b_pattern_4	32	32
+entity/fish/tropical_b_pattern_5	entity/fish/tropical_b_pattern_5	32	32
 entity/fox/fox_baby	entity/fox/fox_baby	32	32
 entity/fox/fox_sleep_baby	entity/fox/fox_sleep_baby	32	32
 entity/fox/fox_snow_baby	entity/fox/fox_snow_baby	32	32
@@ -276,6 +275,7 @@ entity/parrot/parrot_green	entity/parrot/parrot_green	32	32
 entity/parrot/parrot_grey	entity/parrot/parrot_grey	32	32
 entity/parrot/parrot_red_blue	entity/parrot/parrot_red_blue	32	32
 entity/parrot/parrot_yellow_blue	entity/parrot/parrot_yellow_blue	32	32
+entity/phantom/phantom	entity/phantom	64	64
 entity/pig/pig_cold	entity/pig/pig_cold	64	64
 entity/pig/pig_cold_baby	entity/pig/pig_cold_baby	32	32
 entity/pig/pig_temperate	entity/pig/pig_v3	64	64
@@ -327,6 +327,8 @@ entity/slime/slime	entity/slime/slime	64	32
 entity/sniffer/sniffer	entity/sniffer/sniffer	192	192
 entity/sniffer/snifflet	entity/sniffer/snifflet	128	128
 entity/snow_golem/snow_golem	entity/snow_golem	64	64
+entity/spider/cave_spider	entity/spider/cave_spider	64	32
+entity/spider/spider	entity/spider/spider	64	32
 entity/squid/glow_squid	entity/glow_squid/glow_squid	64	32
 entity/squid/glow_squid_baby	entity/glow_squid/glow_squid_baby	32	32
 entity/squid/squid	entity/squid	64	32
@@ -336,6 +338,7 @@ entity/strider/strider_baby	entity/strider/strider_baby	32	32
 entity/strider/strider_cold_baby	entity/strider/strider_cold_baby	32	32
 entity/sulfur_cube/sulfur_cube_inner	entity/sulfur_cube/sulfur_cube_inner	128	128
 entity/sulfur_cube/sulfur_cube_inner_small	entity/sulfur_cube/sulfur_cube_inner_small	64	64
+entity/sulfur_cube/sulfur_cube_outer	entity/sulfur_cube/sulfur_cube_outer	128	128
 entity/sulfur_cube/sulfur_cube_outer_small	entity/sulfur_cube/sulfur_cube_outer_small	64	64
 entity/tadpole/tadpole	entity/tadpole/tadpole	16	16
 entity/trident/trident	entity/trident	32	32
@@ -378,7 +381,6 @@ entity/wolf/wolf_chestnut_angry_baby	entity/wolf/wolf_chestnut_angry_baby	32	32
 entity/wolf/wolf_chestnut_baby	entity/wolf/wolf_chestnut_baby	32	32
 entity/wolf/wolf_chestnut_tame	entity/wolf/wolf_chestnut_tame	64	32
 entity/wolf/wolf_chestnut_tame_baby	entity/wolf/wolf_chestnut_tame_baby	32	32
-entity/wolf/wolf_collar_baby	entity/wolf/wolf_collar_baby	32	32
 entity/wolf/wolf_rusty	entity/wolf/wolf_rusty	64	32
 entity/wolf/wolf_rusty_angry	entity/wolf/wolf_rusty_angry	64	32
 entity/wolf/wolf_rusty_angry_baby	entity/wolf/wolf_rusty_angry_baby	32	32
@@ -411,6 +413,8 @@ entity/wolf/wolf_woods_angry_baby	entity/wolf/wolf_woods_angry_baby	32	32
 entity/wolf/wolf_woods_baby	entity/wolf/wolf_woods_baby	32	32
 entity/wolf/wolf_woods_tame	entity/wolf/wolf_woods_tame	64	32
 entity/wolf/wolf_woods_tame_baby	entity/wolf/wolf_woods_tame_baby	32	32
+entity/zombie/drowned	entity/zombie/drowned	64	64
+entity/zombie/drowned_baby	entity/zombie/drowned_baby	64	64
 entity/zombie/husk_baby	entity/zombie/husk_baby	64	64
 entity/zombie/zombie_baby	entity/zombie/zombie_baby	64	64
 entity/zombie_villager/baby/desert	entity/zombie_villager2/biomes/biome_desert_baby	64	64

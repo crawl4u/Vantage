@@ -262,7 +262,7 @@ mod tests {
             }
             assert!(!is_listed(java), "{java}");
         }
-        assert!(INCOMPATIBLE.contains("entity/dolphin/dolphin"));
+        assert!(INCOMPATIBLE.contains("entity/villager/villager"));
         assert!(is_listed("entity/chest/normal"));
     }
 

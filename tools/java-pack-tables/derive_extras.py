@@ -203,21 +203,30 @@ def region(image, rect):
     return [rgba[((y + j) * width + x + i) * 4 : ((y + j) * width + x + i) * 4 + 4] for j in range(h) for i in range(w)]
 
 
+def pixels(image):
+    """The image's pixels as 4-byte values, row by row."""
+    width, height, rgba = image
+    return [rgba[i : i + 4] for i in range(0, width * height * 4, 4)]
+
+
 def alike(a, b):
-    """Whether two same-size pixel lists show the same shapes, whatever their colours."""
-    if len(a) == 0:
+    """Whether Java's pixels `a` and Bedrock's `b` (same-size lists) show the same shapes.
+
+    Judged over the pixels Java draws, since Bedrock's TGA mob textures are opaque everywhere:
+    Bedrock must draw them too, and their brightness must follow the same pattern.
+    """
+    drawn = [(p, q) for p, q in zip(a, b) if p[3] > 0]
+    if not drawn:
         return True
-    if sum(1 for p, q in zip(a, b) if (p[3] > 0) == (q[3] > 0)) < 0.9 * len(a):
+    if sum(1 for _, q in drawn if q[3] > 0) < 0.9 * len(drawn):
         return False
-    xs = [(p[0] + p[1] + p[2]) / 3 for p, q in zip(a, b) if p[3] and q[3]]
-    ys = [(q[0] + q[1] + q[2]) / 3 for p, q in zip(a, b) if p[3] and q[3]]
-    if len(xs) < 2:
-        return True
+    xs = [(p[0] + p[1] + p[2]) / 3 for p, _ in drawn]
+    ys = [(q[0] + q[1] + q[2]) / 3 for _, q in drawn]
     mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
     vx = sum((x - mx) ** 2 for x in xs)
     vy = sum((y - my) ** 2 for y in ys)
     if vx < 1e-6 or vy < 1e-6:
-        return vx < 1e-6 and vy < 1e-6 or max(vx, vy) / len(xs) < 40
+        return vx / len(xs) < 40 and vy / len(xs) < 40
     return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / (vx * vy) ** 0.5 >= 0.8
 
 
@@ -261,14 +270,19 @@ def similarity(java_image, bedrock_image):
     return cov / (var_x * var_y) ** 0.5
 
 
+# The editions re-encode some art a few steps apart (Bedrock's spider is two levels darker), so
+# pixels count as equal when every channel is within this many levels.
+CHANNEL_TOLERANCE = 6
+
+
 def opaque_equality(java_image, bedrock_image):
-    """The share of pixels either picture draws that are identical in both (same-size images)."""
+    """The share of pixels either picture draws that are equal (within tolerance) in both."""
     (width, height, a), (_, _, b) = java_image, bedrock_image
     drawn = equal = 0
     for i in range(0, width * height * 4, 4):
         if a[i + 3] or b[i + 3]:
             drawn += 1
-            if a[i : i + 4] == b[i : i + 4]:
+            if all(abs(a[i + c] - b[i + c]) <= CHANNEL_TOLERANCE for c in range(4)):
                 equal += 1
     return equal / drawn if drawn else 1.0
 
@@ -375,7 +389,12 @@ def main(jar_path, bedrock_root, out_path):
             ]
             if path.startswith("entity/") and len(named) == 1:
                 target = named[0]
-        if target and not path.startswith(REORIENTED) and digest(image) != digest(bedrock[target]):
+        if (
+            target
+            and path.startswith("entity/")
+            and not path.startswith(REORIENTED)
+            and digest(image) != digest(bedrock[target])
+        ):
             agreement = None
             for model in model_ids.get(target, ()):
                 tw, th, boxes = geometries.get(model, (0, 0, []))
@@ -384,7 +403,7 @@ def main(jar_path, bedrock_root, out_path):
                     if score is not None and (agreement is None or score > agreement):
                         agreement = score
             if agreement is None:
-                agreement = 1.0 if similarity(image, bedrock[target]) >= MIN_SIMILARITY else 0.0
+                agreement = 1.0 if alike(pixels(image), pixels(bedrock[target])) else 0.0
             if agreement < MIN_AGREEMENT:
                 incompatible.append(path)
                 target = None
