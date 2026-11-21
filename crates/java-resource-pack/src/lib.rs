@@ -32,6 +32,7 @@ mod sky;
 mod texture;
 mod tga;
 mod translate;
+mod water;
 
 pub use manifest::MIN_ENGINE_VERSION;
 pub use meta::Layout;

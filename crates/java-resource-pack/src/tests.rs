@@ -1548,3 +1548,18 @@ fn a_packs_ascii_font_becomes_the_bedrock_sheet_with_its_marker() {
     let marker: serde_json::Value = serde_json::from_slice(out["font/cinnabar_font.json"]).unwrap();
     assert_eq!(marker["blank_cells_keep_base"], true);
 }
+
+#[test]
+fn a_pack_with_its_own_water_art_also_gets_javas_water_colours() {
+    let block = "assets/minecraft/textures/block/";
+    let with_water = pack(vec![(
+        &format!("{block}water_still.png"),
+        solid(16, 16, [160, 160, 160, 180]),
+    )]);
+    let translation = run(&with_water, "Current").unwrap();
+    assert!(output(&translation).contains_key(crate::water::FILE));
+
+    let without = pack(vec![(&format!("{block}stone.png"), solid(16, 16, WHITE))]);
+    let translation = run(&without, "Current").unwrap();
+    assert!(!output(&translation).contains_key(crate::water::FILE));
+}

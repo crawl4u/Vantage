@@ -1,0 +1,19 @@
+# Java biome water colours (RRGGBB). "*" is the colour of every biome not listed.
+*	3f76e4
+cherry_grove	5db7ef
+cold_ocean	3d57d6
+dappled_forest	375154
+deep_cold_ocean	3d57d6
+deep_frozen_ocean	3938c9
+deep_lukewarm_ocean	45adf2
+frozen_ocean	3938c9
+frozen_river	3938c9
+lukewarm_ocean	45adf2
+mangrove_swamp	3a7a6a
+meadow	0e4ecf
+pale_garden	76889d
+snowy_beach	3d57d6
+snowy_taiga	3d57d6
+sulfur_caves	34bf89
+swamp	617b64
+warm_ocean	43d5ee

@@ -31,6 +31,7 @@ pub(in crate::runtime::network) fn apply_biome_overlay(
         }
         changed = true;
     }
+    changed |= apply_water_file(view, &mut biomes);
     for (_, bytes) in super::layered_json(view, "biomes/") {
         let Some(root) = parse_pack_json(&bytes) else {
             continue;
@@ -80,6 +81,40 @@ pub(in crate::runtime::network) fn apply_biome_overlay(
     if changed {
         overlay.biomes = Some(biomes);
     }
+}
+
+/// The pack file recolouring water for every biome at once.
+const WATER_FILE: &str = "cinnabar/water.json";
+
+/// Applies `cinnabar/water.json`: a `default` colour for every biome, per-biome `biomes`
+/// colours, and an `opacity` replacing the biome's water opacity. Returns whether any rule
+/// changed. Client-biome files applied afterwards still win for the biomes they name.
+pub(super) fn apply_water_file(
+    view: &LayeredPackView,
+    biomes: &mut assets::CompiledBiomeAssets,
+) -> bool {
+    let mut changed = false;
+    for (_, bytes) in super::layered_json(view, WATER_FILE) {
+        let Some(root) = parse_pack_json(&bytes) else {
+            continue;
+        };
+        let default = parse_rgb(&root["default"]);
+        let opacity = root["opacity"]
+            .as_f64()
+            .filter(|opacity| (0.0..=1.0).contains(opacity));
+        for rule in biomes.rules.iter_mut() {
+            if let Some(rgb) = parse_rgb(&root["biomes"][rule.name.as_ref()]).or(default) {
+                rule.water = TintSource::direct(rgb);
+                changed = true;
+            }
+            if let Some(opacity) = opacity
+                && rule.set_water_opacity(opacity as f32).is_ok()
+            {
+                changed = true;
+            }
+        }
+    }
+    changed
 }
 
 /// Resolves supported named colormaps and direct RGB colours.

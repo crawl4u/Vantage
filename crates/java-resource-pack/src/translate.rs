@@ -641,6 +641,13 @@ pub(crate) fn translate_within(
         out.insert("textures/particle/particles.png".into(), Output::Raw(bytes));
     }
     out.extend(block_outputs);
+    // A pack that draws its own water gets Java's biome water colours and opacity with it.
+    if has(&format!("{TEXTURES}{block_folder}water_still.png")) {
+        out.insert(
+            crate::water::FILE.into(),
+            Output::Raw(crate::water::document()),
+        );
+    }
     for (path, bytes) in
         crate::block_models::translate(layout, &paths, |path| source.load(path)).files
     {

@@ -481,3 +481,31 @@ fn unresolved_custom_fog_routes_keep_valid_atmosphere_overrides() {
         assert_eq!(runtime.fog_profiles()[0].distances[0].end(), 48.0);
     }
 }
+
+#[test]
+fn a_water_file_recolours_every_biome_and_sets_the_opacity() {
+    let rule = |id: u32, name: &str| assets::BiomeRule {
+        id,
+        name: name.into(),
+        flags: 0,
+        grass: assets::TintSource::map(assets::TintMapId::Grass),
+        foliage: assets::TintSource::map(assets::TintMapId::Foliage),
+        dry_foliage: assets::TintSource::map(assets::TintMapId::DryFoliage),
+        water: assets::TintSource::direct(0x44aff5),
+        temperature_bits: 0.8_f32.to_bits(),
+        downfall_bits: 0.4_f32.to_bits(),
+    };
+    let mut biomes = assets::CompiledBiomeAssets {
+        tint_maps_rgb8: Box::new([]),
+        rules: Box::new([rule(1, "plains"), rule(2, "swamp")]),
+    };
+    let file = br##"{"default":"#3f76e4","opacity":1.0,"biomes":{"swamp":"#617b64"}}"##;
+    assert!(biomes::apply_water_file(
+        &view(&[("cinnabar/water.json", file)]),
+        &mut biomes
+    ));
+    assert_eq!(biomes.rules[0].water, assets::TintSource::direct(0x3f76e4));
+    assert_eq!(biomes.rules[1].water, assets::TintSource::direct(0x617b64));
+    assert!(biomes.rules.iter().all(|rule| rule.water_opacity() == 1.0));
+    assert!(!biomes::apply_water_file(&view(&[]), &mut biomes));
+}
