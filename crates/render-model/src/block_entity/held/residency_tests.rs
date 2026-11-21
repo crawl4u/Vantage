@@ -356,7 +356,7 @@ fn prepared_special_drop_meshes_preserve_held_positions_and_texture_tiles() {
 }
 
 #[test]
-fn a_held_bed_keeps_its_two_block_length() {
+fn a_held_bed_is_fitted_to_one_block_like_a_dropped_one() {
     use assets::block_entity_geometry::{
         BoxSpec,
         heads::{HeadBox, HeadModel},
@@ -382,6 +382,6 @@ fn a_held_bed_keeps_its_two_block_length() {
                 - values.fold(f32::INFINITY, f32::min)
         })
         .fold(0.0, f32::max);
-    assert!(length > 1.5, "a held bed is {length} blocks long");
+    assert!((length - 1.0).abs() < 1e-3, "a held bed is {length} blocks long");
     assert!(model.dropped.is_some());
 }

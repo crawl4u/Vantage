@@ -32,6 +32,8 @@ pub(super) enum FirstPersonShape {
     Button,
     /// A wall's centered mesh translated to its carried model origin.
     Wall,
+    /// A bed fitted to one block, posed as Java poses a two-block bed rather than as a block.
+    Bed,
 }
 
 /// The arm's state the first-person item follows, interpolated to the frame.
@@ -121,7 +123,29 @@ pub(super) fn first_person_display_for_profile(
         } => held,
         FirstPersonShape::Button => held * Mat4::from_translation(Vec3::new(0.5, -0.5, 0.5 - 0.45)),
         FirstPersonShape::Wall => held * Mat4::from_translation(Vec3::splat(0.5)),
+        FirstPersonShape::Bed => held * bed_in_hand(),
     })
+}
+
+/// Maps a bed centred on its two-block bounds to Java's first-person bed pose instead of the
+/// generic block one `held` carries: the bed's `firstperson_righthand` display (tipped 30 degrees,
+/// turned 340, raised three sixteenths, scaled 0.375), pivoting about the head block's centre with
+/// the head away from the viewer.
+/// A bed's length in blocks; the held model is fitted to one block, so the hand pose restores it.
+const BED_BLOCKS_LONG: f32 = 2.0;
+
+fn bed_in_hand() -> Mat4 {
+    let generic = Mat4::from_rotation_y(degrees(45.0)) * Mat4::from_scale(Vec3::splat(0.4));
+    let java = Mat4::from_translation(Vec3::new(0.0, 3.0 / 16.0, 0.0))
+        * Mat4::from_rotation_x(degrees(30.0))
+        * Mat4::from_rotation_y(degrees(340.0))
+        * Mat4::from_scale(Vec3::splat(0.375));
+    // The model's head points south; Java's points north, and its pivot is the head block's centre,
+    // half a block from the bed's centre along its length. The bed is 9/16 tall.
+    let pivot = Mat4::from_translation(Vec3::new(0.0, 9.0 / 32.0 - 0.5, 0.5))
+        * Mat4::from_rotation_y(std::f32::consts::PI)
+        * Mat4::from_scale(Vec3::splat(BED_BLOCKS_LONG));
+    generic.inverse() * java * pivot
 }
 
 /// Camera-space placement of a first-person item with render offsets, whose `table` follows the
@@ -259,6 +283,29 @@ mod tests {
             );
             assert!((display.rotation * Vec3::Y).abs_diff_eq(Vec3::Y, 1e-6));
         }
+    }
+
+    #[test]
+    fn a_held_bed_lies_along_the_view_with_its_head_away_and_tipped_toward_the_viewer() {
+        let hand = FirstPersonHand {
+            swing: 0.,
+            equip: 1.,
+            consume: None,
+            aspect: 1.,
+        };
+        let display = first_person_display_for_profile(
+            FirstPersonShape::Bed,
+            hand,
+            render_api::CombatVisuals::Modern,
+        );
+        let at = |point: Vec3| display.rotation * (point * display.scale) + display.translation;
+        // The fitted model's head end is +Z and its foot end -Z, half a block from its centre.
+        let (head, foot) = (at(Vec3::new(0., 0., 0.5)), at(Vec3::new(0., 0., -0.5)));
+        assert!(((head - foot).length() - 0.75).abs() < 1e-4, "two blocks at 0.375");
+        // Camera space looks down -Z: the head is farther away, the foot nearer.
+        assert!(head.z < foot.z);
+        // Tipped toward the viewer, the far head end rides higher than the near foot end.
+        assert!(head.y > foot.y);
     }
 
     #[test]

@@ -293,8 +293,8 @@ fn model_with_heads(
     if builder.missing_required_texture || builder.solid.is_empty() {
         return None;
     }
-    // A bed spans two blocks: dropped, it shrinks to fit one, but in a hand it keeps its size.
-    let mut hand_scale = 1.0;
+    // A bed spans two blocks; held and dropped alike it shrinks to fit one (a first-person hand
+    // restores its length).
     if matches!(kind, HeldBlockEntity::Bed(_)) {
         let (low, high) = builder.solid.iter().fold(
             (
@@ -310,7 +310,6 @@ fn model_with_heads(
         for vertex in &mut builder.solid {
             vertex.position = (glam::Vec3::from(vertex.position) * fit).to_array();
         }
-        hand_scale = 1.0 / fit;
     }
     let (min, max) = builder.solid.iter().fold(
         (
@@ -357,7 +356,7 @@ fn model_with_heads(
                 uv[axis] - local * glint_span[axis]
             });
             vertices.push(ActorRigVertex {
-                position: ((glam::Vec3::from(vertex.position) - center) * hand_scale).to_array(),
+                position: (glam::Vec3::from(vertex.position) - center).to_array(),
                 normal: vertex.normal,
                 uv,
                 back_uv: uv,

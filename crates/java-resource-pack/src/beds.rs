@@ -134,9 +134,8 @@ const LEGS: [Piece; 24] = [
     leg(6, 44, Face::FootSouth, 13, Turn::FlipX),
 ];
 
-/// Regions of Bedrock's bed texture that Java's block models have no counterpart for: the frame
-/// rails between the legs. They take the legs' wood so the frame stays solid.
-const RAILS: [[u32; 4]; 4] = [[38, 2, 26, 4], [38, 38, 26, 4], [52, 6, 8, 29], [44, 6, 8, 29]];
+/// Bedrock's bed also has frame rails between the legs, which Java's block models do not. Their
+/// regions of the texture stay transparent, and the alpha-tested bed pass leaves them undrawn.
 
 /// The texture names a bed colour reads, without folders or extension, in [`Face`] order.
 fn name(color: &str, face: Face) -> String {
@@ -207,16 +206,6 @@ pub(crate) fn compose(
         return None;
     }
     let mut out = RgbaImage::from_pixel(64 * scale, 64 * scale, Rgba([0; 4]));
-    let wood = &images[&name(color, Face::FootEast)];
-    for rail in RAILS {
-        let [x, y, w, h] = rail;
-        for py in 0..h * scale {
-            for px in 0..w * scale {
-                let texel = wood.get_pixel(3 * scale + px % (3 * scale), 13 * scale + py % (3 * scale));
-                out.put_pixel(x * scale + px, y * scale + py, *texel);
-            }
-        }
-    }
     for piece in BODY.iter().chain(&LEGS) {
         paint(&mut out, piece, &images[&name(color, piece.1)], scale);
     }
@@ -286,6 +275,14 @@ mod tests {
                     assert_eq!(out.get_pixel(px, py).0[3], 255, "({px}, {py})");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn the_frame_rails_java_lacks_stay_transparent() {
+        let out = compose_marked(16);
+        for (x, y) in [(40, 3), (40, 40), (55, 20), (47, 20)] {
+            assert_eq!(out.get_pixel(x, y).0[3], 0, "({x}, {y})");
         }
     }
 
