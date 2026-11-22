@@ -55,8 +55,9 @@ $msi = Join-Path $outPath "Vantage-$version-x64.msi"
 wix build -arch x64 -d Version=$version -d Payload=$payload -d Icon=$icon -o $msi (Join-Path $PSScriptRoot "cinnabar.wxs")
 if ($LASTEXITCODE -ne 0) { throw "wix build failed" }
 & (Join-Path $PSScriptRoot "sign.ps1") -Path $msi
+$theme = Join-Path $PSScriptRoot "theme"
 $setup = Join-Path $outPath "Vantage-$version-x64-setup.exe"
-wix build -arch x64 -ext WixToolset.BootstrapperApplications.wixext -d Version=$version -d Msi=$msi -d Icon=$icon -d Logo=$logo -o $setup (Join-Path $PSScriptRoot "setup.wxs")
+wix build -arch x64 -ext WixToolset.BootstrapperApplications.wixext -d Version=$version -d Msi=$msi -d Icon=$icon -d Logo=$logo -d Theme=$theme -o $setup (Join-Path $PSScriptRoot "setup.wxs")
 if ($LASTEXITCODE -ne 0) { throw "setup bundle build failed" }
 & (Join-Path $PSScriptRoot "execution-level.ps1") -Executable $setup
 $engine = Join-Path $outPath "setup-engine.exe"

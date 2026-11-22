@@ -5,8 +5,12 @@
   <Bundle Name="Vantage Setup" Manufacturer="Vantage" Version="$(Version)"
           UpgradeCode="04A1D0E5-183B-4555-B58B-93F800D3C830" IconSourceFile="$(Icon)">
     <BootstrapperApplication>
+      <!-- The branded theme (see theme/) replaces the stock window; its sidebar is a payload the theme names. -->
       <bal:WixStandardBootstrapperApplication Theme="hyperlinkLicense" LicenseUrl=""
-                                               LogoFile="$(Logo)" />
+                                               LogoFile="$(Logo)"
+                                               ThemeFile="$(Theme)/vantage-theme.xml"
+                                               LocalizationFile="$(Theme)/vantage-theme.wxl" />
+      <Payload Name="sidebar.png" SourceFile="$(Theme)/sidebar.png" />
     </BootstrapperApplication>
     <Chain>
       <MsiPackage SourceFile="$(Msi)" Compressed="yes" Visible="no" />
