@@ -364,6 +364,24 @@ impl Screen for OreUiScreen {
                     focus = Some(focus_actions(&canvas));
                 }
                 MenuScreen::Profile => profile::draw(&mut canvas, view, size, portrait, artwork)?,
+                MenuScreen::Inbox
+                    if java::selected(view, &canvas) && java::inbox::shows_java(view) =>
+                {
+                    canvas.capture_focus = true;
+                    let rollback = (canvas.nodes.len(), *canvas.next);
+                    for attempt in 0..2 {
+                        java::inbox::draw(&mut canvas, view, size)?;
+                        if !scroll_focus::reveal(&mut canvas, scrolls, view) || attempt == 1 {
+                            break;
+                        }
+                        canvas.nodes.truncate(rollback.0);
+                        *canvas.next = rollback.1;
+                        canvas.hits.clear();
+                        canvas.clear_focus_geometry();
+                        canvas.scrolls.clear();
+                    }
+                    focus = Some(focus_actions(&canvas));
+                }
                 MenuScreen::Inbox => {
                     canvas.capture_focus = true;
                     let rollback = (canvas.nodes.len(), *canvas.next);
@@ -533,6 +551,22 @@ impl Screen for OreUiScreen {
                     focus = Some(paint_revealing(&mut canvas, scrolls, view, |canvas| {
                         add_server::draw(canvas, view, size)
                     })?);
+                }
+                MenuScreen::Friends if java::selected(view, &canvas) => {
+                    canvas.capture_focus = true;
+                    let rollback = (canvas.nodes.len(), *canvas.next);
+                    for attempt in 0..2 {
+                        java::friends::draw(&mut canvas, view, size)?;
+                        if !scroll_focus::reveal(&mut canvas, scrolls, view) || attempt == 1 {
+                            break;
+                        }
+                        canvas.nodes.truncate(rollback.0);
+                        *canvas.next = rollback.1;
+                        canvas.hits.clear();
+                        canvas.clear_focus_geometry();
+                        canvas.scrolls.clear();
+                    }
+                    focus = Some(focus_actions(&canvas));
                 }
                 _ => friends::draw(&mut canvas, view, size)?,
             }

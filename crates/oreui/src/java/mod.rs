@@ -5,6 +5,8 @@
 
 mod button;
 mod font;
+pub(super) mod friends;
+pub(super) mod inbox;
 pub(super) mod frame;
 pub(crate) use button::label_style;
 pub(super) mod home;

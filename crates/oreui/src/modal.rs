@@ -82,8 +82,8 @@ pub(super) fn draw(
     size: [f32; 2],
     modal: &Modal<'_>,
 ) -> Result<Option<FocusedItem>, PaintError> {
-    // A message with no list in it is a Java message when the Java style is chosen.
-    if modal.items.is_empty() && crate::java::selected(view, canvas) {
+    // A message, with or without a list of choices, is a Java message when the Java style is chosen.
+    if crate::java::selected(view, canvas) {
         crate::java::modal::draw(canvas, view, size, modal)?;
         return Ok(None);
     }

@@ -55,7 +55,7 @@ pub(super) fn settings(
     delete_dialog(canvas, view, size)
 }
 
-pub(super) fn delete_dialog(
+pub(crate) fn delete_dialog(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
     size: [f32; 2],

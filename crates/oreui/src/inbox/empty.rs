@@ -6,7 +6,7 @@ use super::{Canvas, PaintError};
 use crate::images::INBOX_EMPTY_IMAGES;
 use ui_engine::engine::screen::Translate;
 
-const COPY: [(&str, &str, &str, &str); launcher::menu::inbox::CATEGORIES.len()] = [
+pub(crate) const COPY: [(&str, &str, &str, &str); launcher::menu::inbox::CATEGORIES.len()] = [
     (
         "emptyNewsTitle",
         "No new messages",

@@ -13,12 +13,14 @@ use {
 
 mod actions;
 mod detail;
-mod empty;
+pub(crate) mod empty;
 mod icons;
 mod sidebar;
 #[cfg(test)]
 mod tests;
 use icons::filter_button;
+
+pub(crate) use actions::delete_dialog;
 
 const UNREAD: [u8; 4] = [255, 128, 133, 255];
 
