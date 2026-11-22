@@ -558,6 +558,8 @@ settings! {
         [(SettingPanel::VideoGraphics, 13)], [SettingsGroup::Video], None, None;
     DynamicLights => "dynamic_lights", toggle("Dynamic Lights", false),
         [(SettingPanel::VideoGraphics, 14)], [SettingsGroup::Video], None, None;
+    DistanceFog => "distance_fog", toggle("Fog", true),
+        [(SettingPanel::VideoGraphics, 15)], [SettingsGroup::Video], None, None;
     GraphicsApi => "graphics_api", dropdown("Graphics API", super::graphics_api::CHOICES, 0),
         [(SettingPanel::VideoBackend, 0)], [SettingsGroup::Video], None, None;
     VerboseLogging => "verbose_logging", toggle("Verbose logging", false),

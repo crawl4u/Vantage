@@ -202,7 +202,17 @@ pub(crate) fn update_atmosphere_frame(
         ),
         None => next_frame,
     };
-    *frame = apply_boss_environment(next_frame, medium.0, state);
+    let next_frame = apply_boss_environment(next_frame, medium.0, state);
+    // The Fog setting removes the fog of open air; the fog of blindness and darkness is part of
+    // those effects, so it stays while they last.
+    let fog_enabled = options
+        .as_ref()
+        .is_none_or(|options| options.value(SettingId::DistanceFog) != 0);
+    *frame = if !fog_enabled && vision.blindness <= 0.0 && vision.darkness <= 0.0 {
+        next_frame.without_distance_fog()
+    } else {
+        next_frame
+    };
     let mut sunrise = frame.sunrise_band();
     for c in &mut sunrise[..3] {
         *c = if *c <= 0.0031308 {

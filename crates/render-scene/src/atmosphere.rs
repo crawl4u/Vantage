@@ -73,6 +73,9 @@ impl SkyKind {
 pub const PROVISIONAL_BOSS_DARKEN_SKY_STRENGTH: f32 = 0.5;
 pub const PROVISIONAL_BOSS_WORLD_FOG_START_BLOCKS: f32 = 96.0;
 pub const PROVISIONAL_BOSS_WORLD_FOG_END_BLOCKS: f32 = 160.0;
+/// Where the fog of [`AtmosphereFrame::without_distance_fog`] begins, and its length: beyond any view.
+const NO_FOG_START_BLOCKS: f32 = 1.0e7;
+const NO_FOG_SPAN_BLOCKS: f32 = 1.0e6;
 const BOSS_DARKEN_ZENITH_TARGET: [f32; 3] = [0.12, 0.14, 0.16];
 const BOSS_DARKEN_HORIZON_TARGET: [f32; 3] = [0.22, 0.24, 0.26];
 
@@ -413,6 +416,18 @@ impl AtmosphereFrame {
         self.fog_color_start.w =
             celestial::lerp(self.fog_color_start.w * end_scale, 0.0, blindness)
                 .min(self.fog_end_time.x);
+        self
+    }
+
+    /// Removes the distance fog of open air, as a performance mod's fog switch does: the fog starts
+    /// and ends so far away that nothing reaches it. Water and lava fog are part of how those
+    /// media look, so they stay; a caller keeps the fog of blindness and darkness the same way.
+    #[must_use]
+    pub fn without_distance_fog(mut self) -> Self {
+        if self.camera_medium() == CameraMedium::Air {
+            self.fog_color_start.w = NO_FOG_START_BLOCKS;
+            self.fog_end_time.x = NO_FOG_START_BLOCKS + NO_FOG_SPAN_BLOCKS;
+        }
         self
     }
 
@@ -841,6 +856,19 @@ fn rgb8_to_linear(rgb: u32) -> [f32; 3] {
 #[cfg(test)]
 mod tests {
     use super::{AtmosphereFrame, CameraMedium};
+
+    #[test]
+    fn fog_off_pushes_open_air_fog_beyond_any_view_and_leaves_water_and_lava() {
+        let air = AtmosphereFrame::from_bedrock_time(6_000.0, 0.0, 0.0);
+        let off = air.without_distance_fog();
+        assert!(off.fog_start() > 1.0e6 && off.fog_end() > off.fog_start());
+        assert_eq!(off.fog_color(), air.fog_color(), "the horizon colour stays for the sky");
+        for medium in [CameraMedium::Water, CameraMedium::Lava] {
+            let frame = AtmosphereFrame::from_bedrock_time(6_000.0, 0.0, 0.0).with_camera_medium(medium);
+            let kept = frame.without_distance_fog();
+            assert_eq!((kept.fog_start(), kept.fog_end()), (frame.fog_start(), frame.fog_end()));
+        }
+    }
 
     #[test]
     fn camera_medium_overrides_only_the_distance_fog_contract() {
