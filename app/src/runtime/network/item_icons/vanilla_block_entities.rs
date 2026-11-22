@@ -46,9 +46,11 @@ pub(in crate::runtime::network) fn append(view: &LayeredPackView, icons: &mut Bl
 /// which the item carrier may route as sprites rather than block items.
 fn bed_items() -> impl Iterator<Item = (&'static Arc<str>, u32)> {
     static DYED: LazyLock<Arc<str>> = LazyLock::new(|| Arc::from("minecraft:bed"));
+    static STRAW: LazyLock<Arc<str>> = LazyLock::new(|| Arc::from("minecraft:straw_bed"));
     (0..16)
         .map(|dye| (&*DYED, dye))
         .chain(coloured_beds())
+        .chain(std::iter::once((&*STRAW, 0)))
 }
 
 /// Bedrock's per-colour bed items (`minecraft:red_bed`).
@@ -72,7 +74,7 @@ mod tests {
     #[test]
     fn every_coloured_bed_item_gets_a_model_icon() {
         let beds: Vec<_> = bed_items().collect();
-        assert_eq!(beds.len(), 32);
+        assert_eq!(beds.len(), 33);
         for (identifier, metadata) in beds {
             let icon = pack_entity_compiler::block_entity_icon(identifier, metadata, |_| {
                 Some(assets::IconSprite {

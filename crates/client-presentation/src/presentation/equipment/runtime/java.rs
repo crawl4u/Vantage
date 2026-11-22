@@ -115,13 +115,11 @@ impl EquipmentRuntime {
         let (mesh, location, block, span) = self.held_mesh_with_use(item, input)?;
         // A bed takes Java's own bed pose rather than the generic block one.
         let bed = block
-            && matches!(
-                render_model::block_entity::HeldBlockEntity::from_stack(
-                    &item.identifier,
-                    item.metadata
-                ),
-                Some(render_model::block_entity::HeldBlockEntity::Bed(_))
-            );
+            && render_model::block_entity::HeldBlockEntity::from_stack(
+                &item.identifier,
+                item.metadata,
+            )
+            .is_some_and(render_model::block_entity::HeldBlockEntity::is_bed);
         let kind = if bed { JavaItemMesh::Bed } else { mesh_kind(block) };
         let pose = if bed {
             super::super::display::bed_in_hand()

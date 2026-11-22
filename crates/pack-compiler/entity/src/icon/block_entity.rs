@@ -72,6 +72,27 @@ fn bed(color: &str) -> Part {
     }
 }
 
+/// The straw bed lying as [`bed`] does, its head toward the far right, from its authored faces.
+fn straw_bed() -> Part {
+    let faces = geometry::STRAW_BED_FACES
+        .iter()
+        .map(|&(corners, texels)| {
+            (
+                corners.map(|[x, y, z]| {
+                    [z / 32.0 + 0.5, (y - 2.0) / 32.0 + 0.5, -x / 32.0 + 0.5]
+                }),
+                texels,
+            )
+        })
+        .collect();
+    Part {
+        texture: geometry::STRAW_BED_TEXTURE.0.to_owned(),
+        logical: geometry::STRAW_BED_TEXTURE.1,
+        faces,
+        color: [255; 3],
+    }
+}
+
 /// Only banner dye changes these block models by item metadata.
 pub(super) fn metadata_variant(name: &str, metadata: u32) -> u32 {
     if is_banner(name) { metadata } else { 0 }
@@ -170,6 +191,8 @@ pub(super) fn raster_with(
         vec![part]
     } else if let Some(color) = bed_color(name, metadata) {
         vec![bed(color)]
+    } else if name == "minecraft:straw_bed" {
+        vec![straw_bed()]
     } else if let Some(chest_texture) = chest_texture(name) {
         vec![chest(chest_texture)]
     } else if let Some(skull_type) = assets::vanilla_skull_type(name) {
@@ -593,5 +616,30 @@ mod chest_icon_tests {
         };
         assert_eq!(partial(32), 0, "the startup raster keeps hard edges");
         assert!(partial(128) > 40, "the session raster blends its outline");
+    }
+
+    #[test]
+    fn a_straw_bed_item_draws_its_block_texture_lying_flat() {
+        let texture = IconSprite {
+            width: 64,
+            height: 64,
+            rgba8: [220, 180, 40, 255].repeat(64 * 64).into(),
+        };
+        let mut asked = Vec::new();
+        let icon = raster_with("minecraft:straw_bed", 0, &[], 128, &mut |path| {
+            asked.push(path.to_owned());
+            Ok(Some(texture.clone()))
+        })
+        .unwrap()
+        .expect("a straw bed has an inventory model");
+        assert_eq!(asked, ["textures/blocks/straw_bed"]);
+        let pixels = icon.rgba8.as_chunks::<4>().0;
+        let rows = (0..128)
+            .filter(|row| pixels[row * 128..][..128].iter().any(|p| p[3] != 0))
+            .count();
+        let columns = (0..128)
+            .filter(|column| (0..128).any(|row| pixels[row * 128 + column][3] != 0))
+            .count();
+        assert!(columns > rows * 5 / 4, "{columns} wide, {rows} tall");
     }
 }

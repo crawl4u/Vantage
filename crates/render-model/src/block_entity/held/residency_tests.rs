@@ -23,6 +23,7 @@ fn texture_names(kind: HeldBlockEntity) -> Vec<String> {
             .collect(),
         HeldBlockEntity::Skull(kind) => vec![head_texture(kind).to_owned()],
         HeldBlockEntity::Bed(color) => vec![format!("textures/entity/bed/{color}")],
+        HeldBlockEntity::StrawBed => vec![geometry::STRAW_BED_TEXTURE.0.to_owned()],
     }
 }
 
@@ -321,7 +322,7 @@ fn prepared_special_drop_meshes_preserve_held_positions_and_texture_tiles() {
         let model = held.dropped.as_ref().unwrap();
         let vertices = render_model_vertices(model);
         // A held bed is drawn larger than the dropped one it otherwise matches.
-        let unit = if matches!(kind, HeldBlockEntity::Bed(_)) {
+        let unit = if kind.is_bed() {
             1.0 / HELD_BED_LENGTH
         } else {
             1.0

@@ -132,13 +132,11 @@ impl EquipmentRuntime {
         } else if block && self.first_person_wall(item) {
             FirstPersonShape::Wall
         } else if block
-            && matches!(
-                render_model::block_entity::HeldBlockEntity::from_stack(
-                    &item.identifier,
-                    item.metadata
-                ),
-                Some(render_model::block_entity::HeldBlockEntity::Bed(_))
+            && render_model::block_entity::HeldBlockEntity::from_stack(
+                &item.identifier,
+                item.metadata,
             )
+            .is_some_and(render_model::block_entity::HeldBlockEntity::is_bed)
         {
             FirstPersonShape::Bed
         } else if block {

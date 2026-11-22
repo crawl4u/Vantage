@@ -77,6 +77,7 @@ pub fn compile_block_entity_assets(
             assets::block_entity_geometry::CONDUIT_TEXTURE.0,
             assets::block_entity_geometry::POT_BASE_TEXTURE.0,
             assets::block_entity_geometry::POT_SIDE_TEXTURE.0,
+            assets::block_entity_geometry::STRAW_BED_TEXTURE.0,
         ])
         .chain(
             assets::block_entity_geometry::ITEM_FRAME_TEXTURES

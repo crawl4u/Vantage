@@ -46,6 +46,16 @@ pub enum HeldBlockEntity {
     Skull(SkullKind),
     /// A bed of the texture stem under `textures/entity/bed`, scaled to fit one block.
     Bed(&'static str),
+    /// The straw bed, drawn from its block texture and scaled like a bed.
+    StrawBed,
+}
+
+impl HeldBlockEntity {
+    /// Whether this is a two-block bed that is fitted to one block and posed as a bed in a hand.
+    #[must_use]
+    pub const fn is_bed(self) -> bool {
+        matches!(self, Self::Bed(_) | Self::StrawBed)
+    }
 }
 
 /// An orderable stand-in for [`ChestVariant`], so held models can key a map.
@@ -108,6 +118,9 @@ impl HeldBlockEntity {
         if let Some(color) = bed_color_from_item(identifier) {
             return Some(Self::Bed(color));
         }
+        if identifier == "minecraft:straw_bed" {
+            return Some(Self::StrawBed);
+        }
         match renderer? {
             BlockEntityRenderer::DecoratedPot => Some(Self::DecoratedPot),
             BlockEntityRenderer::Conduit => Some(Self::Conduit),
@@ -146,6 +159,7 @@ impl HeldBlockEntity {
         );
         all.extend(SkullKind::kinds().map(Self::Skull));
         all.extend((0..16).filter_map(super::bed::bed_color).map(Self::Bed));
+        all.push(Self::StrawBed);
         all.extend(
             assets::facts::BlockEntityFacts::pinned()
                 .entries()
@@ -236,6 +250,7 @@ impl HeldBlockEntity {
                 },
                 heads.bed.as_ref(),
             ),
+            Self::StrawBed => emit_straw_bed(builder, atlas),
             Self::Skull(kind) => skull::emit(
                 builder,
                 atlas,
@@ -266,6 +281,24 @@ fn bed_color_from_item(identifier: &str) -> Option<&'static str> {
 /// The length in blocks of a bed's held rig: a bed fitted to one block, drawn a little larger so it
 /// reads at Java's third-person size.
 pub const HELD_BED_LENGTH: f32 = 1.23;
+
+/// Emits the straw bed's head and foot halves lying along Z with the head toward +Z.
+fn emit_straw_bed(builder: &mut MeshBuilder, atlas: &BlockEntityAtlas) {
+    use assets::block_entity_geometry::{STRAW_BED_FACES, STRAW_BED_TEXTURE};
+    let Some(texture) = builder.required_texture(atlas, STRAW_BED_TEXTURE.0, STRAW_BED_TEXTURE.1)
+    else {
+        return;
+    };
+    for &(corners, texels) in &STRAW_BED_FACES {
+        let world = corners.map(|[x, y, z]| [x / 16.0 + 0.5, y / 16.0, z / 16.0 + 0.5]);
+        builder.quad(
+            super::mesh::Layer::Solid,
+            world,
+            texture.rect_uv(texels),
+            super::mesh::WHITE,
+        );
+    }
+}
 
 /// Builds a centered one-bone rig with static atlas UVs and texture-local glint coordinates.
 /// Returns `None` when the atlas lacks the model's textures.
@@ -300,7 +333,7 @@ fn model_with_heads(
     // A bed spans two blocks: dropped, it shrinks to fit one; in a hand it is
     // [`HELD_BED_LENGTH`] long, which a first-person pose scales back up to its real two.
     let mut hand_scale = 1.0;
-    if matches!(kind, HeldBlockEntity::Bed(_)) {
+    if kind.is_bed() {
         let (low, high) = builder.solid.iter().fold(
             (
                 glam::Vec3::splat(f32::INFINITY),
@@ -700,6 +733,7 @@ mod tests {
             "minecraft:decorated_pot",
             "minecraft:conduit",
             "minecraft:lectern",
+            "minecraft:straw_bed",
         ]
         .into_iter()
         .map(String::from)
