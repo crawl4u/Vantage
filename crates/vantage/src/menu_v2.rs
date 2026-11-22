@@ -37,19 +37,27 @@ fn names() -> Vec<&'static str> {
         .collect()
 }
 
-/// The id of each card's open button, in `MODS` order.
-fn open_ids() -> Vec<&'static str> {
-    collection_items()
-        .iter()
-        .map(|item| {
-            // The collection numbers controls within the Mods page's own document.
-            let local = item["controls"]["open"].as_u64().unwrap_or(0) as usize;
-            DOC_CONTROLS[MODS_PAGE]
-                .get(local)
-                .and_then(|global| CONTROLS.get(usize::from(*global)))
-                .map_or("", |control| control.1)
-        })
-        .collect()
+/// The id of each card's open button, in `MODS` order: the control that opens the mod's settings (the old
+/// menu's gear), or an id nothing handles for a mod with no settings page.
+fn open_ids() -> &'static [String] {
+    static IDS: OnceLock<Vec<String>> = OnceLock::new();
+    IDS.get_or_init(|| {
+        collection_items()
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                if item["values"]["#item_gear"].as_bool() != Some(true) {
+                    return format!("none_{}", MODS.get(i).map_or("", |m| m.0));
+                }
+                // The collection numbers controls within the Mods page's own document.
+                let local = item["controls"]["options"].as_u64().unwrap_or(0) as usize;
+                DOC_CONTROLS[MODS_PAGE]
+                    .get(local)
+                    .and_then(|global| CONTROLS.get(usize::from(*global)))
+                    .map_or_else(String::new, |control| control.1.to_owned())
+            })
+            .collect()
+    })
 }
 
 /// One card per mod, with its switch and favourite taken from `settings`.
@@ -66,7 +74,7 @@ pub fn cards<'a>(settings: &'a Settings, state: &'a PanelState) -> Vec<Card<'a>>
             on: matches!(crate::panel::value(settings, state, id), Value::Toggle(true)),
             favorite: settings.favorites.iter().any(|f| f == id),
             hidden: false,
-            open: open.get(i).copied().unwrap_or(""),
+            open: open.get(i).map_or("", String::as_str),
         })
         .collect()
 }
