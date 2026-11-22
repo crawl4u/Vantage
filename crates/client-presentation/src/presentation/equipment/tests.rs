@@ -380,11 +380,17 @@ fn real_carriers_hold_block_entity_items_as_their_models() {
             model.vertices.len() > 36,
             "{identifier} is more than one box"
         );
+        // A held bed is drawn a little larger than the block it is otherwise fitted to.
+        let half = if identifier.ends_with("_bed") {
+            render_model::block_entity::HELD_BED_LENGTH / 2.0
+        } else {
+            0.5
+        };
         assert!(
             model
                 .vertices
                 .iter()
-                .all(|vertex| vertex.position.iter().all(|c| c.abs() <= 0.5 + 1e-3)),
+                .all(|vertex| vertex.position.iter().all(|c| c.abs() <= half + 1e-3)),
             "{identifier} fits the unit block the held cube uses"
         );
     }
