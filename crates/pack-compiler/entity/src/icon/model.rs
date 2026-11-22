@@ -319,6 +319,15 @@ impl<'a> Model<'a> {
         self.raster_view(side, true)
     }
 
+    /// [`Self::raster_filled`] smoothed: drawn `samples` times finer in each direction and
+    /// averaged down, so outlines and the seams between faces are antialiased.
+    pub(super) fn raster_filled_smooth(&self, side: usize, samples: usize) -> IconSprite {
+        if samples <= 1 {
+            return self.raster_filled(side);
+        }
+        average_down(&self.raster_filled(side * samples), samples)
+    }
+
     fn raster_view(&self, side: usize, fill: bool) -> IconSprite {
         let base = side as f32 / GUI_ITEM_SIDE;
         let (scale, offset) = if fill {
@@ -465,6 +474,42 @@ fn reject(reason: GuiBlockReject) -> Reject {
         GuiBlockReject::Geometry => Reject::Geometry,
         GuiBlockReject::Material => Reject::Material,
         GuiBlockReject::Texture => Reject::Texture,
+    }
+}
+
+/// Averages each `factor` by `factor` block of `sprite` into one texel, weighting colour by alpha so
+/// transparent texels do not darken an outline.
+fn average_down(sprite: &IconSprite, factor: usize) -> IconSprite {
+    let side = usize::from(sprite.width) / factor;
+    let source = usize::from(sprite.width);
+    let mut out = vec![0u8; side * side * 4];
+    let count = (factor * factor) as f32;
+    for y in 0..side {
+        for x in 0..side {
+            let mut sum = [0.0f32; 4];
+            for dy in 0..factor {
+                for dx in 0..factor {
+                    let texel = &sprite.rgba8[((y * factor + dy) * source + x * factor + dx) * 4..][..4];
+                    let alpha = f32::from(texel[3]);
+                    for channel in 0..3 {
+                        sum[channel] += f32::from(texel[channel]) * alpha;
+                    }
+                    sum[3] += alpha;
+                }
+            }
+            let target = &mut out[(y * side + x) * 4..][..4];
+            if sum[3] > 0.0 {
+                for channel in 0..3 {
+                    target[channel] = (sum[channel] / sum[3]).round() as u8;
+                }
+                target[3] = (sum[3] / count).round() as u8;
+            }
+        }
+    }
+    IconSprite {
+        width: side as u16,
+        height: side as u16,
+        rgba8: Arc::from(out),
     }
 }
 

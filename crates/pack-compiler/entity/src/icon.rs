@@ -317,7 +317,7 @@ pub fn overlay_cube_icon(
 
 /// Pixels across a session's entity-drawn block icon: finer than the startup icons, which share a
 /// bounded carrier, since a session holds far fewer.
-const SESSION_ICON_SIDE: usize = 64;
+const SESSION_ICON_SIDE: usize = 128;
 
 /// The inventory icon of an entity-drawn block item (chests, shulker boxes, banners and the like)
 /// drawn from the textures `texture` resolves, so a pack's own entity art reaches the slot.

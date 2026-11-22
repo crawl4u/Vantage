@@ -9,6 +9,9 @@ use super::{
     model::{Model, TexturedQuad},
 };
 
+/// How many times finer, per direction, a session icon is drawn before it is averaged down.
+const SMOOTH_SAMPLES: usize = 2;
+
 struct Part {
     texture: String,
     logical: [f32; 2],
@@ -300,7 +303,7 @@ pub(super) fn raster_with(
         } else {
             model
         }
-        .raster_filled(side),
+        .raster_filled_smooth(side, if side > super::model::SIDE { SMOOTH_SAMPLES } else { 1 }),
     ))
 }
 
@@ -568,5 +571,27 @@ mod chest_icon_tests {
         assert!(raster_with("minecraft:bed", 16, &[], 64, &mut |_| Ok(Some(texture([1; 4]))))
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn a_session_icon_has_antialiased_edges_where_a_startup_icon_has_hard_ones() {
+        let texture = || IconSprite {
+            width: 64,
+            height: 64,
+            rgba8: [200, 20, 20, 255].repeat(64 * 64).into(),
+        };
+        let partial = |side| {
+            let icon = raster_with("minecraft:chest", 0, &[], side, &mut |_| Ok(Some(texture())))
+                .unwrap()
+                .unwrap();
+            icon.rgba8
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|pixel| pixel[3] != 0 && pixel[3] != 255)
+                .count()
+        };
+        assert_eq!(partial(32), 0, "the startup raster keeps hard edges");
+        assert!(partial(128) > 40, "the session raster blends its outline");
     }
 }
