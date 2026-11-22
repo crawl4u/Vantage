@@ -283,6 +283,10 @@ pub use skin_geometry::{
 };
 pub use skybox::{DEFAULT_NATIVE_SKYBOX_OFFSET, SKYBOX_FACE_COUNT};
 pub use skybox::{PackSkybox, SkyboxDimension, SkyboxFace};
+pub use skybox::{
+    MAX_SKY_LAYERS, SKY_DAY_TICKS, SkyBlend, SkyDays, SkyFade, SkyLayer, SkyRotation, SkySchedule,
+    SkyWeather, sky_ticks_from_hours,
+};
 pub use sound_events::{FloatRange, RouteLookup, SoundEventTables, SoundRoute};
 pub use texture::{
     MAX_TILE_SIZE, MIP_COUNT, TERRAIN_QUAD_SHIFT_MASK, TILE_SIZE, TextureArray, TextureMip,

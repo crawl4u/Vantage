@@ -166,28 +166,108 @@ fn equipment_name(stem: &str, layer: &str) -> String {
     format!("{material}_layer_{layer}{suffix}.png")
 }
 
-/// Reads the first OptiFine overworld sky, in path order, whose source image exists.
-fn read_sky<R: FnMut(&str) -> Option<Vec<u8>>>(
+/// The overworld's OptiFine sky layers in file order, and the decoded images they draw from.
+struct SkyLayers {
+    layers: Vec<(sky::LayerSpec, usize)>,
+    sources: Vec<RgbaImage>,
+}
+
+/// The most sky layers one pack may add; the client keeps the first few it can draw.
+const MAX_SKY_LAYERS: usize = 32;
+
+/// Reads every OptiFine overworld sky layer whose source image exists, in file-name order
+/// (`sky2` before `sky10`); a source used by several layers is decoded once.
+fn read_sky_layers<R: FnMut(&str) -> Option<Vec<u8>>>(
     paths: &[String],
     source: &mut Source<R>,
     budget: &Budget,
-) -> Option<RgbaImage> {
+) -> Option<SkyLayers> {
     let folder = sky::sky_folder(paths.iter().map(String::as_str))?;
-    for path in paths
+    let mut files: Vec<&String> = paths
         .iter()
         .filter(|path| path.starts_with(&folder) && path.ends_with(".properties"))
-    {
-        let Some(sky_source) = source.load(path).and_then(|bytes| sky::sky_source(&bytes)) else {
+        .collect();
+    files.sort_by_key(|path| (path.len(), path.as_str()));
+    let mut found = SkyLayers {
+        layers: Vec::new(),
+        sources: Vec::new(),
+    };
+    let mut decoded: Vec<String> = Vec::new();
+    for path in files {
+        if found.layers.len() >= MAX_SKY_LAYERS {
+            break;
+        }
+        let Some(layer) = source.load(path).and_then(|bytes| sky::parse_layer(&bytes)) else {
             continue;
         };
-        let image_path = sky::source_path(&folder, &sky_source);
-        if paths.binary_search(&image_path).is_ok() {
-            return source
-                .load(&image_path)
-                .and_then(|bytes| decode(&bytes, budget));
+        let image_path = sky::source_path(&folder, &layer.source);
+        if paths.binary_search(&image_path).is_err() {
+            continue;
         }
+        let index = match decoded.iter().position(|known| *known == image_path) {
+            Some(index) => index,
+            None => {
+                let Some(image) = source
+                    .load(&image_path)
+                    .and_then(|bytes| decode(&bytes, budget))
+                else {
+                    continue;
+                };
+                decoded.push(image_path);
+                found.sources.push(image);
+                found.sources.len() - 1
+            }
+        };
+        found.layers.push((layer, index));
     }
-    None
+    (!found.layers.is_empty()).then_some(found)
+}
+
+/// The folder of the overworld's numbered cube-map faces, and of its layer schedule.
+const OVERWORLD_SKY: &str = "textures/environment/overworld_cubemap/";
+
+/// The sky layers as Bedrock-side files: each source's six cube faces under `layers/<n>/`, and
+/// `layers.json` naming, for every layer, its source and when and how it is drawn.
+fn sky_outputs(layers: &SkyLayers, budget: &Budget) -> Vec<(String, Output)> {
+    let mut files = Vec::new();
+    let mut used = vec![false; layers.sources.len()];
+    let mut entries = Vec::new();
+    for (layer, index) in &layers.layers {
+        if !used[*index] {
+            let Some(faces) = sky::cubemap_faces(&layers.sources[*index], budget) else {
+                continue;
+            };
+            used[*index] = true;
+            for (face, image) in faces.into_iter().enumerate() {
+                files.push((
+                    format!("{OVERWORLD_SKY}layers/{index}/cubemap_{face}.png"),
+                    Output::Image(image),
+                ));
+            }
+        }
+        entries.push(serde_json::json!({
+            "source": index,
+            "blend": layer.blend,
+            "fade": layer.fade,
+            "rotation": layer.rotation.map(|(speed, axis)| serde_json::json!({
+                "speed": speed,
+                "axis": axis,
+            })),
+            "weather": layer.weather,
+            "days": layer.days.as_ref().map(|(ranges, repeat)| serde_json::json!({
+                "ranges": ranges,
+                "repeat": repeat,
+            })),
+        }));
+    }
+    if !entries.is_empty() {
+        let document = serde_json::json!({ "layers": entries });
+        files.push((
+            format!("{OVERWORLD_SKY}layers.json"),
+            Output::Raw(serde_json::to_vec_pretty(&document).unwrap_or_default()),
+        ));
+    }
+    files
 }
 
 /// Decodes HUD textures in parallel, dropping invalid PNGs.
@@ -420,7 +500,7 @@ pub(crate) fn translate_within(
     let sprites = source.load_all(pngs_below(&paths, &sprite_folder, true, |path| {
         path[sprite_folder.len()..path.len() - ".png".len()].to_owned()
     }));
-    let sky_image = read_sky(&paths, &mut source, budget);
+    let sky_layers = read_sky_layers(&paths, &mut source, budget);
     // Mobs, paintings, maps and the rest the table covers, and older mob names matched to
     // Bedrock's by file name and size; a legacy pack's mobs keep the names Bedrock's descend from.
     let extra_files = {
@@ -644,16 +724,8 @@ pub(crate) fn translate_within(
     if let Some(bytes) = pack_icon.filter(|bytes| dimensions(bytes).is_some()) {
         out.insert("pack_icon.png".into(), Output::Raw(bytes));
     }
-    if let Some(faces) = sky_image
-        .as_ref()
-        .and_then(|sky| sky::cubemap_faces(sky, budget))
-    {
-        for (index, face) in faces.into_iter().enumerate() {
-            out.insert(
-                format!("textures/environment/overworld_cubemap/cubemap_{index}.png"),
-                Output::Image(face),
-            );
-        }
+    if let Some(layers) = &sky_layers {
+        out.extend(sky_outputs(layers, budget));
     }
     if let Some(bytes) = icons.filter(|_| icons_image.is_some()) {
         out.insert("textures/gui/icons.png".into(), Output::Raw(bytes));

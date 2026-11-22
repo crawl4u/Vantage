@@ -181,8 +181,9 @@ fn a_legacy_pack_translates_textures_hud_potions_and_sky() {
         "textures/models/armor/chain_2.png",
         "textures/gui/icons.png",
         "textures/particle/particles.png",
-        "textures/environment/overworld_cubemap/cubemap_0.png",
-        "textures/environment/overworld_cubemap/cubemap_5.png",
+        "textures/environment/overworld_cubemap/layers.json",
+        "textures/environment/overworld_cubemap/layers/0/cubemap_0.png",
+        "textures/environment/overworld_cubemap/layers/0/cubemap_5.png",
     ] {
         assert!(out.contains_key(path), "{path} missing");
     }
@@ -1643,4 +1644,51 @@ fn per_face_java_beds_become_bedrock_bed_entity_textures() {
         !out.contains_key("textures/entity/bed/white.png"),
         "a colour without its faces keeps Bedrock's bed"
     );
+}
+
+#[test]
+fn every_optifine_sky_layer_keeps_its_schedule_and_shares_repeated_sources() {
+    let sky = "assets/minecraft/optifine/sky/world0/";
+    let files = pack(vec![
+        ("assets/minecraft/textures/block/stone.png", solid(16, 16, WHITE)),
+        (&format!("{sky}sky2.properties"), b"source=skybox:sun.png
+blend=add
+startFadeIn=17:40
+endFadeIn=18:20
+startFadeOut=19:20
+endFadeOut=19:40
+weather=clear
+".to_vec()),
+        (&format!("{sky}sky10.properties"), b"source=skybox:sun.png
+blend=screen
+rotate=false
+".to_vec()),
+        (&format!("{sky}sky1.properties"), b"source=./stars.png
+blend=alpha
+days=0-3
+daysLoop=8
+".to_vec()),
+        (&format!("{sky}stars.png"), solid(48, 32, BLUE)),
+        ("assets/skybox/sun.png", solid(48, 32, RED)),
+    ]);
+    let translation = run(&files, "Sky").unwrap();
+    let out = output(&translation);
+    let layers: serde_json::Value =
+        serde_json::from_slice(out["textures/environment/overworld_cubemap/layers.json"]).unwrap();
+    let layers = layers["layers"].as_array().unwrap();
+    assert_eq!(layers.len(), 3, "sky1, sky2 and sky10, in that order");
+    assert_eq!(layers[0]["blend"], "alpha");
+    assert_eq!(layers[0]["days"]["ranges"], serde_json::json!([[0, 3]]));
+    assert_eq!(layers[0]["days"]["repeat"], 8);
+    assert_eq!(layers[1]["blend"], "add");
+    assert_eq!(layers[1]["weather"], 1);
+    assert_eq!(layers[1]["fade"].as_array().unwrap().len(), 4);
+    assert_eq!(layers[2]["blend"], "screen");
+    assert!(layers[2]["rotation"].is_null(), "rotate=false");
+    assert_eq!(layers[1]["source"], layers[2]["source"], "one decode for a shared source");
+    let sources: std::collections::BTreeSet<_> = out
+        .keys()
+        .filter(|path| path.contains("overworld_cubemap/layers/") && path.ends_with("cubemap_0.png"))
+        .collect();
+    assert_eq!(sources.len(), 2, "two distinct images, six faces each");
 }
