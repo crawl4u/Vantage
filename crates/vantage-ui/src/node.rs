@@ -152,6 +152,96 @@ pub fn fade(name: &str, offset: [f32; 2], size: [f32; 2], from: Rgba, to: Rgba) 
     named(name, anchored(node))
 }
 
+/// `control` with its `bindings` list set (replacing any it had).
+#[must_use]
+pub fn bound(mut control: Value, bindings: Value) -> Value {
+    let name = control
+        .as_object()
+        .and_then(|map| map.keys().next().cloned())
+        .expect("a control holds one node");
+    control[name.as_str()]["bindings"] = bindings;
+    control
+}
+
+/// A label whose text is the host binding `binding` (such as `#row_3_value`).
+#[must_use]
+pub fn bound_label(
+    name: &str,
+    binding: &str,
+    offset: [f32; 2],
+    size: [f32; 2],
+    color: Rgba,
+    scale: f32,
+    align: Align,
+) -> Value {
+    let mut control = label(name, binding, offset, size, color, scale, align);
+    control[name]["bindings"] = serde_json::json!([{"binding_name": binding}]);
+    control
+}
+
+/// A vertically scrolling view of `content`, `content_height` tall, with the host's scrollbar. The
+/// view is `size` wide and tall; the content is 8 narrower so the bar has room.
+#[must_use]
+pub fn scroll_view(
+    name: &str,
+    offset: [f32; 2],
+    size: [f32; 2],
+    content: Vec<Value>,
+    content_height: f32,
+) -> Value {
+    let [width, height] = size;
+    let mut node = base(size, offset);
+    node.insert("type".into(), json!("scroll_view"));
+    node.insert("clip_children".into(), json!(true));
+    node.insert("scroll_speed".into(), json!(24));
+    node.insert("scroll_content".into(), json!("content"));
+    node.insert("scroll_view_port".into(), json!("viewport"));
+    node.insert("scrollbar_track".into(), json!("track"));
+    node.insert("scrollbar_box".into(), json!("thumb"));
+    node.insert("scroll_box_and_track_panel".into(), json!("bar"));
+    node.insert("scrollbar_track_button".into(), json!("mod.scroll_track"));
+    node.insert(
+        "controls".into(),
+        json!([
+            {"viewport": {
+                "type": "panel", "size": [width - 8.0, height], "clip_children": true,
+                "anchor_from": "top_left", "anchor_to": "top_left",
+                "controls": [{"content": {
+                    "type": "panel", "size": [width - 8.0, content_height],
+                    "anchor_from": "top_left", "anchor_to": "top_left",
+                    "controls": content,
+                }}],
+            }},
+            {"bar": {
+                "type": "panel", "size": [4, height],
+                "anchor_from": "top_right", "anchor_to": "top_right",
+                "controls": [
+                    {"track": {
+                        "type": "scroll_track", "size": [4, height],
+                        "anchor_from": "top_left", "anchor_to": "top_left",
+                        "button_mappings": [{
+                            "from_button_id": "button.menu_select",
+                            "mapping_type": "pressed",
+                            "to_button_id": "mod.scroll_track",
+                        }],
+                        "controls": [],
+                    }},
+                    {"thumb": {
+                        "type": "scrollbar_box", "size": [4, 20], "draggable": "vertical",
+                        "anchor_from": "top_left", "anchor_to": "top_left",
+                        "controls": [{"fill": {
+                            "type": "custom", "renderer": "cinnabar_rounded_rectangle",
+                            "size": ["100%", "100%"], "radius": 1,
+                            "color": [0.6, 0.62, 0.6, 0.5],
+                        }}],
+                    }},
+                ],
+            }},
+        ]),
+    );
+    named(name, anchored(node))
+}
+
 /// The one control's node, without its name.
 #[must_use]
 pub fn body(control: &Value) -> &Value {

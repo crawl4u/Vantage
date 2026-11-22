@@ -7,7 +7,7 @@ use super::cosmetics;
 use super::{
     Fixture, GUI_SCALE, KEYBOARD_SIZE, SIZE, SMALL_SIZE, SettingId, SettingSection, State,
     TALL_SIZE, chat, collection_reveal, hud_surface, local_identity, minecraft_import, out_of_game,
-    roster, settings, settings_screens, shader_options, shader_pack, updates, vantage_mods, vantage_shell,
+    roster, settings, settings_screens, shader_options, shader_pack, updates, vantage_mods, vantage_options, vantage_shell,
 };
 
 /// A capture at GUI scale 1 that needs no game assets.
@@ -89,6 +89,18 @@ pub(super) const STATES: &[State] = &[
         size: SIZE,
         gui_scale: GUI_SCALE,
         fixture: || vantage_mods::fixture(vantage_ui::mods::Filter::Favorites, "zzz"),
+    },
+    State {
+        name: "vantage-options",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_options::fixture(false, ""),
+    },
+    State {
+        name: "vantage-options-search",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_options::fixture(true, "size"),
     },
     State {
         name: "vantage-shell",

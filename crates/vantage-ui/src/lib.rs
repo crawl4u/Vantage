@@ -6,5 +6,6 @@
 
 pub mod mods;
 pub mod node;
+pub mod options;
 pub mod shell;
 pub mod tokens;
