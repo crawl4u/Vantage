@@ -36,12 +36,21 @@ pub struct SkyboxFace {
 }
 
 /// A dimension's numbered images; absent or invalid faces use the stock sky.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct PackSkybox {
     pub faces: [Option<SkyboxFace>; SKYBOX_FACE_COUNT],
+    /// The cube images Java-style layers draw from; several layers may share one.
+    pub sources: Vec<[Option<SkyboxFace>; SKYBOX_FACE_COUNT]>,
+    /// Java-style layers, drawn in order over the stock sky and instead of [`Self::faces`].
+    pub layers: Vec<SkyLayer>,
 }
 
 impl PackSkybox {
+    /// Whether any image or layer of this dimension's pack sky exists.
+    pub fn is_present(&self) -> bool {
+        self.face_mask() != 0 || !self.layers.is_empty()
+    }
+
     /// Encodes exactly the faces that can contribute to the background pass.
     pub fn face_mask(&self) -> u32 {
         self.faces
@@ -224,10 +233,10 @@ impl SkySchedule {
     }
 }
 
-/// One Java sky layer: its cube faces and when it is drawn.
+/// One Java sky layer: the [`PackSkybox::sources`] cube it draws and when it is drawn.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SkyLayer {
-    pub faces: [Option<SkyboxFace>; SKYBOX_FACE_COUNT],
+    pub source: usize,
     pub schedule: SkySchedule,
 }
 

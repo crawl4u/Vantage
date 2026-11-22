@@ -306,6 +306,46 @@ fn skybox_selection_chooses_the_pack_before_the_image_extension() {
 }
 
 #[test]
+fn java_sky_layers_load_with_their_schedules_and_share_sources() {
+    use assets::SkyboxDimension as Dimension;
+    let face = skybox_png(1, 1, [10, 20, 30, 255]);
+    let root = "textures/environment/overworld_cubemap/layers";
+    let document = serde_json::json!({ "layers": [
+        { "source": 0, "blend": "alpha", "fade": [19.0, 20.0, 4.0, 5.0], "weather": 1,
+          "rotation": { "speed": 1.0, "axis": [0.0, 0.0, 1.0] }, "days": null },
+        { "source": 0, "blend": "screen", "fade": null, "rotation": null, "weather": 7,
+          "days": { "ranges": [[0, 3]], "repeat": 8 } },
+        { "source": 1, "blend": "bogus", "fade": null, "rotation": null, "weather": 7, "days": null },
+        { "source": 2, "blend": "add", "fade": null, "rotation": null, "weather": 7, "days": null },
+    ] })
+    .to_string();
+    let json_path = format!("{root}.json");
+    let names: Vec<String> = [0, 1]
+        .into_iter()
+        .flat_map(|source| (0..6).map(move |face| format!("{root}/{source}/cubemap_{face}.png")))
+        .collect();
+    let mut files: Vec<(&str, &[u8])> = names.iter().map(|name| (name.as_str(), face.as_slice())).collect();
+    files.push((&json_path, document.as_bytes()));
+    let prepared = prepare_atmosphere(&view(&files), &atmosphere_base());
+    let sky = prepared.skybox(Dimension::Overworld).unwrap();
+    assert!(sky.is_present());
+    assert_eq!(sky.sources.len(), 2, "source 2 has no faces, so its layer is dropped");
+    assert_eq!(sky.layers.len(), 3);
+    assert_eq!(sky.layers[0].source, sky.layers[1].source, "a shared source is stored once");
+    let first = &sky.layers[0].schedule;
+    assert_eq!(first.blend, assets::SkyBlend::Alpha);
+    assert_eq!(first.alpha(18_000.0, 0, assets::SkyWeather::CLEAR), 1.0, "midnight, clear");
+    assert_eq!(first.alpha(18_000.0, 0, assets::SkyWeather::RAIN), 0.0, "not in rain");
+    assert!(first.rotation.is_some());
+    assert_eq!(sky.layers[1].schedule.alpha(0.0, 13, assets::SkyWeather::CLEAR), 0.0, "day 13 is day 5 of 8");
+    assert_eq!(
+        sky.layers[2].schedule.blend,
+        assets::SkyBlend::Add,
+        "an unknown blend falls back to add"
+    );
+}
+
+#[test]
 fn oversized_winning_skybox_face_does_not_reveal_a_lower_pack() {
     let path = format!(
         "{}0.png",
