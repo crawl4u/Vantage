@@ -1,0 +1,504 @@
+//! The menu shell: a window with a sidebar of grouped pages, a header (back and forward, the page
+//! title, a search field, close) and a content pane. Pages are placed in the pane; the shell does
+//! not know what they hold.
+//!
+//! All geometry is computed from the tokens in design units and converted to GUI pixels once, so
+//! the same shell scales with [`crate::tokens::UNIT`].
+
+use serde_json::{Value, json};
+
+use crate::node::{self, Align};
+use crate::tokens::{Palette, RADII, space, text, px};
+
+/// The window, in design units.
+pub const WINDOW: [f32; 2] = [1000.0, 640.0];
+/// The sidebar's width, in design units.
+pub const SIDEBAR_WIDTH: f32 = 264.0;
+/// The header's height, in design units.
+pub const HEADER_HEIGHT: f32 = 64.0;
+/// One sidebar entry's height and the gap below it, in design units.
+const ENTRY_HEIGHT: f32 = 36.0;
+const ENTRY_GAP: f32 = 4.0;
+/// The side margin of entries inside the sidebar, in design units.
+const ENTRY_INSET: f32 = 18.0;
+/// The brand's distance from the top, in design units.
+const BRAND_TOP: f32 = 28.0;
+/// Where the first section starts, in design units.
+const NAV_TOP: f32 = 84.0;
+/// The account row's height, in design units.
+const ACCOUNT_HEIGHT: f32 = 72.0;
+/// The search field's size, in design units.
+const SEARCH: [f32; 2] = [200.0, 28.0];
+/// The close button's side, in design units.
+const CLOSE: f32 = 28.0;
+
+/// One page the sidebar lists.
+#[derive(Clone, Copy, Debug)]
+pub struct Entry<'a> {
+    /// A stable identifier: letters, digits, `_`, `-` and `.`.
+    pub id: &'a str,
+    pub title: &'a str,
+    pub active: bool,
+}
+
+/// A group of entries under an optional small heading.
+#[derive(Clone, Copy, Debug)]
+pub struct Section<'a> {
+    pub heading: Option<&'a str>,
+    pub entries: &'a [Entry<'a>],
+}
+
+/// Everything the shell shows.
+#[derive(Clone, Copy, Debug)]
+pub struct Shell<'a> {
+    pub palette: Palette,
+    /// The brand line at the top of the sidebar.
+    pub brand: &'a str,
+    pub sections: &'a [Section<'a>],
+    /// The current page's title in the header.
+    pub title: &'a str,
+    /// The search field's hint, and the text typed in it.
+    pub search_hint: &'a str,
+    pub search: &'a str,
+    /// The signed-in player's name, and a short line under it.
+    pub account: &'a str,
+    pub account_note: &'a str,
+}
+
+/// The index of the first control after the sidebar entries: back, forward, then search.
+#[must_use]
+pub fn first_extra_control(sections: &[Section<'_>]) -> usize {
+    sections.iter().map(|section| section.entries.len()).sum()
+}
+
+/// The controls the panel declares, in the order the buttons press them: one per entry, then
+/// back, forward and the search field.
+#[must_use]
+pub fn declared_controls(shell: &Shell<'_>) -> Vec<Value> {
+    let mut declared: Vec<Value> = shell
+        .sections
+        .iter()
+        .flat_map(|section| section.entries)
+        .map(|entry| json!({"kind": "button", "id": entry.id, "label": entry.title}))
+        .collect();
+    declared.push(json!({"kind": "button", "id": "back", "label": "Back"}));
+    declared.push(json!({"kind": "button", "id": "forward", "label": "Forward"}));
+    declared.push(json!({
+        "kind": "text", "id": "search", "label": "Search", "value": shell.search,
+        "max_chars": 40, "live": true,
+    }));
+    declared
+}
+
+/// A rectangle in GUI pixels: `[x, y, width, height]`.
+pub type Rect = [f32; 4];
+
+/// The window's size in GUI pixels.
+#[must_use]
+pub fn window_px() -> [f32; 2] {
+    [px(WINDOW[0]), px(WINDOW[1])]
+}
+
+/// Where a page is drawn: the content pane, in GUI pixels.
+#[must_use]
+pub fn content_rect() -> Rect {
+    let x = SIDEBAR_WIDTH + space::GUTTER;
+    let y = HEADER_HEIGHT;
+    [
+        px(x),
+        px(y),
+        px(WINDOW[0] - x - space::GUTTER),
+        px(WINDOW[1] - y - space::GUTTER),
+    ]
+}
+
+/// The sidebar entries' rectangles, in GUI pixels, in section order, without the headings.
+#[must_use]
+pub fn entry_rects(sections: &[Section<'_>]) -> Vec<Rect> {
+    let mut rects = Vec::new();
+    let mut y = NAV_TOP;
+    for section in sections {
+        if section.heading.is_some() {
+            y += 26.0;
+        }
+        for _ in section.entries {
+            rects.push([
+                px(ENTRY_INSET),
+                px(y),
+                px(SIDEBAR_WIDTH - ENTRY_INSET * 2.0),
+                px(ENTRY_HEIGHT),
+            ]);
+            y += ENTRY_HEIGHT + ENTRY_GAP;
+        }
+        y += space::L;
+    }
+    rects
+}
+
+/// A label's font scale for a type style: the panel font is drawn at 9 GUI pixels at scale 1, so a style of N design units is N * UNIT / 9.
+fn scale(style: crate::tokens::TextStyle) -> f32 {
+    px(style.size) / 9.0
+}
+
+/// A label box for one line of `style` text.
+fn line_box(style: crate::tokens::TextStyle, width: f32) -> [f32; 2] {
+    [px(width), px(style.size) * 1.6]
+}
+
+/// The shell's controls, ready to sit under a document root of the window's size.
+#[must_use]
+pub fn controls(shell: &Shell<'_>) -> Vec<Value> {
+    let p = &shell.palette;
+    let [w, h] = window_px();
+    let mut out = vec![
+        node::rounded("window", [0.0, 0.0], [w, h], px(RADII.lg), p.panel),
+        node::outline("window_edge", [0.0, 0.0], [w, h], px(RADII.lg), 1.0, p.border),
+        node::rounded(
+            "sidebar_edge",
+            [px(SIDEBAR_WIDTH) - 1.0, px(RADII.lg)],
+            [1.0, h - px(RADII.lg) * 2.0],
+            0.0,
+            p.border,
+        ),
+    ];
+
+    // Brand.
+    out.push(node::label(
+        "brand",
+        shell.brand,
+        [px(space::XXL + space::XS), px(BRAND_TOP)],
+        line_box(text::TITLE, SIDEBAR_WIDTH - 60.0),
+        p.highlight,
+        scale(text::TITLE),
+        Align::Left,
+    ));
+
+    // Sections and entries.
+    let mut y = NAV_TOP;
+    let mut index = 0;
+    let rects = entry_rects(shell.sections);
+    for section in shell.sections {
+        if let Some(heading) = section.heading {
+            out.push(node::label(
+                &format!("heading_{index}"),
+                &heading.to_uppercase(),
+                [px(space::XXL + space::XS), px(y + 4.0)],
+                line_box(text::EYEBROW, SIDEBAR_WIDTH - 60.0),
+                p.muted,
+                scale(text::EYEBROW),
+                Align::Left,
+            ));
+            y += 26.0;
+        }
+        for entry in section.entries {
+            let rect = rects[index];
+            let (fill, ink) = if entry.active {
+                (Some(p.accent), p.on_accent)
+            } else {
+                (None, p.text)
+            };
+            let mut parts = Vec::new();
+            if let Some(fill) = fill {
+                parts.push(node::rounded(
+                    "fill",
+                    [0.0, 0.0],
+                    [rect[2], rect[3]],
+                    px(RADII.sm),
+                    fill,
+                ));
+            }
+            parts.push(node::label(
+                "title",
+                entry.title,
+                [px(space::XL), (rect[3] - px(text::LABEL.size) * 1.6) / 2.0],
+                line_box(text::LABEL, SIDEBAR_WIDTH - ENTRY_INSET * 2.0 - 32.0),
+                ink,
+                scale(text::LABEL),
+                Align::Left,
+            ));
+            out.push(node::button(
+                &format!("entry_{index}"),
+                [rect[0], rect[1]],
+                [rect[2], rect[3]],
+                &format!("mod.control:{index}"),
+                parts,
+            ));
+            y += ENTRY_HEIGHT + ENTRY_GAP;
+            index += 1;
+        }
+        y += space::L;
+    }
+
+    // Account row.
+    let row_y = WINDOW[1] - ACCOUNT_HEIGHT;
+    out.push(node::rounded(
+        "account_rule",
+        [px(ENTRY_INSET), px(row_y)],
+        [px(SIDEBAR_WIDTH - ENTRY_INSET * 2.0), 1.0],
+        0.0,
+        p.border,
+    ));
+    out.push(node::rounded(
+        "avatar",
+        [px(ENTRY_INSET), px(row_y + 18.0)],
+        [px(36.0), px(36.0)],
+        px(RADII.sm),
+        p.raised,
+    ));
+    out.push(node::label(
+        "account",
+        shell.account,
+        [px(ENTRY_INSET + 48.0), px(row_y + 18.0)],
+        line_box(text::LABEL, SIDEBAR_WIDTH - 90.0),
+        p.text,
+        scale(text::LABEL),
+        Align::Left,
+    ));
+    out.push(node::label(
+        "account_note",
+        shell.account_note,
+        [px(ENTRY_INSET + 48.0), px(row_y + 38.0)],
+        line_box(text::CAPTION, SIDEBAR_WIDTH - 90.0),
+        p.muted,
+        scale(text::CAPTION),
+        Align::Left,
+    ));
+
+    // Header.
+    let gutter = space::GUTTER;
+    let head_y = (HEADER_HEIGHT - CLOSE) / 2.0;
+    let extra = first_extra_control(shell.sections);
+    let arrow = |name: &str, x: f32, glyph: &str, control: usize| {
+        node::button(
+            name,
+            [px(x), px(head_y)],
+            [px(CLOSE), px(CLOSE)],
+            &format!("mod.control:{control}"),
+            vec![node::label(
+                "g",
+                glyph,
+                [0.0, px(CLOSE - text::HEADING.size * 1.6) / 2.0],
+                [px(CLOSE), px(text::HEADING.size) * 1.6],
+                p.muted,
+                scale(text::HEADING),
+                Align::Center,
+            )],
+        )
+    };
+    out.push(arrow("back", SIDEBAR_WIDTH + gutter - space::S, "<", extra));
+    out.push(arrow("forward", SIDEBAR_WIDTH + gutter + CLOSE - space::S, ">", extra + 1));
+    out.push(node::label(
+        "title",
+        shell.title,
+        [px(SIDEBAR_WIDTH + gutter + CLOSE * 2.0 + space::M), px(head_y + 2.0)],
+        line_box(text::HEADING, 320.0),
+        p.highlight,
+        scale(text::HEADING),
+        Align::Left,
+    ));
+    let close_x = WINDOW[0] - gutter - CLOSE;
+    let search_x = close_x - space::M - SEARCH[0];
+    out.push(node::rounded(
+        "search",
+        [px(search_x), px(head_y)],
+        [px(SEARCH[0]), px(SEARCH[1])],
+        px(RADII.xs),
+        p.field,
+    ));
+    out.push(node::outline(
+        "search_edge",
+        [px(search_x), px(head_y)],
+        [px(SEARCH[0]), px(SEARCH[1])],
+        px(RADII.xs),
+        1.0,
+        p.border,
+    ));
+    let (shown, ink) = if shell.search.is_empty() {
+        (shell.search_hint, p.muted)
+    } else {
+        (shell.search, p.text)
+    };
+    out.push(node::button(
+        "search_box",
+        [px(search_x), px(head_y)],
+        [px(SEARCH[0]), px(SEARCH[1])],
+        &format!("mod.edit:{}", extra + 2),
+        vec![node::label(
+            "text",
+            shown,
+            [px(space::L), px(4.0)],
+            line_box(text::SMALL, SEARCH[0] - 24.0),
+            ink,
+            scale(text::SMALL),
+            Align::Left,
+        )],
+    ));
+    out.push(node::button(
+        "close",
+        [px(close_x), px(head_y)],
+        [px(CLOSE), px(CLOSE)],
+        "mod.close",
+        vec![
+            node::rounded("fill", [0.0, 0.0], [px(CLOSE), px(CLOSE)], px(RADII.xs), p.raised),
+            node::label(
+                "x",
+                "x",
+                [0.0, px(CLOSE - text::LABEL.size * 1.6) / 2.0],
+                [px(CLOSE), px(text::LABEL.size) * 1.6],
+                p.text,
+                scale(text::LABEL),
+                Align::Center,
+            ),
+        ],
+    ));
+
+    // The pane pages are drawn in.
+    let pane = content_rect();
+    out.push(node::rounded(
+        "pane",
+        [pane[0], pane[1]],
+        [pane[2], pane[3]],
+        px(RADII.md),
+        p.surface,
+    ));
+    out
+}
+
+/// The shell as a panel document: `{"namespace", "root"}`.
+#[must_use]
+pub fn document(shell: &Shell<'_>) -> Value {
+    let [w, h] = window_px();
+    json!({
+        "namespace": "vantage",
+        "root": {
+            "type": "panel",
+            "size": [w, h],
+            "controls": controls(shell),
+        },
+    })
+}
+
+/// The shell as a native panel description: the document as a surface at the window's size.
+#[must_use]
+pub fn panel(shell: &Shell<'_>) -> Value {
+    let [w, h] = window_px();
+    json!({
+        "reference_size": [w, h],
+        "controls": declared_controls(shell),
+        "surface": {
+            "screen": "vantage.root",
+            "document": document(shell).to_string(),
+        },
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ENTRIES: [Entry<'static>; 3] = [
+        Entry { id: "mods", title: "Mods", active: true },
+        Entry { id: "profiles", title: "Profiles", active: false },
+        Entry { id: "keybinds", title: "Keybinds", active: false },
+    ];
+    const SECTIONS: [Section<'static>; 2] = [
+        Section { heading: Some("Mods & options"), entries: &ENTRIES },
+        Section { heading: None, entries: &ENTRIES },
+    ];
+
+    fn shell() -> Shell<'static> {
+        Shell {
+            palette: Palette::dark(),
+            brand: "Vantage",
+            sections: &SECTIONS,
+            title: "Mods",
+            search_hint: "Search mods...",
+            search: "",
+            account: "Player",
+            account_note: "Online",
+        }
+    }
+
+    #[test]
+    fn the_content_pane_sits_right_of_the_sidebar_inside_the_window_with_the_gutter_around_it() {
+        let [x, y, w, h] = content_rect();
+        let [ww, wh] = window_px();
+        assert!(x >= px(SIDEBAR_WIDTH));
+        assert!(y >= px(HEADER_HEIGHT));
+        assert!((x + w - (ww - px(space::GUTTER))).abs() < 1.0e-3);
+        assert!((y + h - (wh - px(space::GUTTER))).abs() < 1.0e-3);
+    }
+
+    #[test]
+    fn every_entry_fits_in_the_sidebar_above_the_account_row() {
+        let [_, wh] = window_px();
+        let rects = entry_rects(&SECTIONS);
+        assert_eq!(rects.len(), 6);
+        for rect in &rects {
+            assert!(rect[0] >= 0.0 && rect[0] + rect[2] <= px(SIDEBAR_WIDTH));
+            assert!(rect[1] + rect[3] <= wh - px(ACCOUNT_HEIGHT), "{rect:?} overlaps the account");
+        }
+        for pair in rects.windows(2) {
+            assert!(pair[1][1] >= pair[0][1] + pair[0][3], "entries overlap");
+        }
+    }
+
+    #[test]
+    fn every_button_presses_a_declared_control() {
+        let panel = panel(&shell());
+        let declared = panel["controls"].as_array().unwrap().len();
+        // Six entries, back, forward and the search field.
+        assert_eq!(declared, 9);
+        let document: Value =
+            serde_json::from_str(panel["surface"]["document"].as_str().unwrap()).unwrap();
+        let controls = document["root"]["controls"].as_array().unwrap();
+        let presses: Vec<&str> = controls
+            .iter()
+            .filter_map(|control| node::body(control)["button_mappings"][0]["to_button_id"].as_str())
+            .collect();
+        for press in &presses {
+            let index = press
+                .strip_prefix("mod.control:")
+                .or_else(|| press.strip_prefix("mod.edit:"))
+                .map(|index| index.parse::<usize>().unwrap());
+            match index {
+                Some(index) => assert!(index < declared, "{press} is not declared"),
+                None => assert_eq!(*press, "mod.close"),
+            }
+        }
+        for index in 0..6 {
+            assert!(presses.contains(&format!("mod.control:{index}").as_str()));
+        }
+        assert!(presses.contains(&"mod.edit:8"), "the search field opens its editor");
+    }
+
+    #[test]
+    fn the_active_entry_alone_is_filled_with_the_accent() {
+        let controls = controls(&shell());
+        let accent = Palette::dark().accent;
+        let filled = controls
+            .iter()
+            .filter(|control| {
+                node::body(control)["controls"].as_array().is_some_and(|parts| {
+                    parts.iter().any(|part| node::body(part)["color"] == json!(accent))
+                })
+            })
+            .count();
+        assert_eq!(filled, 2, "the first section and the second each list one active entry");
+    }
+
+    #[test]
+    fn every_control_stays_inside_the_window() {
+        let [w, h] = window_px();
+        for control in controls(&shell()) {
+            let node = node::body(&control);
+            let (Some(size), Some(offset)) = (node["size"].as_array(), node["offset"].as_array())
+            else {
+                continue;
+            };
+            let value = |list: &Vec<Value>, i: usize| list[i].as_f64().unwrap() as f32;
+            assert!(value(offset, 0) + value(size, 0) <= w + 0.01, "{control} spills right");
+            assert!(value(offset, 1) + value(size, 1) <= h + 0.01, "{control} spills down");
+        }
+    }
+}

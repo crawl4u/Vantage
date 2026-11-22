@@ -45,6 +45,7 @@ members = [
     "crates/meshing",
     "crates/mod-api",
     "crates/vantage",
+    "crates/vantage-ui",
     "crates/mod-host",
     "crates/mod-render",
     "crates/mod-ui",

@@ -1,0 +1,17 @@
+[package]
+name = "vantage-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+publish = false
+description = "Vantage's menu design: tokens, JSON-UI node builders and the menu shell."
+
+[lib]
+doctest = false
+
+[dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

@@ -9473,6 +9473,7 @@ dependencies = [
  "ui-engine",
  "ui-screens",
  "update-manifest",
+ "vantage-ui",
 ]
 
 [[package]]
@@ -9592,6 +9593,13 @@ version = "0.2.3"
 dependencies = [
  "mod-api",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "vantage-ui"
+version = "0.2.3"
+dependencies = [
  "serde_json",
 ]
 

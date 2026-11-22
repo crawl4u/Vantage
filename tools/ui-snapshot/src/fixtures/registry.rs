@@ -7,7 +7,7 @@ use super::cosmetics;
 use super::{
     Fixture, GUI_SCALE, KEYBOARD_SIZE, SIZE, SMALL_SIZE, SettingId, SettingSection, State,
     TALL_SIZE, chat, collection_reveal, hud_surface, local_identity, minecraft_import, out_of_game,
-    roster, settings, settings_screens, shader_options, shader_pack, updates,
+    roster, settings, settings_screens, shader_options, shader_pack, updates, vantage_shell,
 };
 
 /// A capture at GUI scale 1 that needs no game assets.
@@ -77,6 +77,12 @@ pub(super) const STATES: &[State] = &[
         size: SIZE,
         gui_scale: GUI_SCALE,
         fixture: hud_surface::panel,
+    },
+    State {
+        name: "vantage-shell",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: vantage_shell::fixture,
     },
     State {
         name: "collection-reveal-before",

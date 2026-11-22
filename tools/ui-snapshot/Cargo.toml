@@ -20,6 +20,7 @@ jsonui-editor = { path = "../jsonui-editor" }
 bridge = { path = "../../crates/bridge" }
 launcher = { path = "../../crates/launcher" }
 mod-ui = { path = "../../crates/mod-ui" }
+vantage-ui = { path = "../../crates/vantage-ui" }
 oreui = { path = "../../crates/oreui" }
 player-state = { path = "../../crates/player-state" }
 protocol = { path = "../../crates/protocol" }
