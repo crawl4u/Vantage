@@ -127,6 +127,36 @@ pub(super) const STATES: &[State] = &[
         fixture: || vantage_live::settings(19),
     },
     State {
+        name: "vantage-page-style",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::settings(2),
+    },
+    State {
+        name: "vantage-page-layout",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::settings(1),
+    },
+    State {
+        name: "vantage-page-crosshair",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::settings(5),
+    },
+    State {
+        name: "vantage-page-sharing",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::settings(26),
+    },
+    State {
+        name: "vantage-page-zoom",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::settings(4),
+    },
+    State {
         name: "vantage-options",
         size: SIZE,
         gui_scale: GUI_SCALE,

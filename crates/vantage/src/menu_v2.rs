@@ -90,9 +90,10 @@ const SIDEBAR: [(&str, &[(usize, &str)]); 2] = [
     ("Menu", &[(6, "General"), (8, "Credits")]),
 ];
 
-/// The sidebar entries, each pressing its old tab button, with `active` lit.
+/// The sidebar entries, each pressing its old tab button, with `active` lit. While an element's Style or
+/// Layout page is open a last group switches between the two.
 fn entries(active: usize) -> Vec<Vec<Entry<'static>>> {
-    SIDEBAR
+    let mut groups: Vec<Vec<Entry<'static>>> = SIDEBAR
         .iter()
         .map(|(_, pages)| {
             pages
@@ -100,6 +101,22 @@ fn entries(active: usize) -> Vec<Vec<Entry<'static>>> {
                 .map(|&(tab, title)| Entry { id: TAB_IDS[tab], title, active: tab == active })
                 .collect()
         })
+        .collect();
+    if matches!(active, 1 | 2) {
+        groups.push(vec![
+            Entry { id: TAB_IDS[2], title: "Style", active: active == 2 },
+            Entry { id: TAB_IDS[1], title: "Layout", active: active == 1 },
+        ]);
+    }
+    groups
+}
+
+/// The sidebar sections for `entries`: the fixed groups, then the element's own when it has one.
+fn sections_of<'a>(entries: &'a [Vec<Entry<'static>>], element: &'a str) -> Vec<Section<'a>> {
+    entries
+        .iter()
+        .enumerate()
+        .map(|(i, list)| Section { heading: Some(SIDEBAR.get(i).map_or(element, |group| group.0)), entries: list })
         .collect()
 }
 
@@ -146,7 +163,7 @@ fn sort_of(number: usize) -> Sort {
 pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
     let cards = cards(settings, panel_state);
     let entries = entries(MODS_PAGE);
-    let sections: Vec<Section<'_>> = SIDEBAR.iter().zip(&entries).map(|((heading, _), list)| Section { heading: Some(heading), entries: list }).collect();
+    let sections = sections_of(&entries, "");
     let query = panel_state.search_text();
     let shell = Shell {
         palette: Palette::dark(),
@@ -174,7 +191,7 @@ pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
 }
 
 /// The settings pages the redesign has rebuilt, by tab. The others keep their old design until they are.
-const CONVERTED: [usize; 17] = [3, 6, 9, 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25];
+const CONVERTED: [usize; 22] = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26];
 
 /// Whether the redesign draws this tab (the Mods grid and the rebuilt settings pages).
 #[must_use]
@@ -273,7 +290,7 @@ fn rows_of<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Sett
         .into_iter()
         .filter_map(|index| {
             let (kind, id, label) = CONTROLS[index];
-            if is_chrome(id) || !matches!(kind, Kind::Toggle | Kind::Slider | Kind::Choice | Kind::Keybind) {
+            if is_chrome(id) || !matches!(kind, Kind::Toggle | Kind::Slider | Kind::Choice | Kind::Keybind | Kind::Button) {
                 return None;
             }
             let value = crate::panel::value(settings, state, id);
@@ -306,22 +323,25 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
                 }
                 Value::Choice(selected, names) => options::Kind::Choice { options: names, selected: *selected },
                 Value::Key(key) => options::Kind::Keybind { key },
+                Value::Button(label) => options::Kind::Button { label: label.unwrap_or("Apply") },
                 _ => options::Kind::Info,
             },
             changed: row.changed,
         })
         .collect();
-    let title = TABS.get(tab).copied().unwrap_or("Settings");
-    let group = [Group { title, collapsed: false, options: &opts }];
+    let element = state.element().label();
+    let page = TABS.get(tab).copied().unwrap_or("Settings");
+    let title = if matches!(tab, 1 | 2) { format!("{page}: {element}") } else { page.to_owned() };
+    let group = [Group { title: &title, collapsed: false, options: &opts }];
     let matched = options::search(&group, state.option_query());
     let shown = options::groups_of(&matched);
     let entries = entries(tab);
-    let sections: Vec<Section<'_>> = SIDEBAR.iter().zip(&entries).map(|((heading, _), list)| Section { heading: Some(heading), entries: list }).collect();
+    let sections = sections_of(&entries, element);
     let shell = Shell {
         palette: Palette::dark(),
         brand: "Vantage",
         sections: &sections,
-        title,
+        title: &title,
         search_hint: "Search options...",
         search: state.option_query(),
         search_id: "opt_search",

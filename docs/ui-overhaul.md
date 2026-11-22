@@ -100,3 +100,15 @@ Each phase ships on its own and keeps every existing setting working.
 6. **HUD editor and polish.** Drag with snapping, motion settings, reduced motion.
 
 Open questions are recorded in the pull request that starts each phase.
+
+## Status
+
+Done: tokens, shell, the Mods page on the mod's real list, and option rows. In the live menu (`new_menu`,
+on by default) the Mods tab and 22 settings pages (Layout, Style, Chunk borders, Zoom, Crosshair, General,
+Hitboxes, Hit color, Time changer, Weather changer, Nametags, Hurt camera, Damage indicator, Menu blur,
+CPS limiter, Block outline, Markers, Text hotkey, Hive, Perspective, Glass, Sharing) use the new design;
+their rows come from the controls each old page pressed, under the old control ids.
+
+Still on the old design: Config (setups), Credits and Waypoints. Not yet built: a dropdown list for
+choices (they cycle), colour pickers, icons (cards show an initial), hiding a row until its parent option
+is on, and the Crosshair preview.
