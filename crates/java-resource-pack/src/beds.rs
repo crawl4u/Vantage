@@ -43,11 +43,6 @@ enum Turn {
 }
 
 impl Turn {
-    /// Whether the turned rectangle swaps its width and height.
-    const fn swaps(self) -> bool {
-        matches!(self, Self::Left | Self::Right | Self::Transpose | Self::Transverse)
-    }
-
     /// Where output texel `(x, y)` comes from in a `width` by `height` source rectangle.
     const fn source(self, x: u32, y: u32, width: u32, height: u32) -> (u32, u32) {
         match self {

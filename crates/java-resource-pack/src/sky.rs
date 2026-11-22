@@ -23,21 +23,6 @@ pub(crate) fn sky_folder<'a>(paths: impl IntoIterator<Item = &'a str>) -> Option
         .map(str::to_owned)
 }
 
-/// Reads the `source` value of an OptiFine sky `.properties` file, if it names one.
-pub(crate) fn sky_source(properties: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(properties);
-    text.lines()
-        .map(str::trim_start)
-        .filter(|line| !line.starts_with('#') && !line.starts_with('!'))
-        .filter_map(|line| {
-            let split = line.find(['=', ':'])?;
-            Some((line[..split].trim(), line[split + 1..].trim()))
-        })
-        .rfind(|(key, _)| *key == "source")
-        .map(|(_, value)| value.to_owned())
-        .filter(|value| !value.is_empty())
-}
-
 /// Resolves a sky `source` relative to the sky folder `folder` (ending in `/`), accepting
 /// `./x.png`, `x.png`, `optifine/sky/world0/x.png` and namespaced `minecraft:optifine/...`.
 pub(crate) fn source_path(folder: &str, source: &str) -> String {
@@ -290,15 +275,6 @@ mod tests {
             source_path(folder, "minecraft:optifine/sky/world0/a.png"),
             "assets/minecraft/optifine/sky/world0/a.png"
         );
-    }
-
-    #[test]
-    fn properties_name_their_source() {
-        assert_eq!(
-            sky_source(b"# sky\nfadeIn=1:00\nsource = ./sky1.png\n").as_deref(),
-            Some("./sky1.png")
-        );
-        assert_eq!(sky_source(b"rotate=true\n"), None);
     }
 
     #[test]
