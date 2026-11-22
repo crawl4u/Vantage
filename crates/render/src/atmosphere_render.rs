@@ -68,7 +68,8 @@ struct AtmosphereRenderInstalled;
 pub(crate) fn install_atmosphere(app: &mut App) {
     app.init_resource::<AtmosphereFrame>();
     app.init_resource::<render_scene::SkyboxSettings>()
-        .init_resource::<render_scene::SkyboxFollowsTime>();
+        .init_resource::<render_scene::SkyboxFollowsTime>()
+        .init_resource::<render_scene::SkyWorldDay>();
     app.init_resource::<render_scene::AtmosphereViewInputs>();
     app.init_resource::<AtmosphereTextureAssets>();
     app.init_resource::<PrecipitationScene>();
@@ -94,6 +95,7 @@ pub(crate) fn install_atmosphere(app: &mut App) {
         ExtractResourcePlugin::<AtmosphereFrame>::default(),
         ExtractResourcePlugin::<render_scene::SkyboxSettings>::default(),
         ExtractResourcePlugin::<render_scene::SkyboxFollowsTime>::default(),
+        ExtractResourcePlugin::<render_scene::SkyWorldDay>::default(),
         ExtractResourcePlugin::<render_scene::AtmosphereViewInputs>::default(),
         ExtractResourcePlugin::<AtmosphereTextureAssets>::default(),
         ExtractResourcePlugin::<PrecipitationScene>::default(),
@@ -140,6 +142,8 @@ pub(crate) struct AtmosphereGpu {
     pub(crate) buffer: Buffer,
     skybox: Buffer,
     skybox_active: bool,
+    /// The pack's Java sky layers for the active dimension, drawn over the stock sky.
+    layers: Vec<SkyLayerGpu>,
     /// Last bytes written to `buffer` and `skybox`; identical frames skip the queue write.
     uploaded: Option<(AtmosphereFrame, crate::pack_skybox::SkyboxUniform)>,
     stars: Buffer,
@@ -156,7 +160,27 @@ pub(crate) struct AtmosphereGpu {
     uniform_writes: [u32; 2],
 }
 
+/// One Java sky layer ready to draw: its uniform, its bindings and where it stands this frame.
+struct SkyLayerGpu {
+    buffer: Buffer,
+    bind_group: Option<BindGroup>,
+    /// Index into [`PreparedAtmosphereAssets::sources`].
+    source: usize,
+    mask: u32,
+    schedule: assets::SkySchedule,
+    /// Opacity this frame; a layer at zero is not drawn.
+    alpha: f32,
+    uploaded: Option<crate::pack_skybox::SkyboxUniform>,
+}
+
+/// The six uploaded faces of one cube a layer draws from.
+struct SkySourceGpu {
+    _textures: [Texture; assets::SKYBOX_FACE_COUNT],
+    views: [TextureView; assets::SKYBOX_FACE_COUNT],
+}
+
 struct PreparedAtmosphereAssets {
+    sources: Vec<SkySourceGpu>,
     identity: [u8; 32],
     end_sky_identity: Option<[u8; 32]>,
     dimension: assets::SkyboxDimension,
@@ -190,6 +214,7 @@ fn init_atmosphere_gpu(mut commands: Commands, render_device: Res<RenderDevice>)
         buffer,
         skybox,
         skybox_active: false,
+        layers: Vec::new(),
         uploaded: None,
         stars,
         star_vertex_count: vertices.len() as u32,
@@ -210,6 +235,7 @@ fn prepare_atmosphere_uniform(
     frame: Res<AtmosphereFrame>,
     settings: Res<render_scene::SkyboxSettings>,
     follows_time: Option<Res<render_scene::SkyboxFollowsTime>>,
+    world_day: Option<Res<render_scene::SkyWorldDay>>,
     assets: Res<AtmosphereTextureAssets>,
     mut gpu: ResMut<AtmosphereGpu>,
     uploads: crate::upload_staging::FrameUploads,
@@ -218,7 +244,7 @@ fn prepare_atmosphere_uniform(
     let mask = assets
         .skybox(crate::pack_skybox::dimension(*frame))
         .map_or(0, assets::PackSkybox::face_mask);
-    gpu.skybox_active = mask != 0 && settings.visible;
+    gpu.skybox_active = gpu.layers.is_empty() && mask != 0 && settings.visible;
     let skybox =
         crate::pack_skybox::SkyboxUniform::new(*frame, *settings, mask).following_time(follows_time.is_some_and(|follows| follows.0));
     let (frame_changed, skybox_changed) = gpu.uploaded.as_ref().map_or((true, true), |old| {
@@ -246,6 +272,49 @@ fn prepare_atmosphere_uniform(
         }
     }
     gpu.uploaded = Some((*frame, skybox));
+    update_sky_layers(
+        &mut gpu.layers,
+        *frame,
+        *settings,
+        world_day.map_or(0, |day| day.0),
+        &uploads,
+    );
+}
+
+/// Works out each Java sky layer's opacity and turn for this frame and writes what changed. The
+/// time of day is the frame's, so a clock the player forced shows in the layers too.
+fn update_sky_layers(
+    layers: &mut [SkyLayerGpu],
+    frame: AtmosphereFrame,
+    settings: render_scene::SkyboxSettings,
+    day: u64,
+    uploads: &crate::upload_staging::FrameUploads,
+) {
+    let tick = frame.day_fraction() * assets::SKY_DAY_TICKS;
+    let weather = assets::SkyWeather::of_levels(frame.rain_level(), frame.thunder_level());
+    for layer in layers {
+        layer.alpha = if settings.visible {
+            layer.schedule.alpha(tick, day, weather)
+        } else {
+            0.0
+        };
+        let uniform = crate::pack_skybox::SkyboxUniform::layer(
+            frame,
+            settings,
+            layer.mask,
+            layer.schedule.blend,
+            layer.alpha,
+            crate::pack_skybox::rotation_rows(layer.schedule.rotation, frame.celestial_angle()),
+        );
+        let changed = layer
+            .uploaded
+            .as_ref()
+            .is_none_or(|old| bytemuck::bytes_of(old) != bytemuck::bytes_of(&uniform));
+        if changed {
+            uploads.write(&layer.buffer, 0, bytemuck::bytes_of(&uniform));
+            layer.uploaded = Some(uniform);
+        }
+    }
 }
 
 pub(crate) mod textures;
@@ -400,6 +469,27 @@ struct AtmospherePipelineKey {
     hdr: bool,
     stars: bool,
     skybox: bool,
+    /// A Java layer's blend code (see [`crate::pack_skybox::blend_code`]); zero for the Bedrock cube.
+    layer_blend: u8,
+}
+
+/// The blend state of a Java sky layer, after OptiFine's blend modes.
+fn layer_blend_state(code: u8) -> BlendState {
+    let colour = |src_factor, dst_factor| BlendState {
+        color: BlendComponent {
+            src_factor,
+            dst_factor,
+            operation: BlendOperation::Add,
+        },
+        alpha: BlendComponent::OVER,
+    };
+    match code {
+        2 => colour(BlendFactor::SrcAlpha, BlendFactor::One),
+        4 => colour(BlendFactor::Zero, BlendFactor::Src),
+        5 => colour(BlendFactor::One, BlendFactor::OneMinusSrc),
+        6 => colour(BlendFactor::OneMinusDst, BlendFactor::Zero),
+        _ => BlendState::ALPHA_BLENDING,
+    }
 }
 
 // Target Stars material uses OneMinusDestColor→One and disables alpha writes.
@@ -436,7 +526,7 @@ impl Specializer<RenderPipeline> for AtmospherePipelineSpecializer {
         target.blend = if key.stars {
             Some(native_star_blend())
         } else if key.skybox {
-            Some(BlendState::ALPHA_BLENDING)
+            Some(layer_blend_state(key.layer_blend))
         } else {
             None
         };
@@ -473,6 +563,7 @@ impl crate::pipeline_warmup::PrewarmPipelines for AtmospherePipeline {
                     hdr: view.hdr,
                     stars,
                     skybox,
+                    layer_blend: 0,
                 },
             )?);
         }
@@ -554,11 +645,72 @@ fn prepare_atmosphere_bind_group(
         binding: 14,
         resource: BindingResource::Sampler(&prepared.skybox_sampler),
     });
-    gpu.bind_group = Some(render_device.create_bind_group(
-        "texture-backed atmosphere bind group",
-        &pipeline_cache.get_bind_group_layout(&pipeline.bind_group_layout),
-        &entries,
-    ));
+    let layout = pipeline_cache.get_bind_group_layout(&pipeline.bind_group_layout);
+    let group = render_device.create_bind_group("texture-backed atmosphere bind group", &layout, &entries);
+    // Each Java layer binds the same frame, view and stock textures with its own uniform and cube.
+    let mut layer_groups = Vec::with_capacity(gpu.layers.len());
+    for layer in &gpu.layers {
+        let (Some(view_binding), Some(source)) = (
+            view_uniforms.uniforms.binding(),
+            prepared.sources.get(layer.source),
+        ) else {
+            layer_groups.push(None);
+            continue;
+        };
+        let mut entries = vec![
+            BindGroupEntry {
+                binding: 0,
+                resource: view_binding,
+            },
+            BindGroupEntry {
+                binding: 1,
+                resource: gpu.buffer.as_entire_binding(),
+            },
+            BindGroupEntry {
+                binding: 2,
+                resource: BindingResource::TextureView(&prepared.views[0]),
+            },
+            BindGroupEntry {
+                binding: 3,
+                resource: BindingResource::TextureView(&prepared.views[1]),
+            },
+            BindGroupEntry {
+                binding: 4,
+                resource: BindingResource::Sampler(&prepared.sampler),
+            },
+            BindGroupEntry {
+                binding: 5,
+                resource: BindingResource::TextureView(&prepared.views[2]),
+            },
+            BindGroupEntry {
+                binding: 6,
+                resource: gpu.stars.as_entire_binding(),
+            },
+            BindGroupEntry {
+                binding: 7,
+                resource: layer.buffer.as_entire_binding(),
+            },
+        ];
+        for (face, view) in source.views.iter().enumerate() {
+            entries.push(BindGroupEntry {
+                binding: 8 + face as u32,
+                resource: BindingResource::TextureView(view),
+            });
+        }
+        entries.push(BindGroupEntry {
+            binding: 14,
+            resource: BindingResource::Sampler(&prepared.skybox_sampler),
+        });
+        layer_groups.push(Some(render_device.create_bind_group(
+            "java sky layer bind group",
+            &layout,
+            &entries,
+        )));
+    }
+    for (layer, group) in gpu.layers.iter_mut().zip(layer_groups) {
+        layer.bind_group = group;
+    }
+    gpu.bind_group = Some(group);
     gpu.view_buffer_id = Some(view_buffer.id());
     gpu.bound_asset_identity = Some(asset_identity);
 }
@@ -578,8 +730,28 @@ fn queue_atmosphere(
                 hdr: view.hdr,
                 stars,
                 skybox,
+                layer_blend: 0,
             };
             if let Ok(id) = pipeline.variants.specialize(&pipeline_cache, key) {
+                gpu.pipelines.insert(key, id);
+            }
+        }
+        let blends: Vec<u8> = gpu
+            .layers
+            .iter()
+            .map(|layer| crate::pack_skybox::blend_code(layer.schedule.blend))
+            .collect();
+        for layer_blend in blends {
+            let key = AtmospherePipelineKey {
+                msaa: *msaa,
+                hdr: view.hdr,
+                stars: false,
+                skybox: true,
+                layer_blend,
+            };
+            if !gpu.pipelines.contains_key(&key)
+                && let Ok(id) = pipeline.variants.specialize(&pipeline_cache, key)
+            {
                 gpu.pipelines.insert(key, id);
             }
         }

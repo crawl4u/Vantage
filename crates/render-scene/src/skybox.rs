@@ -14,6 +14,12 @@ pub struct SkyboxSettings {
 #[extract_app(bevy::render::RenderApp)]
 pub struct SkyboxFollowsTime(pub bool);
 
+/// Whole days the rendered world clock has run, which a Java sky layer's `days` counts; the rest
+/// of the time of day comes with the atmosphere frame.
+#[derive(Resource, ExtractResource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[extract_app(bevy::render::RenderApp)]
+pub struct SkyWorldDay(pub u64);
+
 impl Default for SkyboxSettings {
     fn default() -> Self {
         Self {

@@ -154,6 +154,7 @@ fn app(fixture: &Fixture, msaa: Msaa, distance: Option<f32>, pack: bool) -> (App
                 rgba8: Box::new([255, 0, 0, 255]),
             })
         }),
+        ..Default::default()
     });
     app.insert_resource(AtmosphereFrame::default().with_sky_kind(SkyKind::End));
     app.insert_resource(

@@ -87,7 +87,48 @@ pub(super) fn prepare_atmosphere_textures(
         });
     let (_skybox_textures, skybox_views) = uploaded.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
     let skybox_sampler = render_device.create_sampler(&skybox_sampler_descriptor());
+    // A Java pack's layers draw from their own cubes, each uploaded once however many layers
+    // share it; a layer whose cube has no face has nothing to show.
+    let mut sources = Vec::new();
+    let mut layers = Vec::new();
+    if let Some(skybox) = skybox {
+        for source in &skybox.sources {
+            let uploaded: [(Texture, TextureView); assets::SKYBOX_FACE_COUNT] =
+                std::array::from_fn(|face| {
+                    upload_skybox_face(&render_device, &render_queue, source[face].as_ref())
+                });
+            let (textures, views) = uploaded.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+            sources.push(SkySourceGpu {
+                _textures: textures.try_into().unwrap(),
+                views: views.try_into().unwrap(),
+            });
+        }
+        for layer in &skybox.layers {
+            let Some(source) = skybox.sources.get(layer.source) else {
+                continue;
+            };
+            let mask = source
+                .iter()
+                .enumerate()
+                .fold(0u32, |mask, (face, image)| mask | (u32::from(image.is_some()) << face));
+            layers.push(SkyLayerGpu {
+                buffer: render_device.create_buffer_with_data(&BufferInitDescriptor {
+                    label: Some("java sky layer"),
+                    contents: bytemuck::bytes_of(&crate::pack_skybox::SkyboxUniform::zeroed()),
+                    usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                }),
+                bind_group: None,
+                source: layer.source,
+                mask,
+                schedule: layer.schedule.clone(),
+                alpha: 0.0,
+                uploaded: None,
+            });
+        }
+    }
+    gpu.layers = layers;
     gpu.prepared = Some(PreparedAtmosphereAssets {
+        sources,
         identity: requested.identity(),
         end_sky_identity,
         dimension,

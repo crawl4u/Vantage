@@ -20,7 +20,16 @@ struct AtmosphereUniform {
 @group(0) @binding(5) var end_sky_texture: texture_2d<f32>;
 @group(0) @binding(6) var<storage, read> stars: array<vec4<f32>>;
 
-struct SkyboxUniform { parameters: vec4<f32>, time: vec4<f32> }
+// `rotation0..2` are the rows turning a view ray into a Java layer's own frame; `layer.x` is its
+// opacity and `layer.y` its blend code (0 for a Bedrock cube).
+struct SkyboxUniform {
+    parameters: vec4<f32>,
+    time: vec4<f32>,
+    rotation0: vec4<f32>,
+    rotation1: vec4<f32>,
+    rotation2: vec4<f32>,
+    layer: vec4<f32>,
+}
 @group(0) @binding(7) var<uniform> skybox: SkyboxUniform;
 @group(0) @binding(8) var skybox_face0: texture_2d<f32>;
 @group(0) @binding(9) var skybox_face1: texture_2d<f32>;
@@ -313,17 +322,41 @@ fn pack_skybox_fragment(in: VertexOutput) -> PackSkyboxOutput {
     let code = u32(atmosphere.sky_extra.w + 0.5);
     if (skybox.parameters.y == 0.0 || skybox.parameters.z == 0.0 || code % 4u == 1u) { discard; }
     let ray = view_ray(in.position.xy);
-    let mapping = pack_skybox_mapping(ray, skybox.parameters.x);
+    let layered = skybox.layer.y > 0.5;
+    var look = ray;
+    if (layered) {
+        look = vec3(
+            dot(skybox.rotation0.xyz, ray),
+            dot(skybox.rotation1.xyz, ray),
+            dot(skybox.rotation2.xyz, ray),
+        );
+    }
+    let mapping = pack_skybox_mapping(look, skybox.parameters.x);
     let sampled = sample_pack_skybox(mapping);
     let exit = pack_skybox_exit(ray, skybox.parameters.x);
     let distance = min(exit.x, min(exit.y, exit.z)) * skybox.parameters.w;
     let clip = view.clip_from_world * vec4(ray * distance + view.world_position, 1.0);
+    let depth = clamp(clip.z / clip.w, 0.0, 1.0);
     var colour = tint_to_linear(sampled);
+    if (layered) {
+        // The pipeline's blend state fixes how the result combines; the opacity goes in whichever
+        // channel that state reads.
+        let fade = skybox.layer.x;
+        switch u32(skybox.layer.y) {
+            // Alpha and add read the alpha; replace covers with the layer's own colour.
+            case 1u, 2u: { return PackSkyboxOutput(vec4(colour.rgb, colour.a * fade), depth); }
+            case 3u: { return PackSkyboxOutput(vec4(colour.rgb, fade), depth); }
+            // Multiply moves toward white as the opacity falls.
+            case 4u: { return PackSkyboxOutput(vec4(mix(vec3(1.0), colour.rgb, colour.a * fade), 1.0), depth); }
+            // Screen and subtract read the colour: a fainter layer is a darker one.
+            default: { return PackSkyboxOutput(vec4(colour.rgb * (colour.a * fade), 1.0), depth); }
+        }
+    }
     if (skybox.time.x > 0.5) {
         // The cube covers the stock sky, so it carries the time of day itself: dim it with the
         // daylight, keeping enough of the pack's night to see.
         let daylight = clamp(atmosphere.sun_direction_daylight.w, 0.0, 1.0);
         colour = vec4(colour.rgb * mix(0.12, 1.0, daylight), colour.a);
     }
-    return PackSkyboxOutput(colour, clamp(clip.z / clip.w, 0.0, 1.0));
+    return PackSkyboxOutput(colour, depth);
 }

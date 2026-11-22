@@ -42,6 +42,7 @@ pub(crate) struct AtmospherePreferences<'w> {
     cloud_distance: Option<ResMut<'w, render_scene::CloudDistanceChunks>>,
     skybox: Option<ResMut<'w, render_scene::SkyboxSettings>>,
     follows_time: Option<ResMut<'w, render_scene::SkyboxFollowsTime>>,
+    world_day: Option<ResMut<'w, render_scene::SkyWorldDay>>,
 }
 
 /// The renderer-clock overrides, in [`super::rendered_clock`] precedence order.
@@ -107,6 +108,14 @@ pub(crate) fn update_atmosphere_frame(
     let clouds = preferences.clouds;
     let cloud_distance = preferences.cloud_distance;
     let skybox = preferences.skybox;
+    if let Some(mut day) = preferences.world_day {
+        // The rendered day, with any time the player forced, so a pack's dated skies follow it.
+        let ticks = visual_world_time(clock, time.elapsed_secs_f64());
+        let rendered = (ticks / f64::from(assets::SKY_DAY_TICKS)).floor().max(0.0) as u64;
+        if day.0 != rendered {
+            day.0 = rendered;
+        }
+    }
     if let Some(mut follows) = preferences.follows_time {
         // A time the player forced shows in a pack's sky too.
         follows.0 = time_override.as_deref().is_some_and(|visual| visual.0.is_some());

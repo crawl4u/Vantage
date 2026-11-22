@@ -143,6 +143,7 @@ pub(crate) fn draw<'w>(world: &'w World, view: Entity, pass: &mut TrackedRenderP
         hdr: camera.hdr,
         stars: false,
         skybox: false,
+        layer_blend: 0,
     };
     let Some(stock) = gpu
         .pipelines
@@ -175,5 +176,34 @@ pub(crate) fn draw<'w>(world: &'w World, view: Entity, pass: &mut TrackedRenderP
                 pass.draw(0..3, 0..1);
             }
         }
+    }
+    // A Java pack's layers, in file order over the stock sky; a layer at no opacity right now
+    // draws nothing, so the stock sky and its own day and night show through.
+    for layer in &gpu.layers {
+        if layer.alpha <= 0.0 {
+            continue;
+        }
+        let Some(group) = layer.bind_group.as_ref() else {
+            continue;
+        };
+        let key = AtmospherePipelineKey {
+            stars: false,
+            skybox: true,
+            layer_blend: crate::pack_skybox::blend_code(layer.schedule.blend),
+            ..key
+        };
+        if let Some(pipeline) = gpu
+            .pipelines
+            .get(&key)
+            .and_then(|id| cache.get_render_pipeline(*id))
+        {
+            pass.set_render_pipeline(pipeline);
+            pass.set_bind_group(0, group, &[offset.offset]);
+            pass.draw(0..3, 0..1);
+        }
+    }
+    if !gpu.layers.is_empty() {
+        // The stock sky's group again, for whatever the pass draws next.
+        pass.set_bind_group(0, bind_group, &[offset.offset]);
     }
 }

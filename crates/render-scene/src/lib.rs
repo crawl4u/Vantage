@@ -137,7 +137,7 @@ pub use screen_overlay::{
     MAX_SCREEN_OVERLAY_LAYERS, SCREEN_OVERLAY_TEXTURE_SIDE, ScreenOverlayKind, ScreenOverlayLayer,
     ScreenOverlayScene, ScreenOverlayTextures,
 };
-pub use skybox::{SkyboxFollowsTime, SkyboxSettings};
+pub use skybox::{SkyWorldDay, SkyboxFollowsTime, SkyboxSettings};
 pub use terrain_culling::ChunkOcclusionCulling;
 pub use terrain_markers::TerrainMarkerLayers;
 pub use ui::{UiRenderSceneResource, UiRenderStatsResource};
