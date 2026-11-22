@@ -1849,7 +1849,7 @@ fn flags<'a>(settings: &'a Settings, state: &'a PanelState) -> menu::Flags<'a> {
 }
 
 /// One control's value.
-fn value<'a>(s: &'a Settings, state: &'a PanelState, id: &str) -> Value<'a> {
+pub(crate) fn value<'a>(s: &'a Settings, state: &'a PanelState, id: &str) -> Value<'a> {
     // Fast paths for ids with no arm of their own below. The Mods page has about 350 controls, and these ids fell through
     // every arm and then three toggle tables, once each: that alone came close to a whole frame's fuel, and a page sent
     // in a busy frame ran out ("all fuel consumed by WebAssembly": the host quarantined the mod and the menu closed).

@@ -26,6 +26,7 @@ mod touch_editor;
 #[cfg(feature = "test-support")]
 pub(crate) use touch_editor::TouchUtilityView;
 mod updates;
+mod vantage_live;
 mod vantage_mods;
 mod vantage_options;
 mod vantage_shell;
