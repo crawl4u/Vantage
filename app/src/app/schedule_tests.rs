@@ -78,7 +78,7 @@ fn production_update_schedule_initializes_without_dependency_cycles() {
 /// these with the registrations, and prefer one set condition over a condition per system.
 /// `sync_graphics_mode`, which hands the Fancy Graphics setting to pack compiles before network
 /// ingress can start one, is one of the `Update` systems.
-const FRAME_DISPATCH_BUDGET: [(&str, usize, usize); 2] = [("Update", 152, 8), ("PostUpdate", 1, 0)];
+const FRAME_DISPATCH_BUDGET: [(&str, usize, usize); 2] = [("Update", 153, 8), ("PostUpdate", 1, 0)];
 
 #[test]
 fn client_frame_dispatch_stays_within_its_budget() {

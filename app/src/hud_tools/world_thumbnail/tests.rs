@@ -139,15 +139,15 @@ fn launcher_and_personal_panels_block_capture_and_leaving_resets_the_deadline() 
 }
 
 #[test]
-fn thumbnail_crop_preserves_aspect_and_leaves_frame_edges_out() {
+fn thumbnail_crop_preserves_aspect_and_keeps_to_the_top_so_the_horizon_shows() {
     for (width, height) in [(1920, 1080), (3840, 1080), (1080, 1920), (1280, 720)] {
         let [x, y, crop_width, crop_height] = thumbnail_crop(width, height).unwrap();
         assert_eq!(
             crop_width * THUMBNAIL_SIZE[1],
             crop_height * THUMBNAIL_SIZE[0]
         );
-        assert!(x > 0 && y > 0);
-        assert!(x + crop_width < width && y + crop_height < height);
+        assert_eq!(y, 0, "the crop starts at the top so the horizon shows");
+        assert!(x + crop_width <= width && y + crop_height < height);
         assert!(crop_width <= width * CROP_SHARE / 100);
         assert!(crop_height <= height * CROP_SHARE / 100);
     }
@@ -157,9 +157,9 @@ fn thumbnail_crop_preserves_aspect_and_leaves_frame_edges_out() {
 }
 
 #[test]
-fn ultrawide_thumbnail_excludes_the_top_and_bottom_hud() {
+fn ultrawide_thumbnail_excludes_the_bottom_hud_and_keeps_the_top() {
     let pixels = image::RgbImage::from_fn(3840, 1080, |_, y| {
-        if !(80..1000).contains(&y) {
+        if y >= 1000 {
             image::Rgb([255, 0, 0])
         } else {
             image::Rgb([0, 0, 255])
