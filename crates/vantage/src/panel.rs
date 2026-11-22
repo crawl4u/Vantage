@@ -2,6 +2,9 @@
 //! mod sends the values and reacts to events. Every option and every HUD element has its own
 //! key, and the Layout and Style pages edit the HUD element picked in the strip at their top.
 
+/// The redesigned Mods grid's Hidden chip, past the old menu's own chips.
+const HIDDEN_CHIP: usize = 6;
+
 use crate::config::{
     ARMOR_SIDE, ARMOR_TEXT, CpsMode, Corner, Element, Grid, KEY_SLOTS, MAX_ARMOR_GAP, MAX_SCALE, MAX_BORDER, MAX_SPEED_DECIMALS, MAX_STRETCH, MAX_WIDTH, MIN_BORDER, MIN_SCALE, MIN_STRETCH, MIN_WIDTH,
     COLOR_CHOICES, COUNTER_ITEMS, COUNTER_ITEM_NAMES, CUSTOM_ROW, LATER_TOGGLES, MORE_TOGGLES, SPEED_DECIMALS, SPEED_UNITS, Settings, TIME_FORMATS, TOGGLES, color_rgb, custom_color, key_slot_id, key_slot_position, pick, valid_key,
@@ -524,7 +527,11 @@ impl PanelState {
         let mut order: Vec<usize> = (0..crate::menu_controls::MODS.len())
             .filter(|n| {
                 let (id, name, category) = crate::menu_controls::MODS[*n];
+                let hidden = settings.hidden_mods.iter().any(|h| h == id);
+                // A hidden card shows only under the Hidden chip.
                 let in_filter = match self.filter {
+                    6 => hidden,
+                    _ if hidden => false,
                     1 => on(id),
                     2 => category == 0,
                     3 => category == 1,
@@ -1391,7 +1398,7 @@ impl PanelState {
         }
         // The Mods grid's filter chips, its sort button and a card's star.
         if let Some(n) = id.strip_prefix("flt_").and_then(|n| n.parse::<usize>().ok()) {
-            if n < menu::FILTER_CHIPS {
+            if n < menu::FILTER_CHIPS || n == HIDDEN_CHIP {
                 self.filter = n;
                 return Effect { republish: true, ..Effect::default() };
             }
@@ -1399,6 +1406,21 @@ impl PanelState {
         if id == "sort" {
             self.sort = (self.sort + 1) % menu::SORTS.len();
             return Effect { republish: true, ..Effect::default() };
+        }
+        if let Some(card) = id.strip_prefix("hide_") {
+            if let Some(m) = crate::menu_controls::MODS.iter().find(|m| m.0 == card) {
+                match settings.hidden_mods.iter().position(|h| h == m.0) {
+                    Some(at) => {
+                        settings.hidden_mods.remove(at);
+                    }
+                    None => settings.hidden_mods.push(m.0.to_owned()),
+                }
+                // The Hidden chip has nothing left to show once the last card is back.
+                if self.filter == 6 && settings.hidden_mods.is_empty() {
+                    self.filter = 0;
+                }
+                return Effect { save: true, republish: true, ..Effect::default() };
+            }
         }
         if let Some(card) = id.strip_prefix("fav_") {
             if let Some(m) = crate::menu_controls::MODS.iter().find(|m| m.0 == card) {
@@ -2968,6 +2990,25 @@ mod tests {
         state.event(&mut settings, "ch_color", 1.0);
         state.event(&mut settings, &format!("dd_opt{CUSTOM_ROW}"), 1.0);
         assert_eq!(state.transparency, 50);
+    }
+
+    #[test]
+    fn a_hidden_card_leaves_the_grid_shows_under_the_hidden_chip_and_returns_when_unhidden() {
+        let mut settings = Settings { new_menu: false, ..Settings::default() };
+        let mut state = PanelState::default();
+        let all = crate::menu_controls::MODS.len();
+        let (id, ..) = crate::menu_controls::MODS[3];
+        assert!(state.event(&mut settings, &format!("hide_{id}"), 1.0).save);
+        assert_eq!(settings.hidden_mods, vec![id.to_owned()]);
+        assert_eq!(state.grid_order(&settings).len(), all - 1);
+        assert!(!state.grid_order(&settings).contains(&3));
+        state.event(&mut settings, "flt_6", 1.0);
+        assert_eq!(state.grid_order(&settings), vec![3]);
+        // Unhiding the last hidden card leaves the empty Hidden chip for All.
+        state.event(&mut settings, &format!("hide_{id}"), 1.0);
+        assert!(settings.hidden_mods.is_empty());
+        assert_eq!(state.grid_filter(), 0);
+        assert_eq!(state.grid_order(&settings).len(), all);
     }
 
     #[test]

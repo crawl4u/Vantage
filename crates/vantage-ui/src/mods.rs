@@ -36,6 +36,8 @@ pub struct Ids<'a> {
     /// A card's switch and favourite ids, from the card's `id`.
     pub toggle: &'a dyn Fn(&str) -> String,
     pub favorite: &'a dyn Fn(&str) -> String,
+    /// A card's hide switch id.
+    pub hide: &'a dyn Fn(&str) -> String,
 }
 
 impl Ids<'static> {
@@ -57,7 +59,10 @@ impl Ids<'static> {
         fn favorite(id: &str) -> String {
             format!("{id}_fav")
         }
-        Self { sort: "sort", search: "search", chip: &chip, toggle: &toggle, favorite: &favorite }
+        fn hide(id: &str) -> String {
+            format!("{id}_hide")
+        }
+        Self { sort: "sort", search: "search", chip: &chip, toggle: &toggle, favorite: &favorite, hide: &hide }
     }
 }
 
@@ -342,6 +347,9 @@ pub fn template(p: &Palette, icons: bool) -> Value {
             node::icon("star_on", crate::icons::STAR, [w - px(space::XXL), px(space::S)], [px(20.0), px(20.0)], p.star, STAR_ICON),
             alpha("#item_favorite_toggle_progress"),
         ),
+        // The hide control: an eye in the opposite corner.
+        node::icon("eye", crate::icons::EYE, [px(space::S), px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
+        press("hide", "hide", [px(space::S), px(space::S)], [px(space::XL), px(space::XL)]),
         press(
             "star",
             "favorite",
@@ -452,8 +460,11 @@ pub fn page_controls(
     out
 }
 
+/// The controls each card declares: switch, favourite, hide and open.
+pub const PER_CARD: usize = 4;
+
 /// The control ids the page declares after the shell's: one chip button per chip, the sort button,
-/// then three per card (switch, favourite, open).
+/// then [`PER_CARD`] per card (switch, favourite, hide, open).
 #[must_use]
 pub fn declared_controls(cards: &[Card<'_>], chips: &[Chip<'_>], ids: &Ids<'_>) -> Vec<Value> {
     let mut declared: Vec<Value> = chips
@@ -464,6 +475,7 @@ pub fn declared_controls(cards: &[Card<'_>], chips: &[Chip<'_>], ids: &Ids<'_>) 
     for card in cards {
         declared.push(json!({"kind": "toggle", "id": (ids.toggle)(card.id), "label": card.name, "value": card.on}));
         declared.push(json!({"kind": "toggle", "id": (ids.favorite)(card.id), "label": card.name, "value": card.favorite}));
+        declared.push(json!({"kind": "toggle", "id": (ids.hide)(card.id), "label": card.name, "value": card.hidden}));
         declared.push(json!({"kind": "button", "id": card.open, "label": card.name}));
     }
     declared
@@ -477,10 +489,10 @@ pub fn collection(p: &Palette, cards: &[Card<'_>], order: &[usize], first_card_c
         .iter()
         .enumerate()
         .map(|(i, card)| {
-            let base = first_card_control + i * 3;
+            let base = first_card_control + i * PER_CARD;
             json!({
                 "values": {"#item_name": card.name, "#item_initial": initial(card.name), "#item_icon": card.icon},
-                "controls": {"toggle": base, "favorite": base + 1, "open": base + 2},
+                "controls": {"toggle": base, "favorite": base + 1, "hide": base + 2, "open": base + 3},
             })
         })
         .collect();
@@ -653,7 +665,7 @@ mod tests {
         let panel = panel(&shell, &c, &["HUD", "Visual", "Mechanic"], &state, &Ids::plain());
         let declared = panel["controls"].as_array().unwrap().len();
         // The shell's back, forward and search, 7 chips, the sort button, and 3 per card.
-        assert_eq!(declared, 3 + 7 + 1 + c.len() * 3);
+        assert_eq!(declared, 3 + 7 + 1 + c.len() * PER_CARD);
         let template: Value = serde_json::from_str(
             panel["surface"]["collections"]["mods"]["definition"]["template"]["document"]
                 .as_str()
@@ -667,7 +679,7 @@ mod tests {
             }
         }
         roles.sort();
-        assert_eq!(roles, ["mod.item:favorite", "mod.item:open", "mod.item:toggle"]);
+        assert_eq!(roles, ["mod.item:favorite", "mod.item:hide", "mod.item:open", "mod.item:toggle"]);
         for item in panel["surface"]["collections"]["mods"]["definition"]["items"].as_array().unwrap() {
             for index in item["controls"].as_object().unwrap().values() {
                 assert!((index.as_u64().unwrap() as usize) < declared);

@@ -88,7 +88,7 @@ pub fn cards<'a>(settings: &'a Settings, state: &'a PanelState) -> Vec<Card<'a>>
             category: CATEGORIES[usize::from(category).min(CATEGORIES.len() - 1)],
             on: matches!(crate::panel::value(settings, state, id), Value::Toggle(true)),
             favorite: settings.favorites.iter().any(|f| f == id),
-            hidden: false,
+            hidden: settings.hidden_mods.iter().any(|h| h == id),
             icon: icon_names.get(i).copied().unwrap_or(""),
             open: open.get(i).map_or("", String::as_str),
         })
@@ -156,6 +156,7 @@ fn filter_of(number: usize) -> Filter<'static> {
         1 => Filter::Enabled,
         2..=4 => Filter::Category(CATEGORIES[number - 2]),
         5 => Filter::Favorites,
+        6 => Filter::Hidden,
         _ => Filter::All,
     }
 }
@@ -166,7 +167,8 @@ fn chip_number(filter: Filter<'_>) -> usize {
         Filter::Enabled => 1,
         Filter::Category(name) => CATEGORIES.iter().position(|c| *c == name).map_or(0, |i| i + 2),
         Filter::Favorites => 5,
-        Filter::All | Filter::Hidden => 0,
+        Filter::Hidden => 6,
+        Filter::All => 0,
     }
 }
 
@@ -209,7 +211,8 @@ pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
     let chip = |filter: Filter<'_>| format!("flt_{}", chip_number(filter));
     let toggle = |id: &str| id.to_owned();
     let favorite = |id: &str| format!("fav_{id}");
-    let ids = Ids { sort: "sort", search: "module_search", chip: &chip, toggle: &toggle, favorite: &favorite };
+    let hide = |id: &str| format!("hide_{id}");
+    let ids = Ids { sort: "sort", search: "module_search", chip: &chip, toggle: &toggle, favorite: &favorite, hide: &hide };
     mods::panel(&shell, &cards, &CATEGORIES, &state, &ids).to_string()
 }
 
@@ -260,9 +263,9 @@ fn referenced(document: usize) -> Vec<usize> {
 
 /// Controls that are the menu's own furniture (tabs, setups, the HUD mover, popups), not options of a page.
 fn is_chrome(id: &str) -> bool {
-    const PREFIXES: [&str; 18] = [
+    const PREFIXES: [&str; 19] = [
         "tab_", "cfg_", "move", "reset_", "edit_", "ed_", "cf_", "dd_", "hex_", "cap_", "cp_", "toast_", "opt_", "lay_", "card_",
-        "flt_", "fav_", "sort",
+        "flt_", "fav_", "hide_", "sort",
     ];
     PREFIXES.iter().any(|prefix| id.starts_with(prefix)) || id == "module_search"
 }

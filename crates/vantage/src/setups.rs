@@ -413,6 +413,7 @@ impl Setups {
             // The person's own lists are not in a code, so a load must not empty them: marked spots, starred mods
             // and the colour picker's recent and saved colours.
             next.favorites = settings.favorites.clone();
+            next.hidden_mods = settings.hidden_mods.clone();
             next.gameplay.waypoints = settings.gameplay.waypoints.clone();
             next.gameplay.recent_colors = settings.gameplay.recent_colors.clone();
             next.gameplay.favorite_colors = settings.gameplay.favorite_colors.clone();

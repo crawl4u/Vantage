@@ -702,6 +702,7 @@ pub fn put_options(w: &mut Writer, s: &Settings) {
         line_width,
         menu_key: _,
         favorites: _,
+        hidden_mods: _,
         share_skip: _,
         show_mouse,
         show_space,
