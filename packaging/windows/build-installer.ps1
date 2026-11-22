@@ -1,5 +1,4 @@
-# Builds the Windows payload, MSI and self-contained setup EXE. Requires WiX v5,
-# WixToolset.BootstrapperApplications.wixext v5, and ImageMagick.
+# Builds the Windows payload, MSI and self-contained setup EXE. Requires WiX v5, the .NET SDK and ImageMagick.
 # Usage: build-installer.ps1 [-Out <dir>].
 param([string]$Out = ".local/dist/windows-release", [string]$Binaries = "",
       [string]$Root = (Join-Path $PSScriptRoot "../.."))
@@ -55,23 +54,9 @@ $msi = Join-Path $outPath "Vantage-$version-x64.msi"
 wix build -arch x64 -d Version=$version -d Payload=$payload -d Icon=$icon -o $msi (Join-Path $PSScriptRoot "cinnabar.wxs")
 if ($LASTEXITCODE -ne 0) { throw "wix build failed" }
 & (Join-Path $PSScriptRoot "sign.ps1") -Path $msi
-$theme = Join-Path $PSScriptRoot "theme"
 $setup = Join-Path $outPath "Vantage-$version-x64-setup.exe"
-wix build -arch x64 -ext WixToolset.BootstrapperApplications.wixext -d Version=$version -d Msi=$msi -d Icon=$icon -d Logo=$logo -d Theme=$theme -o $setup (Join-Path $PSScriptRoot "setup.wxs")
-if ($LASTEXITCODE -ne 0) { throw "setup bundle build failed" }
+& (Join-Path $PSScriptRoot "setup-ui/build-setup.ps1") -Msi $msi -Version $version -Icon $icon -Out $setup
 & (Join-Path $PSScriptRoot "execution-level.ps1") -Executable $setup
-$engine = Join-Path $outPath "setup-engine.exe"
-wix burn detach $setup -engine $engine
-if ($LASTEXITCODE -ne 0) { throw "setup engine detach failed" }
-& (Join-Path $PSScriptRoot "execution-level.ps1") -Executable $engine
-if ($env:WINDOWS_CERT_PFX_BASE64) {
-    # Burn caches its detached engine; sign that executable as well as the whole bundle.
-    & (Join-Path $PSScriptRoot "sign.ps1") -Path $engine
-    $signed = Join-Path $outPath "setup-signed.exe"
-    wix burn reattach $setup -engine $engine -o $signed
-    if ($LASTEXITCODE -ne 0) { throw "setup engine reattach failed" }
-    Move-Item -LiteralPath $signed -Destination $setup -Force
-}
 & (Join-Path $PSScriptRoot "sign.ps1") -Path $setup
 Write-Output $msi
 Write-Output $setup
