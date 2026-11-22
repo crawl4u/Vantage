@@ -250,7 +250,7 @@ pub(super) fn update(
     state.terrain.begin();
     state.draw.begin();
     let container = super::drive::observed_container_screen(&player, &ui);
-    let facts = gameplay.facts(native.controls.gameplay, cameras.single().ok(), None, None);
+    let facts = gameplay.facts(native.controls.gameplay, cameras.single().ok(), None, None, None);
     let mut frame = host::Frame {
         facts: &facts,
         native: &mut native,
