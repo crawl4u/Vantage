@@ -95,6 +95,8 @@ pub struct Shell<'a> {
     pub search: &'a str,
     /// The id the search field's control is declared with.
     pub search_id: &'a str,
+    /// The id the back button's control is declared with.
+    pub back_id: &'a str,
     /// The signed-in player's name, and a short line under it.
     pub account: &'a str,
     pub account_note: &'a str,
@@ -118,7 +120,7 @@ pub fn declared_controls(shell: &Shell<'_>) -> Vec<Value> {
         .flat_map(|section| section.entries)
         .map(|entry| json!({"kind": "button", "id": entry.id, "label": entry.title}))
         .collect();
-    declared.push(json!({"kind": "button", "id": "back", "label": "Back"}));
+    declared.push(json!({"kind": "button", "id": shell.back_id, "label": "Back"}));
     declared.push(json!({"kind": "button", "id": "forward", "label": "Forward"}));
     declared.push(json!({
         "kind": "text", "id": shell.search_id, "label": "Search", "value": shell.search,
@@ -454,6 +456,7 @@ mod tests {
             search_hint: "Search mods...",
             search: "",
             search_id: "search",
+            back_id: "back",
             account: "Player",
             account_note: "Online",
             backdrop: Backdrop::NONE,

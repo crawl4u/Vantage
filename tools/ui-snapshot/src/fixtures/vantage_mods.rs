@@ -53,6 +53,7 @@ pub(super) fn fixture(filter: Filter<'static>, query: &'static str) -> Fixture {
         search_hint: "Search mods...",
         search: query,
         search_id: "search",
+        back_id: "back",
         account: "Player",
         account_note: "Online",
         backdrop: Backdrop::NONE,

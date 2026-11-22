@@ -47,6 +47,7 @@ pub(super) fn fixture(collapsed: bool, query: &'static str) -> Fixture {
         search_hint: "Search options...",
         search: query,
         search_id: "search",
+        back_id: "back",
         account: "Player",
         account_note: "Online",
         backdrop: Backdrop::NONE,

@@ -2847,7 +2847,7 @@ impl State {
             effect = effect.merge(self.panel.event(&mut self.settings, &event.id, event.value));
         }
         // Texts typed in the Config page's fields and the hex editor's (before the keys, so Enter applies what was just typed).
-        if controls.panel_open && (self.panel.on_config() || self.panel.on_mods() || self.panel.on_waypoints() || self.panel.hex_open()) {
+        if controls.panel_open && (self.panel.on_config() || self.panel.on_mods() || self.panel.on_waypoints() || self.panel.hex_open() || (self.settings.new_menu && crate::menu_v2::handles(self.panel.tab_number()))) {
             let read = input::read_field_events();
             if let Ok(events) = read {
                 for event in events {
@@ -3583,7 +3583,7 @@ impl State {
     fn send_patch(&mut self) {
         self.menu_busy = true;
         // The redesigned Mods page is a whole document: it is sent again instead of patched.
-        let sent = if self.settings.new_menu && self.panel.tab_number() == crate::menu_controls::MODS_PAGE {
+        let sent = if self.settings.new_menu && crate::menu_v2::handles(self.panel.tab_number()) {
             panel::set_content(&crate::panel::build(&self.settings, &self.panel))
         } else {
             panel::update_content(&crate::panel::patch(&self.settings, &self.panel))

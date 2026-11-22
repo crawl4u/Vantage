@@ -17,3 +17,13 @@ pub(super) fn fixture(filter: usize, query: &str) -> Fixture {
     let panel: Panel = serde_json::from_str(&page).expect("the live page is a valid panel");
     Fixture::ModPanel(Box::new(panel), None, None)
 }
+
+/// A rebuilt settings page of the Vantage menu, opened by its tab.
+pub(super) fn settings(tab: usize) -> Fixture {
+    let mut settings = Settings::default();
+    let mut state = PanelState::default();
+    state.event(&mut settings, &format!("tab_{tab}"), 1.0);
+    let page = menu_v2::page(&settings, &state).expect("a rebuilt page");
+    let panel: Panel = serde_json::from_str(&page).expect("the page is a valid panel");
+    Fixture::ModPanel(Box::new(panel), None, None)
+}

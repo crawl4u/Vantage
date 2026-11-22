@@ -31,6 +31,7 @@ pub(super) fn fixture() -> Fixture {
         search_hint: "Search mods...",
         search: "",
         search_id: "search",
+        back_id: "back",
         account: "Player",
         account_note: "Online",
         backdrop: Backdrop::NONE,

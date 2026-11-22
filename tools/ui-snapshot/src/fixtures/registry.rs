@@ -103,6 +103,30 @@ pub(super) const STATES: &[State] = &[
         fixture: || vantage_live::fixture(2, ""),
     },
     State {
+        name: "vantage-page-general",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::settings(6),
+    },
+    State {
+        name: "vantage-page-menu-blur",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::settings(16),
+    },
+    State {
+        name: "vantage-page-time-changer",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::settings(11),
+    },
+    State {
+        name: "vantage-page-cps-limiter",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::settings(19),
+    },
+    State {
         name: "vantage-options",
         size: SIZE,
         gui_scale: GUI_SCALE,

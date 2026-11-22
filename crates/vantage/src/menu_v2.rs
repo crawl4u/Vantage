@@ -8,13 +8,14 @@ use std::sync::OnceLock;
 
 use vantage_ui::{
     mods::{self, Card, Filter, Ids, Sort, State},
+    options::{self, Group, Opt},
     shell::{Backdrop, Entry, Section, Shell},
     tokens::Palette,
 };
 
 use crate::config::Settings;
 use crate::menu::Value;
-use crate::menu_controls::{COLLECTION, CONTROLS, DOC_CONTROLS, MODS, MODS_PAGE};
+use crate::menu_controls::{COLLECTION, CONTROLS, DOC_CONTROLS, Kind, MODS, MODS_PAGE, TABS};
 use crate::panel::PanelState;
 
 /// The Mods page's category names, by the category number in `MODS`.
@@ -37,8 +38,9 @@ fn names() -> Vec<&'static str> {
         .collect()
 }
 
-/// The id of each card's open button, in `MODS` order: the control that opens the mod's settings (the old
-/// menu's gear), or an id nothing handles for a mod with no settings page.
+/// The id of each card's open button, in `MODS` order: the control that opens the mod's settings, or an id
+/// nothing handles for a mod with no settings page. A page of its own (`tab_<n>`) always opens; an element's
+/// options (`opt_<n>`) only when the old card showed a settings button.
 fn open_ids() -> &'static [String] {
     static IDS: OnceLock<Vec<String>> = OnceLock::new();
     IDS.get_or_init(|| {
@@ -46,15 +48,18 @@ fn open_ids() -> &'static [String] {
             .iter()
             .enumerate()
             .map(|(i, item)| {
-                if item["values"]["#item_gear"].as_bool() != Some(true) {
-                    return format!("none_{}", MODS.get(i).map_or("", |m| m.0));
-                }
                 // The collection numbers controls within the Mods page's own document.
                 let local = item["controls"]["options"].as_u64().unwrap_or(0) as usize;
-                DOC_CONTROLS[MODS_PAGE]
+                let id = DOC_CONTROLS[MODS_PAGE]
                     .get(local)
                     .and_then(|global| CONTROLS.get(usize::from(*global)))
-                    .map_or_else(String::new, |control| control.1.to_owned())
+                    .map_or("", |control| control.1);
+                let gear = item["values"]["#item_gear"].as_bool() == Some(true);
+                if id.starts_with("tab_") || (gear && !id.is_empty()) {
+                    id.to_owned()
+                } else {
+                    format!("none_{}", MODS.get(i).map_or("", |m| m.0))
+                }
             })
             .collect()
     })
@@ -79,11 +84,31 @@ pub fn cards<'a>(settings: &'a Settings, state: &'a PanelState) -> Vec<Card<'a>>
         .collect()
 }
 
-/// The sidebar the redesigned menu shows.
-fn sections() -> [Section<'static>; 1] {
-    const ENTRIES: [Entry<'static>; 1] = [Entry { id: "mods", title: "Mods", active: true }];
-    [Section { heading: Some("Mods and options"), entries: &ENTRIES }]
+/// The pages the sidebar lists, as `(tab, title)`, in groups: where the sidebar goes when a page is open.
+const SIDEBAR: [(&str, &[(usize, &str)]); 2] = [
+    ("Mods and options", &[(0, "Mods"), (7, "Config"), (26, "Sharing")]),
+    ("Menu", &[(6, "General"), (8, "Credits")]),
+];
+
+/// The sidebar entries, each pressing its old tab button, with `active` lit.
+fn entries(active: usize) -> Vec<Vec<Entry<'static>>> {
+    SIDEBAR
+        .iter()
+        .map(|(_, pages)| {
+            pages
+                .iter()
+                .map(|&(tab, title)| Entry { id: TAB_IDS[tab], title, active: tab == active })
+                .collect()
+        })
+        .collect()
 }
+
+/// `tab_<n>` for each page, as static text.
+const TAB_IDS: [&str; 27] = [
+    "tab_0", "tab_1", "tab_2", "tab_3", "tab_4", "tab_5", "tab_6", "tab_7", "tab_8", "tab_9", "tab_10", "tab_11", "tab_12",
+    "tab_13", "tab_14", "tab_15", "tab_16", "tab_17", "tab_18", "tab_19", "tab_20", "tab_21", "tab_22", "tab_23", "tab_24",
+    "tab_25", "tab_26",
+];
 
 /// The filter the Mods grid's chip number selects (see `PanelState::grid_filter`).
 fn filter_of(number: usize) -> Filter<'static> {
@@ -120,7 +145,8 @@ fn sort_of(number: usize) -> Sort {
 #[must_use]
 pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
     let cards = cards(settings, panel_state);
-    let sections = sections();
+    let entries = entries(MODS_PAGE);
+    let sections: Vec<Section<'_>> = SIDEBAR.iter().zip(&entries).map(|((heading, _), list)| Section { heading: Some(heading), entries: list }).collect();
     let query = panel_state.search_text();
     let shell = Shell {
         palette: Palette::dark(),
@@ -130,13 +156,10 @@ pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
         search_hint: "Search mods...",
         search: query,
         search_id: "module_search",
+        back_id: "back",
         account: "Player",
         account_note: "",
-        backdrop: Backdrop {
-            blur: settings.gameplay.menu_blur() as f32,
-            brightness: settings.gameplay.menu_backdrop().0 as f32,
-            saturation: settings.gameplay.menu_backdrop().1 as f32,
-        },
+        backdrop: backdrop(settings),
     };
     let state = State {
         filter: filter_of(panel_state.grid_filter()),
@@ -148,6 +171,175 @@ pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
     let favorite = |id: &str| format!("fav_{id}");
     let ids = Ids { sort: "sort", search: "module_search", chip: &chip, toggle: &toggle, favorite: &favorite };
     mods::panel(&shell, &cards, &CATEGORIES, &state, &ids).to_string()
+}
+
+/// The settings pages the redesign has rebuilt, by tab. The others keep their old design until they are.
+const CONVERTED: [usize; 17] = [3, 6, 9, 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25];
+
+/// Whether the redesign draws this tab (the Mods grid and the rebuilt settings pages).
+#[must_use]
+pub fn handles(tab: usize) -> bool {
+    tab == MODS_PAGE || CONVERTED.contains(&tab)
+}
+
+/// The page for the open tab, when the redesign draws it.
+#[must_use]
+pub fn page(settings: &Settings, state: &PanelState) -> Option<String> {
+    let tab = state.tab_number();
+    if tab == MODS_PAGE {
+        return Some(mods_panel(settings, state));
+    }
+    CONVERTED.contains(&tab).then(|| settings_panel(settings, state, tab))
+}
+
+/// The controls a page's baked document presses, in the order it first mentions them, as indices into `CONTROLS`.
+fn referenced(document: usize) -> Vec<usize> {
+    let mut text = String::new();
+    crate::menu::push_document(&mut text, document);
+    let mut found: Vec<usize> = Vec::new();
+    for marker in ["mod.control:", "mod.axis:", "mod.drag_axis:", "mod.edit:"] {
+        let mut from = 0;
+        while let Some(at) = text[from..].find(marker) {
+            let start = from + at + marker.len();
+            let digits: String = text[start..].chars().take_while(char::is_ascii_digit).collect();
+            from = start;
+            if let Some(global) = digits.parse::<usize>().ok().and_then(|local| DOC_CONTROLS[document].get(local)) {
+                found.push(usize::from(*global));
+            }
+        }
+    }
+    // First mention first: the document lists a page top to bottom.
+    let mut order: Vec<usize> = Vec::new();
+    for index in found {
+        if !order.contains(&index) {
+            order.push(index);
+        }
+    }
+    order
+}
+
+/// Controls that are the menu's own furniture (tabs, setups, the HUD mover, popups), not options of a page.
+fn is_chrome(id: &str) -> bool {
+    const PREFIXES: [&str; 18] = [
+        "tab_", "cfg_", "move", "reset_", "edit_", "ed_", "cf_", "dd_", "hex_", "cap_", "cp_", "toast_", "opt_", "lay_", "card_",
+        "flt_", "fav_", "sort",
+    ];
+    PREFIXES.iter().any(|prefix| id.starts_with(prefix)) || id == "module_search"
+}
+
+/// The mod whose settings page is `tab`: its switch id, when a card's settings button opens that tab.
+fn mod_of_tab(tab: usize) -> Option<&'static str> {
+    let wanted = TAB_IDS.get(tab)?;
+    open_ids().iter().position(|id| id == wanted).map(|i| MODS[i].0)
+}
+
+/// One option of a page: the control's id, its label and how it is edited, from the old tables and the settings.
+struct Row<'a> {
+    id: &'static str,
+    label: &'static str,
+    value: Value<'a>,
+    changed: bool,
+}
+
+/// Whether two values are the same setting.
+fn same(a: &Value<'_>, b: &Value<'_>) -> bool {
+    match (a, b) {
+        (Value::Toggle(a), Value::Toggle(b)) => a == b,
+        (Value::Slider(a, ..), Value::Slider(b, ..)) => (a - b).abs() < 1.0e-9,
+        (Value::Choice(a, _), Value::Choice(b, _)) => a == b,
+        (Value::Key(a), Value::Key(b)) => a == b,
+        _ => true,
+    }
+}
+
+/// The rows of `tab`'s page: the mod's own switch first, when the page belongs to one mod, then the
+/// options its old page showed.
+fn rows<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Settings, tab: usize) -> Vec<Row<'a>> {
+    let switch = mod_of_tab(tab).map(|id| Row {
+        id,
+        label: "Enabled",
+        value: crate::panel::value(settings, state, id),
+        changed: false,
+    });
+    switch
+        .into_iter()
+        .chain(rows_of(settings, state, defaults, tab))
+        .collect()
+}
+
+/// The options a page's old document pressed.
+fn rows_of<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Settings, tab: usize) -> impl Iterator<Item = Row<'a>> {
+    referenced(crate::menu::document_index(tab, state.element().index()))
+        .into_iter()
+        .filter_map(|index| {
+            let (kind, id, label) = CONTROLS[index];
+            if is_chrome(id) || !matches!(kind, Kind::Toggle | Kind::Slider | Kind::Choice | Kind::Keybind) {
+                return None;
+            }
+            let value = crate::panel::value(settings, state, id);
+            let changed = !same(&value, &crate::panel::value(defaults, state, id));
+            Some(Row { id, label, value, changed })
+        })
+}
+
+/// A redesigned settings page: the page's options as rows in the menu shell.
+#[must_use]
+pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> String {
+    let defaults = Settings::default();
+    let rows = rows(settings, state, &defaults, tab);
+    // A choice steps through its values on press, so its control is declared under its own id.
+    let ids: Vec<String> = rows
+        .iter()
+        .map(|row| if matches!(row.value, Value::Choice(..)) { format!("cycle_{}", row.id) } else { row.id.to_owned() })
+        .collect();
+    let opts: Vec<Opt<'_>> = rows
+        .iter()
+        .zip(&ids)
+        .map(|(row, id)| Opt {
+            id,
+            label: row.label,
+            help: None,
+            kind: match &row.value {
+                Value::Toggle(on) => options::Kind::Toggle { on: *on },
+                Value::Slider(value, min, max, step) => {
+                    options::Kind::Slider { value: *value as f32, min: *min as f32, max: *max as f32, step: *step as f32 }
+                }
+                Value::Choice(selected, names) => options::Kind::Choice { options: names, selected: *selected },
+                Value::Key(key) => options::Kind::Keybind { key },
+                _ => options::Kind::Info,
+            },
+            changed: row.changed,
+        })
+        .collect();
+    let title = TABS.get(tab).copied().unwrap_or("Settings");
+    let group = [Group { title, collapsed: false, options: &opts }];
+    let matched = options::search(&group, state.option_query());
+    let shown = options::groups_of(&matched);
+    let entries = entries(tab);
+    let sections: Vec<Section<'_>> = SIDEBAR.iter().zip(&entries).map(|((heading, _), list)| Section { heading: Some(heading), entries: list }).collect();
+    let shell = Shell {
+        palette: Palette::dark(),
+        brand: "Vantage",
+        sections: &sections,
+        title,
+        search_hint: "Search options...",
+        search: state.option_query(),
+        search_id: "opt_search",
+        back_id: "back",
+        account: "Player",
+        account_note: "",
+        backdrop: backdrop(settings),
+    };
+    options::panel(&shell, &shown).to_string()
+}
+
+/// The blur and dimming of the world behind the menu.
+fn backdrop(settings: &Settings) -> Backdrop {
+    Backdrop {
+        blur: settings.gameplay.menu_blur() as f32,
+        brightness: settings.gameplay.menu_backdrop().0 as f32,
+        saturation: settings.gameplay.menu_backdrop().1 as f32,
+    }
 }
 
 #[cfg(test)]
@@ -223,6 +415,63 @@ mod tests {
                 "{id:?} is not a valid control id"
             );
             assert!(seen.insert(id.to_owned()), "{id} is declared twice");
+        }
+    }
+
+    #[test]
+    fn every_rebuilt_page_has_options_and_declares_only_valid_unique_ids() {
+        for &tab in &CONVERTED {
+            let mut settings = Settings::default();
+            let mut state = PanelState::default();
+            state.event(&mut settings, &format!("tab_{tab}"), 1.0);
+            assert_eq!(state.tab_number(), tab);
+            let page: serde_json::Value = serde_json::from_str(&page(&settings, &state).expect("a rebuilt page")).unwrap();
+            let mut seen = std::collections::HashSet::new();
+            let controls = page["controls"].as_array().unwrap();
+            for control in controls {
+                let id = control["id"].as_str().unwrap();
+                assert!(
+                    !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"_-.".contains(&b)),
+                    "tab {tab}: {id:?} is not a valid id"
+                );
+                assert!(seen.insert(id.to_owned()), "tab {tab}: {id} is declared twice");
+            }
+            // The sidebar's five pages, back, forward and search, then the page's own heading and rows.
+            assert!(controls.len() > 5 + 3 + 1, "tab {tab} lists no options");
+        }
+    }
+
+    #[test]
+    fn a_choice_steps_to_its_next_value_and_reset_restores_the_default() {
+        let mut settings = Settings::default();
+        let mut state = PanelState::default();
+        state.event(&mut settings, "tab_16", 1.0);
+        // Menu blur: change a slider, then reset it.
+        let before = settings.gameplay.blur_amount;
+        state.event(&mut settings, "gp_blur", before as f32 + 3.0);
+        assert_ne!(settings.gameplay.blur_amount, before);
+        state.event(&mut settings, "gp_blur_reset", 0.0);
+        assert_eq!(settings.gameplay.blur_amount, before);
+        // Time changer: its choice steps by its own cycle id.
+        state.event(&mut settings, "tab_11", 1.0);
+        let (at, count) = match crate::panel::value(&settings, &state, "gp_time") {
+            Value::Choice(at, names) => (at, names.len()),
+            _ => panic!("gp_time is a choice"),
+        };
+        state.event(&mut settings, "cycle_gp_time", 1.0);
+        let Value::Choice(next, _) = crate::panel::value(&settings, &state, "gp_time") else { panic!() };
+        assert_eq!(next, (at + 1) % count);
+    }
+
+    #[test]
+    fn page_furniture_is_never_listed_as_an_option() {
+        let settings = Settings::default();
+        let state = PanelState::default();
+        let defaults = Settings::default();
+        for &tab in &CONVERTED {
+            for row in rows(&settings, &state, &defaults, tab) {
+                assert!(!is_chrome(row.id), "{} is furniture", row.id);
+            }
         }
     }
 }

@@ -257,6 +257,8 @@ pub struct PanelState {
     filter: usize,
     sort: usize,
     search: String,
+    /// The search text of the redesigned settings pages, and the page it was typed on.
+    option_search: (usize, String),
     /// The tab changed: the host needs that tab's document.
     tab_changed: bool,
     /// The page was opened from the Crosshair page while its window was grown: the window eases back.
@@ -478,6 +480,11 @@ impl PanelState {
 
     pub fn search_text(&self) -> &str {
         &self.search
+    }
+
+    /// The text typed in the open settings page's search field (empty on any other page).
+    pub fn option_query(&self) -> &str {
+        if self.option_search.0 == self.tab { &self.option_search.1 } else { "" }
     }
 
     pub fn take_tab_changed(&mut self) -> bool {
@@ -1017,6 +1024,17 @@ impl PanelState {
     }
 
     fn handle(&mut self, settings: &mut Settings, id: &str, value: f32) -> Effect {
+        // The redesigned pages' back button returns to the Mods page.
+        if id == "back" {
+            return self.handle(settings, "tab_0", 1.0);
+        }
+        // The redesigned pages: a choice steps to its next value, and Reset restores an option's default.
+        if let Some(real) = id.strip_prefix("cycle_") {
+            return self.cycle(settings, real);
+        }
+        if let Some(real) = id.strip_suffix("_reset").filter(|real| !real.is_empty() && CONTROLS.iter().any(|c| c.1 == *real)) {
+            return self.restore(settings, real);
+        }
         // The Waypoints page: its fields open their editor on a press, its buttons act on the list.
         if id.starts_with("wp_") {
             if matches!(id, "wp_name" | "wp_x" | "wp_y" | "wp_z" | "wp_group") {
@@ -1185,6 +1203,10 @@ impl PanelState {
             "module_search" => {
                 self.search = text.chars().filter(|c| !c.is_control()).take(48).collect();
             }
+            // A redesigned settings page's search: the rows narrow as it is typed.
+            "opt_search" => {
+                self.option_search = (self.tab, text.chars().filter(|c| !c.is_control()).take(48).collect());
+            }
             // The number editor's field (a touch keyboard types here): digits, one point and a leading minus.
             "ed_text" => {
                 if let Some(edit) = self.edit.as_mut().filter(|e| !e.id.starts_with("hex:")) {
@@ -1309,6 +1331,27 @@ impl PanelState {
         self.toast(&notice);
         self.notice = Some(notice);
         Effect { save: true, rebind: true, republish: true }
+    }
+
+    /// Steps a choice to its next value, wrapping at the end.
+    fn cycle(&mut self, settings: &mut Settings, id: &str) -> Effect {
+        let Value::Choice(at, options) = value(settings, self, id) else {
+            return Effect::default();
+        };
+        let next = (at + 1) % options.len().max(1);
+        self.apply(settings, id, next as f32).merge(Effect { republish: true, ..Effect::default() })
+    }
+
+    /// Puts an option back to its default value.
+    fn restore(&mut self, settings: &mut Settings, id: &str) -> Effect {
+        let defaults = Settings::default();
+        let number = match value(&defaults, self, id) {
+            Value::Toggle(on) => f32::from(u8::from(on)),
+            Value::Slider(v, ..) => v as f32,
+            Value::Choice(at, _) => at as f32,
+            _ => return Effect::default(),
+        };
+        self.apply(settings, id, number).merge(Effect { save: true, republish: true, ..Effect::default() })
     }
 
     /// Applies a control's event to the settings.
@@ -1821,8 +1864,10 @@ fn pick_element(id: &str, index: usize) -> Option<Element> {
 /// The whole menu for the current settings (the bundle, or a changed menu key).
 #[inline(never)]
 pub fn build(settings: &Settings, state: &PanelState) -> String {
-    if settings.new_menu && state.tab_number() == crate::menu_controls::MODS_PAGE {
-        return crate::menu_v2::mods_panel(settings, state);
+    if settings.new_menu {
+        if let Some(page) = crate::menu_v2::page(settings, state) {
+            return page;
+        }
     }
     let value = |id: &str| value(settings, state, id);
     let order = state.grid_order(settings);
