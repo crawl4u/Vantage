@@ -20,6 +20,43 @@ pub struct Card<'a> {
     pub on: bool,
     pub favorite: bool,
     pub hidden: bool,
+    /// The id of the card's open button.
+    pub open: &'a str,
+}
+
+/// The ids the page declares its controls with, so a caller can reuse the ids its own handlers know.
+pub struct Ids<'a> {
+    /// The sort button and the search field.
+    pub sort: &'a str,
+    pub search: &'a str,
+    /// A filter chip's id.
+    pub chip: &'a dyn Fn(Filter<'_>) -> String,
+    /// A card's switch and favourite ids, from the card's `id`.
+    pub toggle: &'a dyn Fn(&str) -> String,
+    pub favorite: &'a dyn Fn(&str) -> String,
+}
+
+impl Ids<'static> {
+    /// Self-contained ids for pages with no handlers of their own: `chip_<label>`, `<id>_on`, `<id>_fav`.
+    #[must_use]
+    pub fn plain() -> Self {
+        fn chip(filter: Filter<'_>) -> String {
+            match filter {
+                Filter::All => "chip_all".into(),
+                Filter::Enabled => "chip_enabled".into(),
+                Filter::Favorites => "chip_favorites".into(),
+                Filter::Hidden => "chip_hidden".into(),
+                Filter::Category(name) => format!("chip_{}", name.to_lowercase()),
+            }
+        }
+        fn toggle(id: &str) -> String {
+            format!("{id}_on")
+        }
+        fn favorite(id: &str) -> String {
+            format!("{id}_fav")
+        }
+        Self { sort: "sort", search: "search", chip: &chip, toggle: &toggle, favorite: &favorite }
+    }
 }
 
 /// Which cards a chip selects.
@@ -423,17 +460,16 @@ pub fn page_controls(
 /// The control ids the page declares after the shell's: one chip button per chip, the sort button,
 /// then three per card (switch, favourite, open).
 #[must_use]
-pub fn declared_controls(cards: &[Card<'_>], chips: &[Chip<'_>]) -> Vec<Value> {
+pub fn declared_controls(cards: &[Card<'_>], chips: &[Chip<'_>], ids: &Ids<'_>) -> Vec<Value> {
     let mut declared: Vec<Value> = chips
         .iter()
-        .enumerate()
-        .map(|(i, chip)| json!({"kind": "button", "id": format!("chip_{i}"), "label": chip.label}))
+        .map(|chip| json!({"kind": "button", "id": (ids.chip)(chip.filter), "label": chip.label}))
         .collect();
-    declared.push(json!({"kind": "button", "id": "sort", "label": "Sort"}));
+    declared.push(json!({"kind": "button", "id": ids.sort, "label": "Sort"}));
     for card in cards {
-        declared.push(json!({"kind": "toggle", "id": format!("{}_on", card.id), "label": card.name, "value": card.on}));
-        declared.push(json!({"kind": "toggle", "id": format!("{}_fav", card.id), "label": card.name, "value": card.favorite}));
-        declared.push(json!({"kind": "button", "id": format!("{}_open", card.id), "label": card.name}));
+        declared.push(json!({"kind": "toggle", "id": (ids.toggle)(card.id), "label": card.name, "value": card.on}));
+        declared.push(json!({"kind": "toggle", "id": (ids.favorite)(card.id), "label": card.name, "value": card.favorite}));
+        declared.push(json!({"kind": "button", "id": card.open, "label": card.name}));
     }
     declared
 }
@@ -461,8 +497,15 @@ pub fn collection(p: &Palette, cards: &[Card<'_>], order: &[usize], first_card_c
 
 /// The whole Mods page on top of the shell, as a native panel description.
 #[must_use]
-pub fn panel(shell_state: &shell::Shell<'_>, cards: &[Card<'_>], categories: &[&str], state: &State<'_>) -> Value {
+pub fn panel(
+    shell_state: &shell::Shell<'_>,
+    cards: &[Card<'_>],
+    categories: &[&str],
+    state: &State<'_>,
+    ids: &Ids<'_>,
+) -> Value {
     let p = shell_state.palette;
+    let p_backdrop = shell_state.backdrop;
     let order = visible(cards, state);
     let chips = chips(cards, categories, state.filter);
     let shell_controls = shell::declared_controls(shell_state);
@@ -470,7 +513,7 @@ pub fn panel(shell_state: &shell::Shell<'_>, cards: &[Card<'_>], categories: &[&
     let mut controls = shell::controls(shell_state);
     controls.extend(page_controls(&p, &chips, state, order.len(), first_page));
     let mut declared = shell_controls;
-    declared.extend(declared_controls(cards, &chips));
+    declared.extend(declared_controls(cards, &chips, ids));
     let [w, h] = shell::window_px();
     let mut collections = serde_json::Map::new();
     if !order.is_empty() {
@@ -489,6 +532,8 @@ pub fn panel(shell_state: &shell::Shell<'_>, cards: &[Card<'_>], categories: &[&
                 "root": {"type": "panel", "size": [w, h], "controls": controls},
             }).to_string(),
             "collections": collections,
+            "bindings": p_backdrop.bindings(),
+            "transitions": shell::Backdrop::transitions(),
         },
     })
 }
@@ -498,7 +543,7 @@ mod tests {
     use super::*;
 
     fn card<'a>(id: &'a str, name: &'a str, category: &'a str) -> Card<'a> {
-        Card { id, name, category, on: false, favorite: false, hidden: false }
+        Card { id, name, category, on: false, favorite: false, hidden: false, open: "" }
     }
 
     fn cards() -> Vec<Card<'static>> {
@@ -603,11 +648,13 @@ mod tests {
             title: "Mods",
             search_hint: "Search mods...",
             search: "",
+            search_id: "search",
             account: "Player",
             account_note: "Online",
+            backdrop: shell::Backdrop::NONE,
         };
         let state = state(Filter::All, Sort::Default, "");
-        let panel = panel(&shell, &c, &["HUD", "Visual", "Mechanic"], &state);
+        let panel = panel(&shell, &c, &["HUD", "Visual", "Mechanic"], &state, &Ids::plain());
         let declared = panel["controls"].as_array().unwrap().len();
         // The shell's back, forward and search, 7 chips, the sort button, and 3 per card.
         assert_eq!(declared, 3 + 7 + 1 + c.len() * 3);

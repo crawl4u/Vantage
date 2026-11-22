@@ -94,13 +94,13 @@ pub(super) const STATES: &[State] = &[
         name: "vantage-live-mods",
         size: SIZE,
         gui_scale: GUI_SCALE,
-        fixture: || vantage_live::fixture(vantage_ui::mods::Filter::All, ""),
+        fixture: || vantage_live::fixture(0, ""),
     },
     State {
         name: "vantage-live-mods-hud",
         size: SIZE,
         gui_scale: GUI_SCALE,
-        fixture: || vantage_live::fixture(vantage_ui::mods::Filter::Category("HUD"), ""),
+        fixture: || vantage_live::fixture(2, ""),
     },
     State {
         name: "vantage-options",

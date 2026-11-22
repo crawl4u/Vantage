@@ -32,6 +32,39 @@ const SEARCH: [f32; 2] = [200.0, 28.0];
 /// The close button's side, in design units.
 const CLOSE: f32 = 28.0;
 
+/// How the world behind the menu is blurred and dimmed while it is open: a blur in GUI pixels, and
+/// brightness and saturation factors where 1 leaves the picture unchanged.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Backdrop {
+    pub blur: f32,
+    pub brightness: f32,
+    pub saturation: f32,
+}
+
+impl Backdrop {
+    /// The world as it is.
+    pub const NONE: Self = Self { blur: 0.0, brightness: 1.0, saturation: 1.0 };
+
+    /// The surface bindings the host reads to blur and dim the world.
+    #[must_use]
+    pub fn bindings(self) -> serde_json::Map<String, Value> {
+        let mut map = serde_json::Map::new();
+        map.insert("#world_blur".into(), json!(self.blur.round().clamp(0.0, 32.0)));
+        map.insert("#world_brightness".into(), json!(self.brightness.clamp(0.0, 2.0)));
+        map.insert("#world_saturation".into(), json!(self.saturation.clamp(0.0, 2.0)));
+        map
+    }
+
+    /// The easings that fade the effect in when the menu opens and out when it closes.
+    #[must_use]
+    pub fn transitions() -> Value {
+        json!({
+            "#world_blur": {"duration": 0.25, "from": 0, "exit": 0},
+            "#world_brightness": {"duration": 0.25, "from": 1, "exit": 1},
+        })
+    }
+}
+
 /// One page the sidebar lists.
 #[derive(Clone, Copy, Debug)]
 pub struct Entry<'a> {
@@ -60,9 +93,13 @@ pub struct Shell<'a> {
     /// The search field's hint, and the text typed in it.
     pub search_hint: &'a str,
     pub search: &'a str,
+    /// The id the search field's control is declared with.
+    pub search_id: &'a str,
     /// The signed-in player's name, and a short line under it.
     pub account: &'a str,
     pub account_note: &'a str,
+    /// The blur and dimming of the world behind the menu.
+    pub backdrop: Backdrop,
 }
 
 /// The index of the first control after the sidebar entries: back, forward, then search.
@@ -84,7 +121,7 @@ pub fn declared_controls(shell: &Shell<'_>) -> Vec<Value> {
     declared.push(json!({"kind": "button", "id": "back", "label": "Back"}));
     declared.push(json!({"kind": "button", "id": "forward", "label": "Forward"}));
     declared.push(json!({
-        "kind": "text", "id": "search", "label": "Search", "value": shell.search,
+        "kind": "text", "id": shell.search_id, "label": "Search", "value": shell.search,
         "max_chars": 40, "live": true,
     }));
     declared
@@ -388,6 +425,8 @@ pub fn panel(shell: &Shell<'_>) -> Value {
         "surface": {
             "screen": "vantage.root",
             "document": document(shell).to_string(),
+            "bindings": shell.backdrop.bindings(),
+            "transitions": Backdrop::transitions(),
         },
     })
 }
@@ -414,8 +453,10 @@ mod tests {
             title: "Mods",
             search_hint: "Search mods...",
             search: "",
+            search_id: "search",
             account: "Player",
             account_note: "Online",
+            backdrop: Backdrop::NONE,
         }
     }
 

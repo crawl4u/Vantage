@@ -2,7 +2,7 @@
 
 use ui::mod_panel::Panel;
 use vantage_ui::{
-    shell::{self, Entry, Section, Shell},
+    shell::{self, Backdrop, Entry, Section, Shell},
     tokens::Palette,
 };
 
@@ -30,8 +30,10 @@ pub(super) fn fixture() -> Fixture {
         title: "Mods",
         search_hint: "Search mods...",
         search: "",
+        search_id: "search",
         account: "Player",
         account_note: "Online",
+        backdrop: Backdrop::NONE,
     });
     let panel: Panel = serde_json::from_value(panel).expect("the shell is a valid panel");
     Fixture::ModPanel(Box::new(panel), None, None)

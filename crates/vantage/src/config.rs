@@ -1306,6 +1306,8 @@ pub struct Settings {
     pub align: bool,
     /// Lines through the middle of the screen while the elements are being moved.
     pub show_guides: bool,
+    /// The redesigned menu is used where it exists (the Mods page).
+    pub new_menu: bool,
     pub cps_mode: CpsMode,
     /// Speed: the unit (index into `SPEED_UNITS`), how many decimals it shows (0 to
     /// `MAX_SPEED_DECIMALS`) and whether climbing and falling count (off: only along the ground).
@@ -1385,7 +1387,7 @@ pub struct Settings {
 impl Settings {
     /// Every field written, as the derived `Serialize` wrote them before only changed fields were.
     pub fn whole_json(&self) -> serde_json::Value {
-        let Settings { borders, grid, subchunks, slime_chunks, guardians, lights, blaze, hitboxes, hitbox_color, hitbox_player_color, hit_mode, hit_color, hit_opacity, fullbright, item_delay_fix, hide_scoreboard, sb_scores, waila_id, waila_pos, waila_mod, waila_growth, waila_tool, waila_dist, waila_state, waila_entity, waila_mod_color, waila_info_color, waila_good_color, waila_bad_color, va_yaw, va_pitch, va_speed, va_altitude, va_first, va_third, va_elytra, va_reverse, va_target, va_decimals, va_align, va_label_color, va_value_color, co_x, co_y, co_z, co_dir, co_decimal, co_horizontal, co_x_label, co_y_label, co_z_label, co_dir_cardinal, co_dir_mod, co_x_lc, co_x_tc, co_y_lc, co_y_tc, co_z_lc, co_z_tc, co_dir_tc, co_dir_mx, co_dir_mz, pvp_hits_lc, pvp_acc_lc, pvp_kills_lc, pvp_deaths_lc, pvp_num_tc, pvp_pct_tc, inv_empty, inv_show_bg, inv_mc, inv_grid, inv_grid_color, inv_grid_opacity, facing_label_chroma, waila_details, line_width, menu_key, favorites, share_skip, show_mouse, show_space, align, show_guides, cps_mode, speed_unit, speed_decimals, speed_vertical, facing_text, clock_12h, clock_seconds, stopwatch_keep, playtime_format, playtime_world_only, counter_item, reach_hide_zero, reach_highlight, reach_highlight_color, sat_overlay, sat_hunger, sat_potential, sat_inverse, sat_color, sat_layout, potion_mode, potion_horizontal, potion_per_line, potion_name, potion_level, potion_duration, potion_formatted, potion_upper, potion_blink, potion_color_name, potion_color_info, potion_icons, potion_hide_vanilla, potion_split, potion_offsets, potion_scales, elements, keys, zoom, gameplay, crosshair, profiles, names } = self;
+        let Settings { borders, grid, subchunks, slime_chunks, guardians, lights, blaze, hitboxes, hitbox_color, hitbox_player_color, hit_mode, hit_color, hit_opacity, fullbright, item_delay_fix, hide_scoreboard, sb_scores, waila_id, waila_pos, waila_mod, waila_growth, waila_tool, waila_dist, waila_state, waila_entity, waila_mod_color, waila_info_color, waila_good_color, waila_bad_color, va_yaw, va_pitch, va_speed, va_altitude, va_first, va_third, va_elytra, va_reverse, va_target, va_decimals, va_align, va_label_color, va_value_color, co_x, co_y, co_z, co_dir, co_decimal, co_horizontal, co_x_label, co_y_label, co_z_label, co_dir_cardinal, co_dir_mod, co_x_lc, co_x_tc, co_y_lc, co_y_tc, co_z_lc, co_z_tc, co_dir_tc, co_dir_mx, co_dir_mz, pvp_hits_lc, pvp_acc_lc, pvp_kills_lc, pvp_deaths_lc, pvp_num_tc, pvp_pct_tc, inv_empty, inv_show_bg, inv_mc, inv_grid, inv_grid_color, inv_grid_opacity, facing_label_chroma, waila_details, line_width, menu_key, favorites, share_skip, show_mouse, show_space, align, show_guides, new_menu, cps_mode, speed_unit, speed_decimals, speed_vertical, facing_text, clock_12h, clock_seconds, stopwatch_keep, playtime_format, playtime_world_only, counter_item, reach_hide_zero, reach_highlight, reach_highlight_color, sat_overlay, sat_hunger, sat_potential, sat_inverse, sat_color, sat_layout, potion_mode, potion_horizontal, potion_per_line, potion_name, potion_level, potion_duration, potion_formatted, potion_upper, potion_blink, potion_color_name, potion_color_info, potion_icons, potion_hide_vanilla, potion_split, potion_offsets, potion_scales, elements, keys, zoom, gameplay, crosshair, profiles, names } = self;
         let mut map = serde_json::Map::new();
         map.insert("borders".into(), serde_json::to_value(borders).unwrap());
         map.insert("grid".into(), serde_json::to_value(grid).unwrap());
@@ -1471,6 +1473,7 @@ impl Settings {
         map.insert("show_space".into(), serde_json::to_value(show_space).unwrap());
         map.insert("align".into(), serde_json::to_value(align).unwrap());
         map.insert("show_guides".into(), serde_json::to_value(show_guides).unwrap());
+        map.insert("new_menu".into(), serde_json::to_value(new_menu).unwrap());
         map.insert("cps_mode".into(), serde_json::to_value(cps_mode).unwrap());
         map.insert("speed_unit".into(), serde_json::to_value(speed_unit).unwrap());
         map.insert("speed_decimals".into(), serde_json::to_value(speed_decimals).unwrap());
@@ -1527,7 +1530,7 @@ impl serde::Serialize for Settings {
         use serde::ser::SerializeStruct;
         let defaults = Settings::default();
         // Every field, by name: a field added to `Settings` and not listed here does not compile.
-        let Settings { borders, grid, subchunks, slime_chunks, guardians, lights, blaze, hitboxes, hitbox_color, hitbox_player_color, hit_mode, hit_color, hit_opacity, fullbright, item_delay_fix, hide_scoreboard, sb_scores, waila_id, waila_pos, waila_mod, waila_growth, waila_tool, waila_dist, waila_state, waila_entity, waila_mod_color, waila_info_color, waila_good_color, waila_bad_color, va_yaw, va_pitch, va_speed, va_altitude, va_first, va_third, va_elytra, va_reverse, va_target, va_decimals, va_align, va_label_color, va_value_color, co_x, co_y, co_z, co_dir, co_decimal, co_horizontal, co_x_label, co_y_label, co_z_label, co_dir_cardinal, co_dir_mod, co_x_lc, co_x_tc, co_y_lc, co_y_tc, co_z_lc, co_z_tc, co_dir_tc, co_dir_mx, co_dir_mz, pvp_hits_lc, pvp_acc_lc, pvp_kills_lc, pvp_deaths_lc, pvp_num_tc, pvp_pct_tc, inv_empty, inv_show_bg, inv_mc, inv_grid, inv_grid_color, inv_grid_opacity, facing_label_chroma, waila_details, line_width, menu_key, favorites, share_skip, show_mouse, show_space, align, show_guides, cps_mode, speed_unit, speed_decimals, speed_vertical, facing_text, clock_12h, clock_seconds, stopwatch_keep, playtime_format, playtime_world_only, counter_item, reach_hide_zero, reach_highlight, reach_highlight_color, sat_overlay, sat_hunger, sat_potential, sat_inverse, sat_color, sat_layout, potion_mode, potion_horizontal, potion_per_line, potion_name, potion_level, potion_duration, potion_formatted, potion_upper, potion_blink, potion_color_name, potion_color_info, potion_icons, potion_hide_vanilla, potion_split, potion_offsets, potion_scales, elements, keys, zoom, gameplay, crosshair, profiles, names } = self;
+        let Settings { borders, grid, subchunks, slime_chunks, guardians, lights, blaze, hitboxes, hitbox_color, hitbox_player_color, hit_mode, hit_color, hit_opacity, fullbright, item_delay_fix, hide_scoreboard, sb_scores, waila_id, waila_pos, waila_mod, waila_growth, waila_tool, waila_dist, waila_state, waila_entity, waila_mod_color, waila_info_color, waila_good_color, waila_bad_color, va_yaw, va_pitch, va_speed, va_altitude, va_first, va_third, va_elytra, va_reverse, va_target, va_decimals, va_align, va_label_color, va_value_color, co_x, co_y, co_z, co_dir, co_decimal, co_horizontal, co_x_label, co_y_label, co_z_label, co_dir_cardinal, co_dir_mod, co_x_lc, co_x_tc, co_y_lc, co_y_tc, co_z_lc, co_z_tc, co_dir_tc, co_dir_mx, co_dir_mz, pvp_hits_lc, pvp_acc_lc, pvp_kills_lc, pvp_deaths_lc, pvp_num_tc, pvp_pct_tc, inv_empty, inv_show_bg, inv_mc, inv_grid, inv_grid_color, inv_grid_opacity, facing_label_chroma, waila_details, line_width, menu_key, favorites, share_skip, show_mouse, show_space, align, show_guides, new_menu, cps_mode, speed_unit, speed_decimals, speed_vertical, facing_text, clock_12h, clock_seconds, stopwatch_keep, playtime_format, playtime_world_only, counter_item, reach_hide_zero, reach_highlight, reach_highlight_color, sat_overlay, sat_hunger, sat_potential, sat_inverse, sat_color, sat_layout, potion_mode, potion_horizontal, potion_per_line, potion_name, potion_level, potion_duration, potion_formatted, potion_upper, potion_blink, potion_color_name, potion_color_info, potion_icons, potion_hide_vanilla, potion_split, potion_offsets, potion_scales, elements, keys, zoom, gameplay, crosshair, profiles, names } = self;
         // serde_json writes a struct announced with no fields as `{}` at once, so the count is exact.
         let count = 0
             + usize::from(*borders != defaults.borders)
@@ -1614,6 +1617,7 @@ impl serde::Serialize for Settings {
             + usize::from(*show_space != defaults.show_space)
             + usize::from(*align != defaults.align)
             + usize::from(*show_guides != defaults.show_guides)
+            + usize::from(*new_menu != defaults.new_menu)
             + usize::from(*cps_mode != defaults.cps_mode)
             + usize::from(*speed_unit != defaults.speed_unit)
             + usize::from(*speed_decimals != defaults.speed_decimals)
@@ -1910,6 +1914,9 @@ impl serde::Serialize for Settings {
         if *show_guides != defaults.show_guides {
             out.serialize_field("show_guides", show_guides)?;
         }
+        if *new_menu != defaults.new_menu {
+            out.serialize_field("new_menu", new_menu)?;
+        }
         if *cps_mode != defaults.cps_mode {
             out.serialize_field("cps_mode", cps_mode)?;
         }
@@ -2132,6 +2139,7 @@ impl Default for Settings {
             show_space: true,
             align: true,
             show_guides: true,
+            new_menu: true,
             cps_mode: CpsMode::Both,
             speed_unit: 0,
             // One decimal and the ground plane only: what Speed showed before it had options.

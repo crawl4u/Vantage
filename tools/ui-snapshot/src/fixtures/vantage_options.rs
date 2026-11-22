@@ -3,7 +3,7 @@
 use ui::mod_panel::Panel;
 use vantage_ui::{
     options::{self, Group, Kind, Opt},
-    shell::{Entry, Section, Shell},
+    shell::{Backdrop, Entry, Section, Shell},
     tokens::Palette,
 };
 
@@ -46,8 +46,10 @@ pub(super) fn fixture(collapsed: bool, query: &'static str) -> Fixture {
         title: "Keystrokes",
         search_hint: "Search options...",
         search: query,
+        search_id: "search",
         account: "Player",
         account_note: "Online",
+        backdrop: Backdrop::NONE,
     };
     let panel = options::panel(&shell, &shown);
     let panel: Panel = serde_json::from_value(panel).expect("the page is a valid panel");

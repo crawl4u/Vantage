@@ -2,8 +2,8 @@
 
 use ui::mod_panel::Panel;
 use vantage_ui::{
-    mods::{self, Card, Filter, Sort, State},
-    shell::{Entry, Section, Shell},
+    mods::{self, Card, Filter, Ids, Sort, State},
+    shell::{Backdrop, Entry, Section, Shell},
     tokens::Palette,
 };
 
@@ -43,7 +43,7 @@ pub(super) fn fixture(filter: Filter<'static>, query: &'static str) -> Fixture {
     ];
     let cards: Vec<Card<'static>> = NAMES
         .iter()
-        .map(|&(id, name, category, on, favorite)| Card { id, name, category, on, favorite, hidden: false })
+        .map(|&(id, name, category, on, favorite)| Card { id, name, category, on, favorite, hidden: false, open: "" })
         .collect();
     let shell = Shell {
         palette: Palette::dark(),
@@ -52,11 +52,13 @@ pub(super) fn fixture(filter: Filter<'static>, query: &'static str) -> Fixture {
         title: "Mods",
         search_hint: "Search mods...",
         search: query,
+        search_id: "search",
         account: "Player",
         account_note: "Online",
+        backdrop: Backdrop::NONE,
     };
     let state = State { filter, sort: Sort::Default, query };
-    let panel = mods::panel(&shell, &cards, &["HUD", "Visual", "Mechanic"], &state);
+    let panel = mods::panel(&shell, &cards, &["HUD", "Visual", "Mechanic"], &state, &Ids::plain());
     let panel: Panel = serde_json::from_value(panel).expect("the page is a valid panel");
     Fixture::ModPanel(Box::new(panel), None, None)
 }

@@ -514,6 +514,10 @@ pub fn panel(shell_state: &crate::shell::Shell<'_>, groups: &[Group<'_>]) -> Val
     let mut declared = shell_declared;
     declared.extend(self::declared(groups));
     let [ww, wh] = crate::shell::window_px();
+    let mut bindings = surface_bindings(groups);
+    if let Some(map) = bindings.as_object_mut() {
+        map.extend(shell_state.backdrop.bindings());
+    }
     json!({
         "reference_size": [ww, wh],
         "controls": declared,
@@ -523,7 +527,8 @@ pub fn panel(shell_state: &crate::shell::Shell<'_>, groups: &[Group<'_>]) -> Val
                 "namespace": "vantage",
                 "root": {"type": "panel", "size": [ww, wh], "controls": controls},
             }).to_string(),
-            "bindings": surface_bindings(groups),
+            "bindings": bindings,
+            "transitions": crate::shell::Backdrop::transitions(),
         },
     })
 }

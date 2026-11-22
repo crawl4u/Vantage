@@ -3582,7 +3582,13 @@ impl State {
     #[inline(never)]
     fn send_patch(&mut self) {
         self.menu_busy = true;
-        if let Err(error) = panel::update_content(&crate::panel::patch(&self.settings, &self.panel)) {
+        // The redesigned Mods page is a whole document: it is sent again instead of patched.
+        let sent = if self.settings.new_menu && self.panel.tab_number() == crate::menu_controls::MODS_PAGE {
+            panel::set_content(&crate::panel::build(&self.settings, &self.panel))
+        } else {
+            panel::update_content(&crate::panel::patch(&self.settings, &self.panel))
+        };
+        if let Err(error) = sent {
             // No panel while the menu is closed: it is set whole when it opens. A patch the
             // host refuses while the menu is open is said once, so it is not silent.
             if self.panel_open_seen && self.patch_error.as_deref() != Some(error.as_str()) {

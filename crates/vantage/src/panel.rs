@@ -467,6 +467,19 @@ impl PanelState {
         self.tab
     }
 
+    /// The Mods grid's filter chip (0 All, 1 On, 2 HUD, 3 Visual, 4 Mechanic, 5 Favorites), its sort and its search text.
+    pub fn grid_filter(&self) -> usize {
+        self.filter
+    }
+
+    pub fn grid_sort(&self) -> usize {
+        self.sort
+    }
+
+    pub fn search_text(&self) -> &str {
+        &self.search
+    }
+
     pub fn take_tab_changed(&mut self) -> bool {
         std::mem::take(&mut self.tab_changed)
     }
@@ -1808,6 +1821,9 @@ fn pick_element(id: &str, index: usize) -> Option<Element> {
 /// The whole menu for the current settings (the bundle, or a changed menu key).
 #[inline(never)]
 pub fn build(settings: &Settings, state: &PanelState) -> String {
+    if settings.new_menu && state.tab_number() == crate::menu_controls::MODS_PAGE {
+        return crate::menu_v2::mods_panel(settings, state);
+    }
     let value = |id: &str| value(settings, state, id);
     let order = state.grid_order(settings);
     let flags = menu::Flags { order: &order, ..flags(settings, state) };
@@ -2507,7 +2523,7 @@ mod tests {
 
     #[test]
     fn the_world_blurs_and_dims_behind_the_menu_except_while_moving() {
-        let settings = Settings::default();
+        let mut settings = Settings { new_menu: false, ..Settings::default() };
         let mut state = PanelState::default();
         let whole = build(&settings, &state);
         assert!(whole.contains("\"transitions\":{\"#world_blur\":{\"duration\":0.25,\"from\":0,\"exit\":0}"), "{whole}");
@@ -2521,7 +2537,7 @@ mod tests {
 
     #[test]
     fn the_move_bar_fades_while_an_element_is_held() {
-        let mut settings = Settings::default();
+        let mut settings = Settings { new_menu: false, ..Settings::default() };
         let mut state = PanelState::default();
         state.event(&mut settings, "move", 1.0);
         assert!(state.moving && !state.dragging);
@@ -2898,7 +2914,7 @@ mod tests {
 
     #[test]
     fn the_mods_grid_searches_filters_sorts_and_keeps_favorites() {
-        let mut settings = Settings::default();
+        let mut settings = Settings { new_menu: false, ..Settings::default() };
         let mut state = PanelState::default();
         let all = crate::menu_controls::MODS.len();
         assert_eq!(state.grid_order(&settings).len(), all);

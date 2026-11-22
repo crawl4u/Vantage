@@ -707,6 +707,7 @@ pub fn put_options(w: &mut Writer, s: &Settings) {
         show_space,
         align,
         show_guides,
+        new_menu: _,
         cps_mode,
         // These came after the first codes were shared: `put_extras` writes them after the elements.
         speed_unit: _,
