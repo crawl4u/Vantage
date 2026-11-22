@@ -14,8 +14,8 @@ const ALIGN: [&str; 3] = ["Left", "Center", "Right"];
 /// The Keystrokes page with its groups and a search applied.
 pub(super) fn fixture(collapsed: bool, query: &'static str) -> Fixture {
     const ENTRIES: [Entry<'static>; 2] = [
-        Entry { id: "mods", title: "Mods", active: false },
-        Entry { id: "keystrokes", title: "Keystrokes", active: true },
+        Entry { id: "mods", title: "Mods", icon: "", active: false },
+        Entry { id: "keystrokes", title: "Keystrokes", icon: "", active: true },
     ];
     const SECTIONS: [Section<'static>; 1] =
         [Section { heading: Some("Mods and options"), entries: &ENTRIES }];

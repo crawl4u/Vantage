@@ -31,6 +31,9 @@ const ACCOUNT_HEIGHT: f32 = 72.0;
 const SEARCH: [f32; 2] = [200.0, 28.0];
 /// The close button's side, in design units.
 const CLOSE: f32 = 28.0;
+/// The icon font's scale factors: in the sidebar, in the header's arrows and close button.
+const SIDEBAR_ICON: f32 = 1.25;
+const HEADER_ICON: f32 = 1.15;
 
 /// How the world behind the menu is blurred and dimmed while it is open: a blur in GUI pixels, and
 /// brightness and saturation factors where 1 leaves the picture unchanged.
@@ -71,6 +74,8 @@ pub struct Entry<'a> {
     /// A stable identifier: letters, digits, `_`, `-` and `.`.
     pub id: &'a str,
     pub title: &'a str,
+    /// A glyph from [`crate::icons`], or empty for none.
+    pub icon: &'a str,
     pub active: bool,
 }
 
@@ -246,11 +251,22 @@ pub fn controls(shell: &Shell<'_>) -> Vec<Value> {
                     fill,
                 ));
             }
+            let text_x = if entry.icon.is_empty() { space::XL } else { 42.0 };
+            if !entry.icon.is_empty() {
+                parts.push(node::icon(
+                    "icon",
+                    entry.icon,
+                    [px(space::M), (rect[3] - px(24.0)) / 2.0],
+                    [px(28.0), px(24.0)],
+                    ink,
+                    SIDEBAR_ICON,
+                ));
+            }
             parts.push(node::label(
                 "title",
                 entry.title,
-                [px(space::XL), (rect[3] - px(text::LABEL.size) * 1.6) / 2.0],
-                line_box(text::LABEL, SIDEBAR_WIDTH - ENTRY_INSET * 2.0 - 32.0),
+                [px(text_x), (rect[3] - px(text::LABEL.size) * 1.6) / 2.0],
+                line_box(text::LABEL, SIDEBAR_WIDTH - ENTRY_INSET * 2.0 - 56.0),
                 ink,
                 scale(text::LABEL),
                 Align::Left,
@@ -307,25 +323,29 @@ pub fn controls(shell: &Shell<'_>) -> Vec<Value> {
     let gutter = space::GUTTER;
     let head_y = (HEADER_HEIGHT - CLOSE) / 2.0;
     let extra = first_extra_control(shell.sections);
-    let arrow = |name: &str, x: f32, glyph: &str, control: usize| {
+    let arrow = |name: &str, x: f32, glyph: &str, control: usize, is_icon: bool| {
         node::button(
             name,
             [px(x), px(head_y)],
             [px(CLOSE), px(CLOSE)],
             &format!("mod.control:{control}"),
-            vec![node::label(
-                "g",
-                glyph,
-                [0.0, px(CLOSE - text::HEADING.size * 1.6) / 2.0],
-                [px(CLOSE), px(text::HEADING.size) * 1.6],
-                p.muted,
-                scale(text::HEADING),
-                Align::Center,
-            )],
+            vec![if is_icon {
+                node::icon("g", glyph, [0.0, px(CLOSE - 24.0) / 2.0], [px(CLOSE), px(24.0)], p.muted, HEADER_ICON)
+            } else {
+                node::label(
+                    "g",
+                    glyph,
+                    [0.0, px(CLOSE - text::HEADING.size * 1.6) / 2.0],
+                    [px(CLOSE), px(text::HEADING.size) * 1.6],
+                    p.muted,
+                    scale(text::HEADING),
+                    Align::Center,
+                )
+            }],
         )
     };
-    out.push(arrow("back", SIDEBAR_WIDTH + gutter - space::S, "<", extra));
-    out.push(arrow("forward", SIDEBAR_WIDTH + gutter + CLOSE - space::S, ">", extra + 1));
+    out.push(arrow("back", SIDEBAR_WIDTH + gutter - space::S, crate::icons::CHEVRON_LEFT, extra, true));
+    out.push(arrow("forward", SIDEBAR_WIDTH + gutter + CLOSE - space::S, ">", extra + 1, false));
     out.push(node::label(
         "title",
         shell.title,
@@ -379,15 +399,7 @@ pub fn controls(shell: &Shell<'_>) -> Vec<Value> {
         "mod.close",
         vec![
             node::rounded("fill", [0.0, 0.0], [px(CLOSE), px(CLOSE)], px(RADII.xs), p.raised),
-            node::label(
-                "x",
-                "x",
-                [0.0, px(CLOSE - text::LABEL.size * 1.6) / 2.0],
-                [px(CLOSE), px(text::LABEL.size) * 1.6],
-                p.text,
-                scale(text::LABEL),
-                Align::Center,
-            ),
+            node::icon("x", crate::icons::X, [0.0, px(CLOSE - 24.0) / 2.0], [px(CLOSE), px(24.0)], p.text, HEADER_ICON),
         ],
     ));
 
@@ -438,9 +450,9 @@ mod tests {
     use super::*;
 
     const ENTRIES: [Entry<'static>; 3] = [
-        Entry { id: "mods", title: "Mods", active: true },
-        Entry { id: "profiles", title: "Profiles", active: false },
-        Entry { id: "keybinds", title: "Keybinds", active: false },
+        Entry { id: "mods", title: "Mods", icon: "", active: true },
+        Entry { id: "profiles", title: "Profiles", icon: "", active: false },
+        Entry { id: "keybinds", title: "Keybinds", icon: "", active: false },
     ];
     const SECTIONS: [Section<'static>; 2] = [
         Section { heading: Some("Mods & options"), entries: &ENTRIES },

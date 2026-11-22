@@ -11,13 +11,13 @@ use super::Fixture;
 /// The shell on the dark theme, with the first page active.
 pub(super) fn fixture() -> Fixture {
     const MODS: [Entry<'static>; 3] = [
-        Entry { id: "mods", title: "Mods", active: true },
-        Entry { id: "profiles", title: "Profiles", active: false },
-        Entry { id: "keybinds", title: "Keybinds", active: false },
+        Entry { id: "mods", title: "Mods", icon: "", active: true },
+        Entry { id: "profiles", title: "Profiles", icon: "", active: false },
+        Entry { id: "keybinds", title: "Keybinds", icon: "", active: false },
     ];
     const LOOK: [Entry<'static>; 2] = [
-        Entry { id: "themes", title: "Themes", active: false },
-        Entry { id: "preferences", title: "Preferences", active: false },
+        Entry { id: "themes", title: "Themes", icon: "", active: false },
+        Entry { id: "preferences", title: "Preferences", icon: "", active: false },
     ];
     const SECTIONS: [Section<'static>; 2] = [
         Section { heading: Some("Mods and options"), entries: &MODS },

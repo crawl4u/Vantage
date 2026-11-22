@@ -20,6 +20,8 @@ pub struct Card<'a> {
     pub on: bool,
     pub favorite: bool,
     pub hidden: bool,
+    /// The card's glyph from [`crate::icons`], or empty to show the name's first letter.
+    pub icon: &'a str,
     /// The id of the card's open button.
     pub open: &'a str,
 }
@@ -208,6 +210,9 @@ const CELL_HEIGHT: f32 = 132.0;
 const GAP: f32 = space::M;
 /// The bottom bar's height, in design units.
 const BAR: f32 = 26.0;
+/// The icon font's scale factors: a card's icon and its favourite star.
+const CARD_ICON: f32 = 3.0;
+const STAR_ICON: f32 = 1.3;
 
 /// The pane's inner rectangle (inside the padding), in GUI pixels.
 #[must_use]
@@ -245,7 +250,7 @@ fn scale(style: crate::tokens::TextStyle) -> f32 {
 /// `#item_name`, `#item_initial`, and the animated `#item_toggle_toggle_progress`,
 /// `#item_favorite_toggle_progress` and `#item_open_hover`.
 #[must_use]
-pub fn template(p: &Palette) -> Value {
+pub fn template(p: &Palette, icons: bool) -> Value {
     let [cw, ch] = cell();
     let gap = px(GAP);
     let (w, h) = (cw - gap, ch - gap);
@@ -276,21 +281,24 @@ pub fn template(p: &Palette) -> Value {
             p.dim,
         ),
         {
-            let mut initial = node::label(
-                "initial",
-                "#item_initial",
-                [
-                    (w - tile) / 2.0,
-                    (h - bar - tile) / 2.0 - px(space::XS) + (tile - px(text::DISPLAY.size) * 1.6) / 2.0,
-                ],
-                [tile, px(text::DISPLAY.size) * 1.6],
-                p.text,
-                scale(text::DISPLAY),
-                Align::Center,
-            );
-            initial["initial"]["bindings"] = json!([{"binding_name": "#item_initial"}]);
-            initial["initial"]["text"] = json!("#item_initial");
-            initial
+            // The icon, or the name's first letter when the cards have none, centred in the tile.
+            let top = (h - bar - tile) / 2.0 - px(space::XS);
+            if icons {
+                node::bound_icon("initial", "#item_icon", [(w - tile) / 2.0, top + (tile - px(40.0)) / 2.0], [tile, px(40.0)], p.text, CARD_ICON)
+            } else {
+                let mut initial = node::label(
+                    "initial",
+                    "#item_initial",
+                    [(w - tile) / 2.0, top + (tile - px(text::DISPLAY.size) * 1.6) / 2.0],
+                    [tile, px(text::DISPLAY.size) * 1.6],
+                    p.text,
+                    scale(text::DISPLAY),
+                    Align::Center,
+                );
+                initial["initial"]["bindings"] = json!([{"binding_name": "#item_initial"}]);
+                initial["initial"]["text"] = json!("#item_initial");
+                initial
+            }
         },
         // The bar: neutral when off, accent when on (cross-faded by the toggle's progress).
         node::rounded("bar_off", [0.0, h - bar], [w, bar], px(RADII.md), p.dim),
@@ -328,23 +336,10 @@ pub fn template(p: &Palette) -> Value {
             name
         },
         press("switch", "toggle", [0.0, h - bar], [w, bar]),
-        // The favourite star: an outline that fills with the gold when set.
-        node::outline(
-            "star_off",
-            [w - px(space::XL + space::S), px(space::M)],
-            [px(space::L), px(space::L)],
-            px(RADII.xs),
-            1.0,
-            p.muted,
-        ),
-        with_bindings(
-            node::rounded(
-                "star_on",
-                [w - px(space::XL + space::S), px(space::M)],
-                [px(space::L), px(space::L)],
-                px(RADII.xs),
-                p.star,
-            ),
+        // The favourite star: an outline glyph that fills with the gold when set.
+        node::icon("star_off", crate::icons::STAR, [w - px(space::XXL), px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
+        node::bound(
+            node::icon("star_on", crate::icons::STAR, [w - px(space::XXL), px(space::S)], [px(20.0), px(20.0)], p.star, STAR_ICON),
             alpha("#item_favorite_toggle_progress"),
         ),
         press(
@@ -484,13 +479,13 @@ pub fn collection(p: &Palette, cards: &[Card<'_>], order: &[usize], first_card_c
         .map(|(i, card)| {
             let base = first_card_control + i * 3;
             json!({
-                "values": {"#item_name": card.name, "#item_initial": initial(card.name)},
+                "values": {"#item_name": card.name, "#item_initial": initial(card.name), "#item_icon": card.icon},
                 "controls": {"toggle": base, "favorite": base + 1, "open": base + 2},
             })
         })
         .collect();
     json!({
-        "definition": {"template": template(p), "columns": COLUMNS, "viewport": [vw, vh], "items": items},
+        "definition": {"template": template(p, cards.iter().all(|card| !card.icon.is_empty())), "columns": COLUMNS, "viewport": [vw, vh], "items": items},
         "order": order,
     })
 }
@@ -543,7 +538,7 @@ mod tests {
     use super::*;
 
     fn card<'a>(id: &'a str, name: &'a str, category: &'a str) -> Card<'a> {
-        Card { id, name, category, on: false, favorite: false, hidden: false, open: "" }
+        Card { id, name, category, on: false, favorite: false, hidden: false, icon: "", open: "" }
     }
 
     fn cards() -> Vec<Card<'static>> {

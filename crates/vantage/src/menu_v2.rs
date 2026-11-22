@@ -7,6 +7,7 @@
 use std::sync::OnceLock;
 
 use vantage_ui::{
+    icons,
     mods::{self, Card, Filter, Ids, Sort, State},
     options::{self, Group, Opt},
     shell::{Backdrop, Entry, Section, Shell},
@@ -35,6 +36,14 @@ fn names() -> Vec<&'static str> {
     collection_items()
         .iter()
         .map(|item| item["values"]["#item_name"].as_str().unwrap_or(""))
+        .collect()
+}
+
+/// Each card's icon, in `MODS` order, from the generated collection.
+fn card_icons() -> Vec<&'static str> {
+    collection_items()
+        .iter()
+        .map(|item| item["values"]["#item_icon"].as_str().unwrap_or(""))
         .collect()
 }
 
@@ -69,6 +78,7 @@ fn open_ids() -> &'static [String] {
 #[must_use]
 pub fn cards<'a>(settings: &'a Settings, state: &'a PanelState) -> Vec<Card<'a>> {
     let names = names();
+    let icon_names = card_icons();
     let open = open_ids();
     MODS.iter()
         .enumerate()
@@ -79,6 +89,7 @@ pub fn cards<'a>(settings: &'a Settings, state: &'a PanelState) -> Vec<Card<'a>>
             on: matches!(crate::panel::value(settings, state, id), Value::Toggle(true)),
             favorite: settings.favorites.iter().any(|f| f == id),
             hidden: false,
+            icon: icon_names.get(i).copied().unwrap_or(""),
             open: open.get(i).map_or("", String::as_str),
         })
         .collect()
@@ -98,14 +109,14 @@ fn entries(active: usize) -> Vec<Vec<Entry<'static>>> {
         .map(|(_, pages)| {
             pages
                 .iter()
-                .map(|&(tab, title)| Entry { id: TAB_IDS[tab], title, active: tab == active })
+                .map(|&(tab, title)| Entry { id: TAB_IDS[tab], title, icon: icon_of(tab), active: tab == active })
                 .collect()
         })
         .collect();
     if matches!(active, 1 | 2) {
         groups.push(vec![
-            Entry { id: TAB_IDS[2], title: "Style", active: active == 2 },
-            Entry { id: TAB_IDS[1], title: "Layout", active: active == 1 },
+            Entry { id: TAB_IDS[2], title: "Style", icon: icons::PALETTE, active: active == 2 },
+            Entry { id: TAB_IDS[1], title: "Layout", icon: icons::GRID_3X3, active: active == 1 },
         ]);
     }
     groups
@@ -118,6 +129,18 @@ fn sections_of<'a>(entries: &'a [Vec<Entry<'static>>], element: &'a str) -> Vec<
         .enumerate()
         .map(|(i, list)| Section { heading: Some(SIDEBAR.get(i).map_or(element, |group| group.0)), entries: list })
         .collect()
+}
+
+/// A page's sidebar icon.
+fn icon_of(tab: usize) -> &'static str {
+    match tab {
+        0 => icons::LAYERS,
+        6 => icons::SETTINGS,
+        7 => icons::PACKAGE,
+        8 => icons::HEART,
+        26 => icons::CLOUD,
+        _ => "",
+    }
 }
 
 /// `tab_<n>` for each page, as static text.

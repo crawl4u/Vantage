@@ -7,6 +7,8 @@ use crate::tokens::Rgba;
 
 /// The label font Cinnabar draws authored panels with.
 pub const FONT: &str = "mod_panel_sans";
+/// The font of the menu's icons (see [`crate::icons`]).
+pub const ICON_FONT: &str = "mod_panel";
 
 /// How a label sits in its box.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,6 +98,22 @@ pub fn label(
     node.insert("color".into(), json!(color));
     node.insert("text_alignment".into(), json!(align.name()));
     named(name, anchored(node))
+}
+
+/// An icon: one glyph of the icon font in a box, `scale` times the font's size.
+#[must_use]
+pub fn icon(name: &str, glyph: &str, offset: [f32; 2], size: [f32; 2], color: Rgba, scale: f32) -> Value {
+    let mut control = label(name, glyph, offset, size, color, scale, Align::Center);
+    control[name]["font_type"] = json!(ICON_FONT);
+    control
+}
+
+/// An icon whose glyph is the host binding `binding` (such as `#item_icon`).
+#[must_use]
+pub fn bound_icon(name: &str, binding: &str, offset: [f32; 2], size: [f32; 2], color: Rgba, scale: f32) -> Value {
+    let mut control = icon(name, binding, offset, size, color, scale);
+    control[name]["bindings"] = json!([{"binding_name": binding}]);
+    control
 }
 
 /// A plain container holding `controls`.

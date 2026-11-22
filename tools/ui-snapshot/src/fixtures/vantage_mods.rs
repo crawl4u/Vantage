@@ -29,13 +29,13 @@ const NAMES: [(&str, &str, &str, bool, bool); 14] = [
 /// The page with `filter` and `query` applied.
 pub(super) fn fixture(filter: Filter<'static>, query: &'static str) -> Fixture {
     const MODS: [Entry<'static>; 3] = [
-        Entry { id: "mods", title: "Mods", active: true },
-        Entry { id: "profiles", title: "Profiles", active: false },
-        Entry { id: "keybinds", title: "Keybinds", active: false },
+        Entry { id: "mods", title: "Mods", icon: "", active: true },
+        Entry { id: "profiles", title: "Profiles", icon: "", active: false },
+        Entry { id: "keybinds", title: "Keybinds", icon: "", active: false },
     ];
     const LOOK: [Entry<'static>; 2] = [
-        Entry { id: "themes", title: "Themes", active: false },
-        Entry { id: "preferences", title: "Preferences", active: false },
+        Entry { id: "themes", title: "Themes", icon: "", active: false },
+        Entry { id: "preferences", title: "Preferences", icon: "", active: false },
     ];
     const SECTIONS: [Section<'static>; 2] = [
         Section { heading: Some("Mods and options"), entries: &MODS },
@@ -43,7 +43,7 @@ pub(super) fn fixture(filter: Filter<'static>, query: &'static str) -> Fixture {
     ];
     let cards: Vec<Card<'static>> = NAMES
         .iter()
-        .map(|&(id, name, category, on, favorite)| Card { id, name, category, on, favorite, hidden: false, open: "" })
+        .map(|&(id, name, category, on, favorite)| Card { id, name, category, on, favorite, hidden: false, icon: "", open: "" })
         .collect();
     let shell = Shell {
         palette: Palette::dark(),
