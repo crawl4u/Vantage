@@ -80,8 +80,11 @@ pub(crate) struct LayerSpec {
     /// Clear, rain and thunder bits; all when the layer names none.
     pub(crate) weather: u8,
     /// Inclusive day ranges, and `daysLoop`.
-    pub(crate) days: Option<(Vec<(u32, u32)>, Option<u32>)>,
+    pub(crate) days: Option<LayerDays>,
 }
+
+/// A layer's inclusive day ranges and the `daysLoop` period.
+pub(crate) type LayerDays = (Vec<(u32, u32)>, Option<u32>);
 
 /// Parses a Java clock time such as `19:20`, `4:20:30` or `6` into hours.
 fn parse_hours(value: &str) -> Option<f32> {

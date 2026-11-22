@@ -129,8 +129,8 @@ const LEGS: [Piece; 24] = [
     leg(6, 44, Face::FootSouth, 13, Turn::FlipX),
 ];
 
-/// Bedrock's bed also has frame rails between the legs, which Java's block models do not. Their
-/// regions of the texture stay transparent, and the alpha-tested bed pass leaves them undrawn.
+// Bedrock's bed also has frame rails between the legs, which Java's block models do not. Their
+// regions of the texture stay transparent, and the alpha-tested bed pass leaves them undrawn.
 
 /// The texture names a bed colour reads, without folders or extension, in [`Face`] order.
 fn name(color: &str, face: Face) -> String {

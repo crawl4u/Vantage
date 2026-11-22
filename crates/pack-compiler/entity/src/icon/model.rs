@@ -517,6 +517,8 @@ fn edge(a: [f32; 3], b: [f32; 3], p: [f32; 2]) -> f32 {
     (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
 }
 
+// One call per projected triangle: the canvas, its buffers and the triangle belong together.
+#[allow(clippy::too_many_arguments)]
 fn triangle(
     side: usize,
     pixels: &mut [u8],

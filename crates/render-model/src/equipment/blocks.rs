@@ -595,7 +595,7 @@ fn compose_sheet(world: &RuntimeAssets, materials: &[u32; 6]) -> Option<IconSpri
     }
     let side = sources
         .iter()
-        .map(|source| sheet_side(u32::from(*source)))
+        .map(|source| sheet_side(*source))
         .max()?;
     let mut tiles = Vec::with_capacity(BlockFace::ALL.len());
     for id in materials {
