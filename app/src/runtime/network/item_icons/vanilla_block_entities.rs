@@ -15,9 +15,13 @@ const MAX_TEXTURE_SIDE: u32 = 512;
 /// Adds an icon for each block item whose entity model the pack can texture; items whose
 /// textures the pack lacks keep their vanilla icon.
 pub(in crate::runtime::network) fn append(view: &LayeredPackView, icons: &mut BlockIcons) {
-    for (identifier, metadata) in super::vanilla_blocks::block_item_keys().chain(coloured_beds()) {
+    let mut seen = std::collections::HashSet::new();
+    for (identifier, metadata) in super::vanilla_blocks::block_item_keys().chain(bed_items()) {
         if icons.icons.len() >= MAX_SESSION_ICONS {
             break;
+        }
+        if !seen.insert((identifier.clone(), metadata)) {
+            continue;
         }
         let sprite = pack_entity_compiler::block_entity_icon(identifier, metadata, |path| {
             let texture = decode_pack_texture_with_policy(view, path, device_policy(), true)?;
@@ -38,8 +42,16 @@ pub(in crate::runtime::network) fn append(view: &LayeredPackView, icons: &mut Bl
     }
 }
 
-/// Bedrock's per-colour bed items (`minecraft:red_bed`), which are items of their own rather than
-/// the dyed `minecraft:bed` block item.
+/// Every bed item: the dyed `minecraft:bed` (one per dye metadata) and Bedrock's per-colour names,
+/// which the item carrier may route as sprites rather than block items.
+fn bed_items() -> impl Iterator<Item = (&'static Arc<str>, u32)> {
+    static DYED: LazyLock<Arc<str>> = LazyLock::new(|| Arc::from("minecraft:bed"));
+    (0..16)
+        .map(|dye| (&*DYED, dye))
+        .chain(coloured_beds())
+}
+
+/// Bedrock's per-colour bed items (`minecraft:red_bed`).
 fn coloured_beds() -> impl Iterator<Item = (&'static Arc<str>, u32)> {
     static BEDS: LazyLock<Vec<Arc<str>>> = LazyLock::new(|| {
         assets::block_entity_geometry::SHULKER_COLORS[1..]
@@ -59,8 +71,8 @@ mod tests {
 
     #[test]
     fn every_coloured_bed_item_gets_a_model_icon() {
-        let beds: Vec<_> = coloured_beds().collect();
-        assert_eq!(beds.len(), 16);
+        let beds: Vec<_> = bed_items().collect();
+        assert_eq!(beds.len(), 32);
         for (identifier, metadata) in beds {
             let icon = pack_entity_compiler::block_entity_icon(identifier, metadata, |_| {
                 Some(assets::IconSprite {
