@@ -493,9 +493,105 @@ pub fn surface_bindings(groups: &[Group<'_>]) -> Value {
     Value::Object(map)
 }
 
+/// A list of every value of one choice, drawn over the page.
+#[derive(Clone, Copy, Debug)]
+pub struct Popup<'a> {
+    /// The option's name, shown as the list's title.
+    pub title: &'a str,
+    pub options: &'a [&'a str],
+    pub selected: usize,
+}
+
+/// The id a list's values press: `pick_<n>`; and the one that closes it.
+pub const PICK_CLOSE: &str = "pick_close";
+
+/// The controls a list declares: its close button, then one button per value.
+#[must_use]
+pub fn popup_declared(popup: &Popup<'_>) -> Vec<Value> {
+    let mut out = vec![json!({"kind": "button", "id": PICK_CLOSE, "label": "Close"})];
+    for (n, name) in popup.options.iter().enumerate() {
+        out.push(json!({"kind": "button", "id": format!("pick_{n}"), "label": *name}));
+    }
+    out
+}
+
+/// The list over `area` (GUI pixels): a dimmer that closes it, a card with the title and the values.
+#[must_use]
+pub fn popup_controls(p: &Palette, popup: &Popup<'_>, area: [f32; 4], first: usize) -> Vec<Value> {
+    let [ax, ay, aw, ah] = area;
+    let row = px(32.0);
+    let width = px(260.0).min(aw - px(space::XL * 2.0));
+    let title_h = px(44.0);
+    let want = title_h + row * popup.options.len() as f32 + px(space::M);
+    let height = want.min(ah - px(space::XL * 2.0));
+    let (x, y) = (ax + (aw - width) / 2.0, ay + (ah - height) / 2.0);
+    let list_h = height - title_h - px(space::M);
+    let content_h = row * popup.options.len() as f32;
+    let buttons: Vec<Value> = popup
+        .options
+        .iter()
+        .enumerate()
+        .map(|(n, name)| {
+            let on = n == popup.selected;
+            node::button(
+                &format!("opt_{n}"),
+                [0.0, row * n as f32],
+                [width - px(space::XL * 2.0) - 8.0, row - px(2.0)],
+                &format!("mod.control:{}", first + 1 + n),
+                vec![
+                    node::rounded(
+                        "fill",
+                        [0.0, 0.0],
+                        [width - px(space::XL * 2.0) - 8.0, row - px(2.0)],
+                        px(RADII.xs),
+                        if on { p.accent } else { p.dim },
+                    ),
+                    node::label(
+                        "text",
+                        name,
+                        [px(space::M), (row - px(2.0) - line(text::SMALL)) / 2.0],
+                        [width - px(space::XL * 2.0) - 8.0 - px(space::XL), line(text::SMALL)],
+                        if on { p.on_accent } else { p.text },
+                        scale(text::SMALL),
+                        Align::Left,
+                    ),
+                ],
+            )
+        })
+        .collect();
+    vec![
+        // Everything behind the card dims, and a press there closes the list.
+        node::button(
+            "pick_dim",
+            [ax, ay],
+            [aw, ah],
+            &format!("mod.control:{first}"),
+            vec![node::rounded("dim", [0.0, 0.0], [aw, ah], px(RADII.md), [0.0, 0.0, 0.0, 0.55])],
+        ),
+        node::rounded("pick_card", [x, y], [width, height], px(RADII.md), p.raised),
+        node::outline("pick_edge", [x, y], [width, height], px(RADII.md), 1.0, p.border),
+        node::label(
+            "pick_title",
+            popup.title,
+            [x + px(space::XL), y + (title_h - line(text::HEADING)) / 2.0],
+            [width - px(space::XL * 2.0), line(text::HEADING)],
+            p.highlight,
+            scale(text::HEADING),
+            Align::Left,
+        ),
+        node::scroll_view(
+            "pick_list",
+            [x + px(space::XL), y + title_h],
+            [width - px(space::XL * 2.0), list_h],
+            buttons,
+            content_h,
+        ),
+    ]
+}
+
 /// The settings page: the shell with the groups as scrolling rows in its pane.
 #[must_use]
-pub fn panel(shell_state: &crate::shell::Shell<'_>, groups: &[Group<'_>]) -> Value {
+pub fn panel(shell_state: &crate::shell::Shell<'_>, groups: &[Group<'_>], popup: Option<&Popup<'_>>) -> Value {
     let p = shell_state.palette;
     let shell_declared = crate::shell::declared_controls(shell_state);
     let first = shell_declared.len();
@@ -513,6 +609,12 @@ pub fn panel(shell_state: &crate::shell::Shell<'_>, groups: &[Group<'_>]) -> Val
     ));
     let mut declared = shell_declared;
     declared.extend(self::declared(groups));
+    if let Some(popup) = popup {
+        // The list's controls follow every row's: its first index is the next one declared.
+        let first = declared.len();
+        controls.extend(popup_controls(&p, popup, [x, y, w, h], first));
+        declared.extend(popup_declared(popup));
+    }
     let [ww, wh] = crate::shell::window_px();
     let mut bindings = surface_bindings(groups);
     if let Some(map) = bindings.as_object_mut() {
@@ -637,6 +739,39 @@ mod tests {
         assert_eq!(all.len(), 2, "no words, no filtering");
         assert!(all[0].collapsed, "and no change to what is collapsed");
         assert_eq!(groups_of(&all).len(), 2);
+    }
+
+    #[test]
+    fn a_choice_list_declares_a_close_button_and_a_button_per_value_and_presses_only_those() {
+        let names = ["Red", "Green", "Blue"];
+        let popup = Popup { title: "Color", options: &names, selected: 1 };
+        let declared = popup_declared(&popup);
+        assert_eq!(declared.len(), 4);
+        assert_eq!(declared[0]["id"], PICK_CLOSE);
+        assert_eq!(declared[3]["id"], "pick_2");
+        let first = 10;
+        let controls = popup_controls(&Palette::dark(), &popup, [0.0, 0.0, 300.0, 200.0], first);
+        let mut presses = Vec::new();
+        fn collect(value: &Value, presses: &mut Vec<String>) {
+            let node = node::body(value);
+            if let Some(press) = node["button_mappings"][0]["to_button_id"].as_str() {
+                presses.push(press.to_owned());
+            }
+            if let Some(children) = node["controls"].as_array() {
+                for child in children {
+                    collect(child, presses);
+                }
+            }
+            if let Some(children) = node["controls"].as_array().and_then(|c| c.first()).and_then(|c| c.as_object()) {
+                let _ = children;
+            }
+        }
+        for control in &controls {
+            collect(control, &mut presses);
+        }
+        for n in 0..4 {
+            assert!(presses.contains(&format!("mod.control:{}", first + n)), "control {n} is not pressed");
+        }
     }
 
     #[test]

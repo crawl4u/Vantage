@@ -157,6 +157,12 @@ pub(super) const STATES: &[State] = &[
         fixture: || vantage_live::settings(4),
     },
     State {
+        name: "vantage-page-choice-list",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::choice(2, "text_color"),
+    },
+    State {
         name: "vantage-options",
         size: SIZE,
         gui_scale: GUI_SCALE,

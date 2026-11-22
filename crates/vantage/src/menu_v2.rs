@@ -304,10 +304,10 @@ fn rows_of<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Sett
 pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> String {
     let defaults = Settings::default();
     let rows = rows(settings, state, &defaults, tab);
-    // A choice steps through its values on press, so its control is declared under its own id.
+    // A choice opens its list of values on press, so its control is declared under its own id.
     let ids: Vec<String> = rows
         .iter()
-        .map(|row| if matches!(row.value, Value::Choice(..)) { format!("cycle_{}", row.id) } else { row.id.to_owned() })
+        .map(|row| if matches!(row.value, Value::Choice(..)) { format!("choose_{}", row.id) } else { row.id.to_owned() })
         .collect();
     let opts: Vec<Opt<'_>> = rows
         .iter()
@@ -350,7 +350,18 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
         account_note: "",
         backdrop: backdrop(settings),
     };
-    options::panel(&shell, &shown).to_string()
+    // The open choice's list of values.
+    let open = state.open_choice().and_then(|id| match crate::panel::value(settings, state, id) {
+        Value::Choice(selected, names) => {
+            let label = rows.iter().find(|row| row.id == id).map_or("", |row| row.label);
+            // A colour's Custom row opens an editor these pages do not draw, so it is not listed.
+            let names = if crate::panel::is_colour(id) && names.last() == Some(&"Custom") { &names[..names.len() - 1] } else { names };
+            Some((label, names, selected))
+        }
+        _ => None,
+    });
+    let popup = open.map(|(label, names, selected)| options::Popup { title: label, options: names, selected });
+    options::panel(&shell, &shown, popup.as_ref()).to_string()
 }
 
 /// The blur and dimming of the world behind the menu.
@@ -462,7 +473,7 @@ mod tests {
     }
 
     #[test]
-    fn a_choice_steps_to_its_next_value_and_reset_restores_the_default() {
+    fn a_choice_is_picked_from_its_list_and_reset_restores_the_default() {
         let mut settings = Settings::default();
         let mut state = PanelState::default();
         state.event(&mut settings, "tab_16", 1.0);
@@ -478,9 +489,13 @@ mod tests {
             Value::Choice(at, names) => (at, names.len()),
             _ => panic!("gp_time is a choice"),
         };
-        state.event(&mut settings, "cycle_gp_time", 1.0);
+        state.event(&mut settings, "choose_gp_time", 1.0);
+        assert_eq!(state.open_choice(), Some("gp_time"));
+        let pick = (at + 1) % count;
+        state.event(&mut settings, &format!("pick_{pick}"), 1.0);
         let Value::Choice(next, _) = crate::panel::value(&settings, &state, "gp_time") else { panic!() };
-        assert_eq!(next, (at + 1) % count);
+        assert_eq!(next, pick);
+        assert_eq!(state.open_choice(), None, "picking closes the list");
     }
 
     #[test]

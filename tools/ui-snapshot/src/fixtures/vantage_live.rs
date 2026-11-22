@@ -27,3 +27,14 @@ pub(super) fn settings(tab: usize) -> Fixture {
     let panel: Panel = serde_json::from_str(&page).expect("the page is a valid panel");
     Fixture::ModPanel(Box::new(panel), None, None)
 }
+
+/// A settings page with one choice's list of values open.
+pub(super) fn choice(tab: usize, id: &str) -> Fixture {
+    let mut settings = Settings::default();
+    let mut state = PanelState::default();
+    state.event(&mut settings, &format!("tab_{tab}"), 1.0);
+    state.event(&mut settings, &format!("choose_{id}"), 1.0);
+    let page = menu_v2::page(&settings, &state).expect("a rebuilt page");
+    let panel: Panel = serde_json::from_str(&page).expect("the page is a valid panel");
+    Fixture::ModPanel(Box::new(panel), None, None)
+}

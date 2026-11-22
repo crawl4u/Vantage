@@ -259,6 +259,8 @@ pub struct PanelState {
     search: String,
     /// The search text of the redesigned settings pages, and the page it was typed on.
     option_search: (usize, String),
+    /// The choice whose list of values is open on a redesigned page.
+    choice: Option<String>,
     /// The tab changed: the host needs that tab's document.
     tab_changed: bool,
     /// The page was opened from the Crosshair page while its window was grown: the window eases back.
@@ -480,6 +482,11 @@ impl PanelState {
 
     pub fn search_text(&self) -> &str {
         &self.search
+    }
+
+    /// The choice whose list of values is open.
+    pub fn open_choice(&self) -> Option<&str> {
+        self.choice.as_deref()
     }
 
     /// The text typed in the open settings page's search field (empty on any other page).
@@ -1024,14 +1031,29 @@ impl PanelState {
     }
 
     fn handle(&mut self, settings: &mut Settings, id: &str, value: f32) -> Effect {
+        // The redesigned pages' lists of values: a choice opens its list, a value picks, and anything else closes it.
+        if let Some(real) = id.strip_prefix("choose_") {
+            self.choice = Some(real.to_owned());
+            return Effect { republish: true, ..Effect::default() };
+        }
+        if id == "pick_close" {
+            self.choice = None;
+            return Effect { republish: true, ..Effect::default() };
+        }
+        if let Some(n) = id.strip_prefix("pick_").and_then(|n| n.parse::<usize>().ok()) {
+            return match self.choice.take() {
+                // A colour's Custom row opens the old hex editor, which these pages do not draw: it is not offered.
+                Some(real) if n == CUSTOM_ROW && is_colour(&real) => Effect { republish: true, ..Effect::default() },
+                Some(real) => self.apply(settings, &real, n as f32).merge(Effect { save: true, republish: true, ..Effect::default() }),
+                None => Effect::default(),
+            };
+        }
+        self.choice = None;
         // The redesigned pages' back button returns to the Mods page.
         if id == "back" {
             return self.handle(settings, "tab_0", 1.0);
         }
         // The redesigned pages: a choice steps to its next value, and Reset restores an option's default.
-        if let Some(real) = id.strip_prefix("cycle_") {
-            return self.cycle(settings, real);
-        }
         if let Some(real) = id.strip_suffix("_reset").filter(|real| !real.is_empty() && CONTROLS.iter().any(|c| c.1 == *real)) {
             return self.restore(settings, real);
         }
@@ -1331,15 +1353,6 @@ impl PanelState {
         self.toast(&notice);
         self.notice = Some(notice);
         Effect { save: true, rebind: true, republish: true }
-    }
-
-    /// Steps a choice to its next value, wrapping at the end.
-    fn cycle(&mut self, settings: &mut Settings, id: &str) -> Effect {
-        let Value::Choice(at, options) = value(settings, self, id) else {
-            return Effect::default();
-        };
-        let next = (at + 1) % options.len().max(1);
-        self.apply(settings, id, next as f32).merge(Effect { republish: true, ..Effect::default() })
     }
 
     /// Puts an option back to its default value.
@@ -1811,7 +1824,7 @@ impl PanelState {
 }
 
 /// Whether `id` is a colour dropdown.
-fn is_colour(id: &str) -> bool {
+pub(crate) fn is_colour(id: &str) -> bool {
     matches!(
         id,
         "bg_color" | "text_color" | "pressed_color" | "pressed_text_color" | "active_color" | "border_color" | "bar_color" | "armor_good" | "armor_mid" | "armor_low" | "armor_text_color" | "hit_color" | "hitbox_color" | "reach_highlight_color" | "sat_color" | "gp_wp_color" | "gp_wp_edit_color"
