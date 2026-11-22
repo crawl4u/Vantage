@@ -103,12 +103,28 @@ Open questions are recorded in the pull request that starts each phase.
 
 ## Status
 
-Done: tokens, shell, the Mods page on the mod's real list, and option rows. In the live menu (`new_menu`,
-on by default) the Mods tab and 22 settings pages (Layout, Style, Chunk borders, Zoom, Crosshair, General,
-Hitboxes, Hit color, Time changer, Weather changer, Nametags, Hurt camera, Damage indicator, Menu blur,
-CPS limiter, Block outline, Markers, Text hotkey, Hive, Perspective, Glass, Sharing) use the new design;
-their rows come from the controls each old page pressed, under the old control ids.
+The goal is near-identical functionality and appearance to the reference, improved where we can. Done means
+built and checked in the live client; "preview" means rendered offline only.
 
-Still on the old design: Config (setups), Credits and Waypoints. Not yet built: a dropdown list for
-choices (they cycle), colour pickers, icons (cards show an initial), hiding a row until its parent option
-is on, and the Crosshair preview.
+| Area | State |
+| --- | --- |
+| Design tokens, dark and light palettes, contrast rule | done (light theme not selectable yet) |
+| Shell: sidebar with icons and sections, header, search, close, account row | done |
+| Mods grid: icon cards, on/off bar, favourite star, chips, search, sort, empty states | done |
+| Mod page: Enabled switch plus options, back, per-page search | done |
+| Option rows: switch, slider (drag and typed value), choice list, keybind, action, info | done |
+| Reset per option, collapsible groups | done (groups used only in the options preview) |
+| Pages rebuilt: Layout, Style, Chunk borders, Zoom, Crosshair, General, Hitboxes, Hit color, Time and Weather changers, Nametags, Hurt camera, Damage indicator, Menu blur, CPS limiter, Block outline, Markers, Text hotkey, Hive, Perspective, Glass, Sharing | preview, Time changer live |
+| World blur and dimming behind the menu | done |
+
+Not built, in the order they should be taken:
+
+1. Hide a mod from its card and a Hidden chip; sort as an icon segment control with Custom order and A to Z.
+2. Drag a card to reorder (Custom order), with the grid re-laying out under the pointer.
+3. Group headers on the Mods grid that collapse by type.
+4. Colour picker (Custom colours), rows that show only while their parent option is on, grouped sections
+   on the converted pages, the Crosshair preview.
+5. Profiles (the old setups), Keybinds (grouped, with conflict marking and a keyboard map), Themes (pick,
+   light theme, custom editor) and Preferences pages; Config, Credits and Waypoints still on the old design.
+6. Global search results page across all options; notifications; changelog.
+7. HUD editor: drag with snapping, grouping, history, vanilla ghosts.
