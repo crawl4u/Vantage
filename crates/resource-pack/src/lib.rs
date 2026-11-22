@@ -16,6 +16,7 @@ mod crypto;
 mod dependencies;
 mod fingerprint;
 mod import;
+mod java_fill;
 mod library;
 mod manifest;
 mod merge;

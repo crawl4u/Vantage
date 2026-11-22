@@ -538,6 +538,8 @@ impl GlobalPackLibrary {
             };
             stack = ValidatedPackStack::compose(&stack, &next)?;
         }
+        // Art an import filled in from the game belongs under every pack, not over the ones below.
+        let stack = stack.with_java_base_fills_below();
         let _ = stack.fingerprint();
         Ok(Arc::new(stack))
     }
