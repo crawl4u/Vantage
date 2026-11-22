@@ -134,7 +134,7 @@ pub(super) fn first_person_display_for_profile(
 /// A bed's real length in blocks, which the first-person pose restores from the held rig's.
 const BED_BLOCKS_LONG: f32 = 2.0 / render_model::block_entity::HELD_BED_LENGTH;
 
-fn bed_in_hand() -> Mat4 {
+pub(super) fn bed_in_hand() -> Mat4 {
     let generic = Mat4::from_rotation_y(degrees(45.0)) * Mat4::from_scale(Vec3::splat(0.4));
     let java = Mat4::from_translation(Vec3::new(0.0, 3.0 / 16.0, 0.0))
         * Mat4::from_rotation_x(degrees(30.0))

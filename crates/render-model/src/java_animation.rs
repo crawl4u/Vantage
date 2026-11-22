@@ -254,6 +254,8 @@ pub enum JavaItemMesh {
     Sprite,
     /// Our centred unit block cube.
     Block,
+    /// A bed, left in the generic block frame for the caller's own bed pose.
+    Bed,
     /// A raster in image columns/rows with extrusion depth normalized to 0..1.
     Raster { width: u16, height: u16 },
 }
@@ -261,6 +263,9 @@ pub enum JavaItemMesh {
 /// Places our mesh where Java's item draw puts its own: the flat item's tilt over its mirrored
 /// unit slab, or the cube's quarter turn.
 fn draw_item(mut stack: Stack, mesh: JavaItemMesh) -> Mat4 {
+    if mesh == JavaItemMesh::Bed {
+        return stack.0;
+    }
     if mesh == JavaItemMesh::Block {
         stack.rotate_y(90.0);
         return stack.0;
@@ -282,7 +287,7 @@ fn draw_item(mut stack: Stack, mesh: JavaItemMesh) -> Mat4 {
                 Vec4::new(1.0, 1.0, 0.0, 1.0),
             );
         }
-        JavaItemMesh::Block => {}
+        JavaItemMesh::Block | JavaItemMesh::Bed => {}
     }
     stack.0
 }

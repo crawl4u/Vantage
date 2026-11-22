@@ -113,7 +113,23 @@ impl EquipmentRuntime {
         input: actor_animation::AttachableAnimationInput<'_>,
     ) -> Option<FirstPersonItem> {
         let (mesh, location, block, span) = self.held_mesh_with_use(item, input)?;
-        let camera = java::first_person_item(hand, mesh_kind(block), item.grip.mirrored_art())
+        // A bed takes Java's own bed pose rather than the generic block one.
+        let bed = block
+            && matches!(
+                render_model::block_entity::HeldBlockEntity::from_stack(
+                    &item.identifier,
+                    item.metadata
+                ),
+                Some(render_model::block_entity::HeldBlockEntity::Bed(_))
+            );
+        let kind = if bed { JavaItemMesh::Bed } else { mesh_kind(block) };
+        let pose = if bed {
+            super::super::display::bed_in_hand()
+        } else {
+            Mat4::IDENTITY
+        };
+        let camera = java::first_person_item(hand, kind, item.grip.mirrored_art())
+            * pose
             * bevy::math::Mat4::from_scale(bevy::math::Vec3::splat(input.main_hand_scale()));
         let rest = [rest_bone([0.0; 3])];
         let poses = self
@@ -236,5 +252,34 @@ mod tests {
             false,
         ) * point;
         assert!(through.abs_diff_eq(direct, 1e-5));
+    }
+
+    /// At rest, Java's first-person stack and the native one pose a bed identically.
+    #[test]
+    fn a_bed_poses_the_same_in_both_first_person_paths_at_rest() {
+        use crate::presentation::equipment::display::{
+            FirstPersonHand, FirstPersonShape, bed_in_hand, first_person_display,
+        };
+        let hand = JavaHand {
+            swing: 0.0,
+            equip: 1.0,
+            using: None,
+        };
+        let java = java::first_person_item(hand, JavaItemMesh::Bed, false) * bed_in_hand();
+        let display = first_person_display(
+            FirstPersonShape::Bed,
+            FirstPersonHand {
+                swing: 0.0,
+                equip: 1.0,
+                consume: None,
+                aspect: 1.0,
+            },
+        );
+        let native = Mat4::from_scale_rotation_translation(
+            Vec3::splat(display.scale),
+            display.rotation,
+            display.translation,
+        );
+        assert!(java.abs_diff_eq(native, 1e-4), "{java:?} vs {native:?}");
     }
 }
