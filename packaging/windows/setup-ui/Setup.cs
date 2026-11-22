@@ -173,8 +173,12 @@ static class Program {
     }
 
     static void Quit() { if (window != null) window.Close(); }
+    /// Starts the game without the installer's administrator rights: an elevated game cannot be
+    /// dragged files from Explorer. Explorer starts it with the signed-in user's own rights.
     static void Launch() {
-        try { Process.Start(Path.Combine(folder, "cinnabar.exe")); } catch { }
+        var exe = Path.Combine(folder, "cinnabar.exe");
+        try { Process.Start(new ProcessStartInfo("explorer.exe", "\"" + exe + "\"") { UseShellExecute = false }); return; } catch { }
+        try { Process.Start(exe); } catch { }
     }
 
     static Progress Cancel = new Progress();
