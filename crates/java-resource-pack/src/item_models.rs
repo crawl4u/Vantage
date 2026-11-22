@@ -96,6 +96,11 @@ pub(crate) fn redirects(
         let Some(texture) = model.texture("layer0") else {
             continue;
         };
+        // A model drawn in layers, such as a potion's bottle over its tinted liquid, is more than
+        // its first layer: one texture would lose the rest, so the item keeps its own picture.
+        if model.texture("layer1").is_some() {
+            continue;
+        }
         let texture = texture.trim_start_matches("minecraft:");
         let path = format!("{TEXTURES}{texture}.png");
         let own = format!("{TEXTURES}item/{name}.png");
@@ -167,6 +172,19 @@ mod tests {
             (
                 "assets/minecraft/models/item/stick.json",
                 json!({ "parent": "item/generated", "textures": { "layer0": "item/absent" } }),
+            ),
+        ];
+        assert!(run(&files).is_empty());
+    }
+
+    #[test]
+    fn a_model_drawn_in_layers_redirects_nothing_because_one_texture_would_lose_the_rest() {
+        let files = [
+            (PNG, json!(null)),
+            (
+                "assets/minecraft/models/item/splash_potion.json",
+                json!({ "parent": "item/generated",
+                    "textures": { "layer0": "item/ruby_blade", "layer1": "item/splash_potion" } }),
             ),
         ];
         assert!(run(&files).is_empty());

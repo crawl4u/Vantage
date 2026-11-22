@@ -273,7 +273,10 @@ pub(crate) fn configure_from_environment(app: &mut App) {
         Update,
         vantage::update
             .after(input::prepare_native_input)
-            .after(drive_mod),
+            .after(drive_mod)
+            // Movement reads the control modes this publishes; without the order it can run after
+            // `drive_mod` clears them and before the mod sets them again, and miss them every frame.
+            .before(ClientFrameSet::Physics),
     );
     {
         let configured = app.world().contains_resource::<ModRuntime>();
@@ -671,6 +674,44 @@ mod tests {
                 .resource::<ButtonInput<KeyCode>>()
                 .just_pressed(DEMO_KEY)
         );
+    }
+
+
+    /// Movement reads the modes the native mod publishes, and `drive_mod` clears them each frame, so
+    /// the mod's update must run before movement or it misses them whenever that order falls the
+    /// wrong way.
+    #[test]
+    fn the_native_mod_publishes_control_modes_before_movement_runs() {
+        use bevy::ecs::schedule::{IntoSystemSet, NodeId, Schedules, SystemSet};
+        let mut app = App::new();
+        crate::game_frame::configure_client_frame_schedule(&mut app);
+        configure_from_environment(&mut app);
+        let schedules = app.world().resource::<Schedules>();
+        let graph = schedules.get(Update).unwrap().graph();
+        let parent = NodeId::Set(
+            graph
+                .system_sets
+                .get_key(vantage::update.into_system_set().intern())
+                .unwrap(),
+        );
+        let update = graph
+            .systems
+            .iter()
+            .find(|(key, _, _)| {
+                graph
+                    .hierarchy()
+                    .graph()
+                    .contains_edge(parent, NodeId::System(*key))
+            })
+            .map(|(key, _, _)| NodeId::System(key))
+            .expect("the native mod's update is registered");
+        let physics = NodeId::Set(
+            graph
+                .system_sets
+                .get_key(ClientFrameSet::Physics.intern())
+                .unwrap(),
+        );
+        assert!(graph.dependency().graph().contains_edge(update, physics));
     }
 
     /// Renders the adapter's retained state without a window or network session.
