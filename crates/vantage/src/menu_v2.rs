@@ -191,7 +191,7 @@ pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
     let sections = sections_of(&entries, "");
     let query = panel_state.search_text();
     let shell = Shell {
-        palette: Palette::dark(),
+        palette: palette(settings),
         brand: "Vantage",
         sections: &sections,
         title: "Mods",
@@ -327,7 +327,7 @@ fn credits_panel(settings: &Settings, state: &PanelState) -> String {
     let entries = entries(CREDITS_PAGE);
     let sections = sections_of(&entries, "");
     let shell = Shell {
-        palette: Palette::dark(),
+        palette: palette(settings),
         brand: "Vantage",
         sections: &sections,
         title: "Credits",
@@ -445,8 +445,25 @@ fn rows<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Setting
     switch
         .into_iter()
         .chain(rows_of(settings, state, defaults, tab))
+        .chain((tab == KEYBINDS_PAGE).then(|| appearance_row(settings, state, defaults)))
         .chain((tab == KEYBINDS_PAGE).then(|| keybind_rows(settings, state, defaults)).into_iter().flatten())
         .collect()
+}
+
+/// The General page's theme switch.
+fn appearance_row<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Settings) -> Row<'a> {
+    let id = "menu_light";
+    let value = crate::panel::value(settings, state, id);
+    let changed = !same(&value, &crate::panel::value(defaults, state, id));
+    Row { id, label: "Light theme", value, changed, section: Some(APPEARANCE) }
+}
+
+/// The section of the General page that holds it.
+const APPEARANCE: &str = "Appearance";
+
+/// The menu's colours: the light palette when the setting asks for it.
+fn palette(settings: &Settings) -> Palette {
+    if settings.menu_light { Palette::light() } else { Palette::dark() }
 }
 
 /// The page that also lists every keybind of every mod, in a section of its own.
@@ -639,7 +656,7 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
         if end == opts.len() || titles[end] != titles[start] {
             let heading = if titles[start].is_empty() { title.as_str() } else { titles[start] };
             // The keybind sections are many and long: one is open at a time, and none starts open.
-            let keybinds = tab == KEYBINDS_PAGE && rows[start].section.is_some();
+            let keybinds = tab == KEYBINDS_PAGE && rows[start].section.is_some_and(|section| section != APPEARANCE);
             let id = options::group_id(heading);
             let collapsed = if keybinds { !state.open_section(tab, &id) } else { state.section_collapsed(tab, &id, false) };
             group.push(Group { title: heading, collapsed, options: &opts[start..end] });
@@ -654,7 +671,7 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
     let entries = entries(tab);
     let sections = sections_of(&entries, element);
     let shell = Shell {
-        palette: Palette::dark(),
+        palette: palette(settings),
         brand: "Vantage",
         sections: &sections,
         title: &title,

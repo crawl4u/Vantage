@@ -1712,6 +1712,7 @@ impl PanelState {
             "align" => settings.align = on,
             "item_delay_fix" => settings.item_delay_fix = on,
             "guides" => settings.show_guides = on,
+            "menu_light" => settings.menu_light = on,
             "show_mouse" => settings.show_mouse = on,
             "show_space" => settings.show_space = on,
             "cps_mode" => settings.cps_mode = CpsMode::from_index(index),
@@ -2161,6 +2162,7 @@ pub(crate) fn value<'a>(s: &'a Settings, state: &'a PanelState, id: &str) -> Val
         "align" => Value::Toggle(s.align),
         "item_delay_fix" => Value::Toggle(s.item_delay_fix),
         "guides" => Value::Toggle(s.show_guides),
+        "menu_light" => Value::Toggle(s.menu_light),
         // The Config page; a button with no text yet keeps its generated label.
         "cfg_out" => Value::Text(&state.setups.code),
         "cfg_in" => Value::Text(""),

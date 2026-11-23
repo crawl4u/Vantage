@@ -18,6 +18,15 @@ pub(super) fn fixture(filter: usize, query: &str) -> Fixture {
     Fixture::ModPanel(Box::new(panel), None, None)
 }
 
+/// The Mods page in the light theme.
+pub(super) fn light() -> Fixture {
+    let settings = Settings { menu_light: true, ..Settings::default() };
+    let state = PanelState::default();
+    let page = menu_v2::mods_panel(&settings, &state);
+    let panel: Panel = serde_json::from_str(&page).expect("the live page is a valid panel");
+    Fixture::ModPanel(Box::new(panel), None, None)
+}
+
 /// A rebuilt settings page of the Vantage menu, opened by its tab.
 pub(super) fn settings(tab: usize) -> Fixture {
     let mut settings = Settings::default();
@@ -52,15 +61,15 @@ mod tests {
 
     #[test]
     fn every_page_the_redesign_draws_is_a_valid_panel_to_the_host() {
-        for tab in 0..vantage::menu_controls::TABS.len() {
+        for (tab, light) in (0..vantage::menu_controls::TABS.len()).flat_map(|tab| [(tab, false), (tab, true)]) {
             if !menu_v2::handles(tab) {
                 continue;
             }
-            let mut settings = Settings::default();
+            let mut settings = Settings { menu_light: light, ..Settings::default() };
             let mut state = PanelState::default();
             state.event(&mut settings, &format!("tab_{tab}"), 1.0);
             let page = menu_v2::page(&settings, &state).expect("a handled page");
-            assert_valid(&page, &format!("page {tab}"));
+            assert_valid(&page, &format!("page {tab} (light: {light})"));
         }
     }
 

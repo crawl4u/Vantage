@@ -409,6 +409,7 @@ impl Setups {
             }
             let version = run.reader.as_ref().map_or(0, Reader::version);
             next.menu_key = settings.menu_key.clone();
+            next.menu_light = settings.menu_light;
             next.share_skip = settings.share_skip.clone();
             // The person's own lists are not in a code, so a load must not empty them: marked spots, starred mods
             // and the colour picker's recent and saved colours.

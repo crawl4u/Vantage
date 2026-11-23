@@ -16,7 +16,7 @@ pub enum Kind {
 
 pub const TABS: [&str; 27] = ["Elements", "Layout", "Style", "Chunk borders", "Zoom", "Crosshair", "General", "Config", "Credits", "Hitboxes", "Hit color", "Time changer", "Weather changer", "Nametags", "Hurt camera", "Damage indicator", "Menu blur", "Waypoints", "Waypoint settings", "CPS limiter", "Block outline", "Markers", "Text hotkey", "Hive", "Perspective", "Glass", "Sharing"];
 
-pub const CONTROLS: [(Kind, &str, &str); 913] = [
+pub const CONTROLS: [(Kind, &str, &str); 914] = [
     (Kind::Button, "tab_0", "Elements"),
     (Kind::Button, "tab_1", "Layout"),
     (Kind::Button, "tab_2", "Style"),
@@ -930,6 +930,8 @@ pub const CONTROLS: [(Kind, &str, &str); 913] = [
     (Kind::Choice, "armor_good", "Healthy"),
     (Kind::Choice, "armor_mid", "Worn"),
     (Kind::Choice, "armor_low", "Low"),
+    // Not on any baked page: the redesigned General page lists it.
+    (Kind::Toggle, "menu_light", "Light theme"),
 ];
 
 /// Each document's controls: the global index (into `CONTROLS`) of each of its page-local controls. A document

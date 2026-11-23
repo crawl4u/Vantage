@@ -109,6 +109,12 @@ pub(super) const STATES: &[State] = &[
         fixture: || vantage_live::fixture(0, "opacity"),
     },
     State {
+        name: "vantage-live-mods-light",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::light(),
+    },
+    State {
         name: "vantage-page-general",
         size: SIZE,
         gui_scale: GUI_SCALE,
