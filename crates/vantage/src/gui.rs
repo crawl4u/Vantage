@@ -827,7 +827,7 @@ impl GuiMenu {
         let side = px(SIDEBAR_WIDTH);
         // The sidebar is a lighter pane than the pages beside it.
         let lg = px(WINDOW_RADIUS);
-        d.rect(Rect::new(0.0, 0.0, side, h), if d.light { [1.0, 1.0, 1.0, 0.45] } else { [0.09, 0.09, 0.11, 0.62] }, Radii { tl: lg, tr: 0.0, br: 0.0, bl: lg });
+        d.rect(Rect::new(0.0, 0.0, side, h), if d.light { [0.72, 0.76, 0.95, 0.35] } else { [0.09, 0.09, 0.11, 0.62] }, Radii { tl: lg, tr: 0.0, br: 0.0, bl: lg });
         d.rect(Rect::new(side, 0.0, 0.35, h), d.veil(0.12), Radii::default());
         let logo_w = side - px(space::XXL * 2.0);
         let logo = Rect::new(px(space::XXL), px(space::XL), logo_w, logo_w * vantage_ui::brand::SIZE[1] / vantage_ui::brand::SIZE[0]);
@@ -837,7 +837,8 @@ impl GuiMenu {
                 rect: logo_rect,
                 view: vantage_ui::brand::SIZE,
                 contours: layer.contours.iter().map(|c| c.to_vec()).collect(),
-                color: Color::hex(layer.rgb, 1.0),
+                // On the light theme the wordmark's pale colours are drawn dark so they can be read.
+                color: if d.light { Color::hex(layer.rgb, 1.0).mix(Color::rgba(0.05, 0.06, 0.2, 1.0), 0.62) } else { Color::hex(layer.rgb, 1.0) },
                 stroke: layer.stroke,
             });
         }
@@ -1061,8 +1062,8 @@ impl GuiMenu {
                 crate::mod_icons::Kind::Preview => {
                     previews::paint(&mut d, card.id, icon_area, [0.92, 0.93, 1.0, 1.0]);
                 }
-                crate::mod_icons::Kind::Art(art) => d.glyph(icon_area, art, px(44.0), if d.light { [0.30, 0.31, 0.45, 1.0] } else { [0.74, 0.75, 0.88, 1.0] }),
-                crate::mod_icons::Kind::Glyph => d.icon(icon_area, card.icon, px(54.0), if d.light { [0.30, 0.31, 0.45, 1.0] } else { [0.74, 0.75, 0.88, 1.0] }),
+                crate::mod_icons::Kind::Art(art) => d.glyph(icon_area, art, px(44.0), if d.light { [0.07, 0.08, 0.16, 1.0] } else { [0.74, 0.75, 0.88, 1.0] }),
+                crate::mod_icons::Kind::Glyph => d.icon(icon_area, card.icon, px(54.0), if d.light { [0.07, 0.08, 0.16, 1.0] } else { [0.74, 0.75, 0.88, 1.0] }),
             }
             let dot = px(7.0);
             let dot_rect = d.at(Rect::new(r.right() - px(space::L) - dot, r.y + px(space::L), dot, dot));
@@ -1513,7 +1514,27 @@ mod tests {
         let at = Some(Vec2::new(region.x + 4.0, region.y + 4.0));
         menu.frame(&settings, &state, Input { pressed: true, held: true, ..input(at) });
         let (_, actions) = menu.frame(&settings, &state, input(at));
-        assert_eq!(actions, vec![Action::Event(crate::menu_controls::MODS[0].0.to_owned())]);
+        let id = crate::menu_controls::MODS[0].0.to_owned();
+        // The first mod starts on, so the click sends it the new state: off.
+        assert_eq!(actions, vec![Action::EventValue(id, 0.0)]);
+    }
+
+    #[test]
+    fn a_click_on_the_bar_of_a_mod_that_is_on_turns_it_off() {
+        let (cards_on, order) = {
+            let settings = Settings::default();
+            let state = PanelState::default();
+            let (cards, order, ..) = menu_v2::grid(&settings, &state);
+            let on = cards.iter().position(|c| c.on).expect("a mod starts on");
+            (on, order.iter().position(|i| *i == on).expect("shown"))
+        };
+        let settings = Settings::default();
+        let state = PanelState::default();
+        let (cards, _, chips, ..) = menu_v2::grid(&settings, &state);
+        let order: Vec<usize> = (0..cards.len()).collect();
+        let actions = mods_click(Hit::Switch(cards_on), &cards, &order, &chips);
+        let _ = order;
+        assert_eq!(actions, vec![Action::EventValue(cards[cards_on].id.to_owned(), 0.0)]);
     }
 
     #[test]

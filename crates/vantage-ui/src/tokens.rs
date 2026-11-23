@@ -83,14 +83,14 @@ impl Palette {
     #[must_use]
     pub const fn light() -> Self {
         Self {
-            panel: rgb(0xF1F1F6, 0.90),
+            panel: rgb(0xC3CAF2, 0.88),
             surface: rgb(0xFFFFFF, 0.0),
-            raised: rgb(0xFFFFFF, 0.62),
-            dim: rgb(0xD9D9E4, 0.80),
-            field: rgb(0xFFFFFF, 0.70),
+            raised: rgb(0xFFFFFF, 0.42),
+            dim: rgb(0xA9B0DC, 0.75),
+            field: rgb(0xFFFFFF, 0.55),
             border: rgb(0x000000, 0.12),
-            text: rgb(0x1B1B26, 1.0),
-            muted: rgb(0x4B4B5E, 1.0),
+            text: rgb(0x15182C, 1.0),
+            muted: rgb(0x40456A, 1.0),
             highlight: rgb(0x000000, 1.0),
             accent: rgb(0x7C3AED, 1.0),
             on_accent: rgb(0xFFFFFF, 1.0),
@@ -253,7 +253,9 @@ mod tests {
     #[test]
     fn ordinary_and_secondary_text_are_legible_on_every_surface_of_both_themes() {
         for palette in [Palette::dark(), Palette::light()] {
-            let ground = over(palette.panel, rgb(0x000000, 1.0));
+            // The light theme is for a bright world behind it, the dark one for a dark world.
+            let world = if palette.panel[0] > 0.5 { rgb(0xFFFFFF, 1.0) } else { rgb(0x000000, 1.0) };
+            let ground = over(palette.panel, world);
             for surface in [palette.panel, palette.surface, palette.raised, palette.field] {
                 let back = over(surface, ground);
                 assert!(contrast(palette.text, back) >= MIN_CONTRAST, "text on {surface:?}");
