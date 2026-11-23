@@ -5,7 +5,8 @@
 
 use std::collections::HashMap;
 
-use vantage_gui::icons::{GRID, Icon};
+use vantage_gui::icon_art::Art;
+use vantage_gui::icons::{GRID, Glyph, Icon};
 use vantage_gui::{
     anim::Spring,
     geom::{Rect, Vec2},
@@ -264,18 +265,22 @@ impl Painter {
         self.hover == Some(h)
     }
 
-    /// A line icon centred in `r`, `size` across, in colour `c`.
-    fn glyph(&mut self, r: Rect, icon: Icon, size: f32, c: Rgba) {
+    /// An icon centred in `r`, `size` across, in colour `c`.
+    fn glyph(&mut self, r: Rect, icon: impl Into<Glyph>, size: f32, c: Rgba) {
         let box_ = self.at(Rect::new(r.x + (r.w - size) / 2.0, r.y + (r.h - size) / 2.0, size, size));
-        let strokes = icon.contours();
-        if !strokes.is_empty() {
-            self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: icon.contours(), color: color(c), width: icon.weight() });
-        }
-        // Solid shapes keep a hairline round their edge so it is as soft as every other line.
-        for shape in icon.solid() {
-            let edge: Vec<Vec<[f32; 2]>> = shape.iter().map(|ring| ring.iter().copied().chain(ring.first().copied()).collect()).collect();
-            self.scene.push(Primitive::Path { rect: box_, view: [GRID, GRID], contours: shape, color: color(c), stroke: None });
-            self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: edge, color: color(c), width: 0.5 });
+        match icon.into() {
+            Glyph::Line(icon) => {
+                self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: icon.contours(), color: color(c), width: icon.weight() });
+            }
+            Glyph::Art(art) => {
+                for shape in art.shapes() {
+                    let rings: Vec<Vec<[f32; 2]>> = shape.iter().map(|ring| ring.to_vec()).collect();
+                    // A hairline round every edge keeps it as soft as the other lines.
+                    let edge: Vec<Vec<[f32; 2]>> = rings.iter().map(|ring| ring.iter().copied().chain(ring.first().copied()).collect()).collect();
+                    self.scene.push(Primitive::Path { rect: box_, view: [GRID, GRID], contours: rings, color: color(c), stroke: None });
+                    self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: edge, color: color(c), width: 0.3 });
+                }
+            }
         }
     }
 
@@ -784,7 +789,7 @@ impl GuiMenu {
         self.bell = bell;
         let bell_ink = d.hot(Hit::Bell, p.muted, p.text);
         d.rect(bell, [1.0, 1.0, 1.0, 0.08 * d.amount(Hit::Bell)], Radii::all(px(RADII.xs)));
-        d.glyph(bell, Icon::Bell, px(20.0), bell_ink);
+        d.glyph(bell, Art::Bell, px(20.0), bell_ink);
         d.region(Hit::Bell, bell);
         d.line(Rect::new(foot.x + px(42.0), foot.y - px(4.0), foot.w, px(20.0)), "Player", px(text::LABEL.size), p.text, Align::Start);
         d.line(Rect::new(foot.x + px(42.0), foot.y + px(12.0), foot.w, px(16.0)), "Vantage", px(text::CAPTION.size), p.muted, Align::Start);
@@ -793,17 +798,17 @@ impl GuiMenu {
         // Header: arrow, title, search pill, close.
         let pane = vantage_ui::shell::content_rect();
         let back = Rect::new(pane[0] - px(space::S), px(space::XL), px(24.0), px(28.0));
-        d.glyph(back, Icon::Back, px(24.0), d.hot(Hit::Back, p.muted, p.text));
+        d.glyph(back, Art::LeftArrow, px(24.0), d.hot(Hit::Back, p.muted, p.text));
         d.region(Hit::Back, back);
         d.line(Rect::new(pane[0] + px(space::XXL), px(space::XL), px(300.0), px(28.0)), title, px(text::HEADING.size), p.highlight, Align::Start);
         let close = Rect::new(w - px(space::XXL + 28.0), px(space::XL), px(28.0), px(28.0));
         d.rect(close, [1.0, 1.0, 1.0, 0.09 * d.amount(Hit::Close)], Radii::all(px(RADII.xs)));
-        d.glyph(close, Icon::Close, px(26.0), p.text);
+        d.glyph(close, Art::Close, px(26.0), p.text);
         d.region(Hit::Close, close);
         let pill = search_rect();
         d.rect(pill, if self.searching { p.dim } else { p.field }, Radii::all(px(RADII.xs)));
         d.ring(pill, Radii::all(px(RADII.xs)), 0.3, if self.searching { p.accent } else { [1.0, 1.0, 1.0, 0.10] });
-        d.glyph(Rect::new(pill.x + px(space::M), pill.y, px(18.0), pill.h), Icon::Search, px(15.0), p.muted);
+        d.glyph(Rect::new(pill.x + px(space::M), pill.y, px(18.0), pill.h), Art::Search, px(15.0), p.muted);
         if !self.searching {
             let (shown, ink) = if query.is_empty() { (hint, p.muted) } else { (query, p.text) };
             d.line(Rect::new(pill.x + px(30.0), pill.y, pill.w - px(36.0), pill.h), shown, px(text::SMALL.size), ink, Align::Start);
@@ -834,13 +839,13 @@ impl GuiMenu {
         let mut x = pane[0];
         for (n, (name, number)) in chips.iter().enumerate() {
             let glyph = match *name {
-                "All" => Icon::Layers,
-                "Enabled" => Icon::Sparkles,
-                "Favorites" => Icon::Star,
-                "HUD" => Icon::Grid,
-                "Visual" => Icon::Brush,
-                "Mechanic" => Icon::Gear,
-                _ => Icon::Bolt,
+                "All" => Glyph::Art(Art::Layers),
+                "Enabled" => Glyph::Line(Icon::Sparkles),
+                "Favorites" => Glyph::Art(Art::Star),
+                "HUD" => Glyph::Art(Art::Hud),
+                "Visual" => Glyph::Art(Art::Paintbrush),
+                "Mechanic" => Glyph::Art(Art::Qol),
+                _ => Glyph::Art(Art::Lightning01),
             };
             let cw = name.chars().count() as f32 * char_w * 0.84 + px(20.0) + px(26.0);
             let on = *number == active_chip;
@@ -873,7 +878,7 @@ impl GuiMenu {
             let on = (n == 1) == (active_sort == 1);
             let ink = if on { p.text } else { p.muted };
             if n == 0 {
-                d.glyph(r, Icon::Grid, px(17.0), ink);
+                d.glyph(r, Art::DotsGrid, px(17.0), ink);
             } else {
                 d.line(r, "Aa", px(text::LABEL.size), ink, Align::Centre);
             }
@@ -976,10 +981,10 @@ impl GuiMenu {
             });
             if glow > 0.02 {
                 let fade = |c: Rgba| [c[0], c[1], c[2], c[3] * glow];
-                d.glyph(Rect::new(r.x + px(space::M), r.y + px(space::S), px(20.0), px(20.0)), Icon::Star, px(18.0), if card.favorite { fade(p.star) } else { fade(p.muted) });
-                d.glyph(Rect::new(r.x + px(space::M + 22.0), r.y + px(space::S), px(20.0), px(20.0)), Icon::Eye, px(18.0), fade(p.muted));
+                d.glyph(Rect::new(r.x + px(space::M), r.y + px(space::S), px(20.0), px(20.0)), if card.favorite { Art::StarFilled } else { Art::Star }, px(18.0), if card.favorite { fade(p.star) } else { fade(p.muted) });
+                d.glyph(Rect::new(r.x + px(space::M + 22.0), r.y + px(space::S), px(20.0), px(20.0)), Art::Eye, px(18.0), fade(p.muted));
             } else if card.favorite {
-                d.glyph(Rect::new(r.x + px(space::M), r.y + px(space::S), px(20.0), px(20.0)), Icon::Star, px(18.0), p.star);
+                d.glyph(Rect::new(r.x + px(space::M), r.y + px(space::S), px(20.0), px(20.0)), Art::StarFilled, px(18.0), p.star);
             }
             d.region(Hit::Card(n), Rect::new(r.x, r.y, r.w, r.h - bar_h));
             d.region(Hit::Switch(n), bar);
@@ -1142,7 +1147,7 @@ impl GuiMenu {
             let title_w = title.chars().count() as f32 * px(text::HEADING.size) * 0.56;
             d.line(Rect::new(pane[0] + px(space::XXL) + title_w + px(10.0), px(space::XL), px(120.0), px(28.0)), "by Vantage", px(text::CAPTION.size), p.muted, Align::Start);
             let mut x = pane[0];
-            for (target, name, glyph) in [(2, "Style", Icon::Brush), (1, "Layout", Icon::Grid)] {
+            for (target, name, glyph) in [(2, "Style", Art::Paintbrush), (1, "Layout", Art::Hud)] {
                 let cw = name.chars().count() as f32 * px(text::LABEL.size) * 0.62 * 0.84 + px(46.0);
                 let r = Rect::new(x, pane[1], cw, chip_h);
                 let hit = Hit::Nav(target);

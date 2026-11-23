@@ -15,7 +15,6 @@ pub enum Icon {
     User,
     Keyboard,
     Camera,
-    Brush,
     Sparkles,
     Gear,
     Refresh,
@@ -82,6 +81,25 @@ pub enum Icon {
     Dash,
 }
 
+/// What the menu can draw as an icon: a line icon drawn by hand, or an icon converted from artwork.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Glyph {
+    Line(Icon),
+    Art(crate::icon_art::Art),
+}
+
+impl From<Icon> for Glyph {
+    fn from(icon: Icon) -> Self {
+        Glyph::Line(icon)
+    }
+}
+
+impl From<crate::icon_art::Art> for Glyph {
+    fn from(art: crate::icon_art::Art) -> Self {
+        Glyph::Art(art)
+    }
+}
+
 type Contour = Vec<[f32; 2]>;
 
 /// Points of a circular arc from `from` to `to` degrees (y points down, 0 is east, 90 south).
@@ -139,14 +157,13 @@ fn sparkle(cx: f32, cy: f32, r: f32) -> Contour {
 
 impl Icon {
     /// Every icon, for tests and previews.
-    pub const ALL: [Icon; 71] = [
+    pub const ALL: [Icon; 70] = [
         Icon::Layers,
         Icon::EditHud,
         Icon::Sliders,
         Icon::User,
         Icon::Keyboard,
         Icon::Camera,
-        Icon::Brush,
         Icon::Sparkles,
         Icon::Gear,
         Icon::Refresh,
@@ -213,16 +230,6 @@ impl Icon {
         Icon::Dash,
     ];
 
-    /// The icon's solid shapes on the same grid, each as an outline followed by the holes cut out of it. Only the
-    /// brush has any: it is converted from supplied artwork rather than drawn from strokes.
-    #[must_use]
-    pub fn solid(self) -> Vec<Vec<Contour>> {
-        match self {
-            Icon::Brush => crate::brush_art::BRUSH.iter().map(|group| group.iter().map(|c| c.to_vec()).collect()).collect(),
-            _ => Vec::new(),
-        }
-    }
-
     /// How wide the icon's strokes are, in grid units.
     #[must_use]
     pub fn weight(self) -> f32 {
@@ -261,7 +268,6 @@ impl Icon {
                 vec![[8.0, 7.0], [9.6, 4.2], [14.4, 4.2], [16.0, 7.0]],
                 circle(12.0, 13.5, 3.6),
             ],
-            Icon::Brush => Vec::new(),
             Icon::Sparkles => vec![sparkle(10.0, 13.0, 8.0), sparkle(19.0, 5.0, 3.2)],
             Icon::Gear => {
                 let mut teeth = Vec::new();
@@ -471,12 +477,40 @@ mod tests {
         }
     }
 
+    /// The area of a polygon (positive).
+    fn polygon_area(points: &[[f32; 2]]) -> f32 {
+        let n = points.len();
+        (0..n).map(|i| points[i][0] * points[(i + 1) % n][1] - points[(i + 1) % n][0] * points[i][1]).sum::<f32>().abs() / 2.0
+    }
+
+    #[test]
+    fn converted_icons_fill_exactly_the_area_they_describe() {
+        use crate::icon_art::Art;
+        use crate::style::Color;
+        for art in Art::ALL {
+            for shape in art.shapes() {
+                let contours: Vec<Vec<[f32; 2]>> = shape.iter().map(|ring| ring.to_vec()).collect();
+                let expected = polygon_area(&contours[0]) - contours[1..].iter().map(|h| polygon_area(h)).sum::<f32>();
+                let mesh = crate::tess::path_fill(&contours, Color::hex(0xFFFFFF, 1.0));
+                let filled: f32 = mesh
+                    .indices
+                    .chunks(3)
+                    .map(|t| {
+                        let (a, b, c) = (mesh.vertices[t[0] as usize].pos, mesh.vertices[t[1] as usize].pos, mesh.vertices[t[2] as usize].pos);
+                        ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])).abs() / 2.0
+                    })
+                    .sum();
+                assert!((filled - expected).abs() <= expected * 0.03 + 0.02, "{art:?} fills {filled} of {expected}");
+            }
+        }
+    }
+
     #[test]
     fn every_icon_has_strokes_inside_the_grid() {
         for icon in Icon::ALL {
             let contours = icon.contours();
-            assert!(!contours.is_empty() || !icon.solid().is_empty(), "{icon:?} draws nothing");
-            for contour in contours.into_iter().chain(icon.solid().into_iter().flatten()) {
+            assert!(!contours.is_empty(), "{icon:?} draws nothing");
+            for contour in contours {
                 assert!(contour.len() >= 2, "{icon:?} has a stroke of one point");
                 for p in contour {
                     assert!((0.0..=GRID).contains(&p[0]) && (0.0..=GRID).contains(&p[1]), "{icon:?} leaves the grid at {p:?}");

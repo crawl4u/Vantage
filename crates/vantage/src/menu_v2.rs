@@ -101,7 +101,10 @@ const SIDEBAR: [(&str, &[(usize, &str)]); 2] = [
     ("Menu", &[(6, "General"), (8, "Credits")]),
 ];
 
-use vantage_gui::icons::Icon;
+use vantage_gui::{
+    icon_art::Art,
+    icons::{Glyph, Icon},
+};
 
 /// The first number of the sidebar entries that no tab backs: the toolkit draws those pages itself.
 pub const VIRTUAL_BASE: usize = 100;
@@ -115,32 +118,32 @@ const PREFERENCES: usize = 105;
 const CHANGELOG: usize = 106;
 
 /// A sidebar entry as `(target, title, icon, active)`: a tab number, or a number from `VIRTUAL_BASE` up.
-pub type GuiEntry = (usize, &'static str, vantage_gui::icons::Icon, bool);
+pub type GuiEntry = (usize, &'static str, Glyph, bool);
 
 /// The toolkit's sidebar: each group's heading (empty for none) and entries, with the page open for `tab` (or
 /// the toolkit's own page `virt`) lit.
 #[must_use]
 pub fn gui_sidebar(tab: usize, virt: Option<usize>) -> Vec<(&'static str, Vec<GuiEntry>)> {
     let on = |target: usize| virt.map_or(target == tab, |v| v == target);
-    let entry = |target: usize, title: &'static str, icon: Icon| (target, title, icon, on(target));
+    let entry = |target: usize, title: &'static str, icon: Glyph| (target, title, icon, on(target));
     vec![
-        ("", vec![entry(EDIT_HUD, "Edit HUD", Icon::EditHud)]),
+        ("", vec![entry(EDIT_HUD, "Edit HUD", Art::Hud.into())]),
         (
             "Mods and options",
             vec![
-                entry(0, "Mods", Icon::Sliders),
-                entry(7, "Profiles", Icon::User),
-                entry(KEYBINDS, "Keybinds", Icon::Keyboard),
-                entry(SCREENSHOTS, "Screenshots", Icon::Camera),
-                entry(17, "Waypoints", Icon::MapPin),
-                entry(26, "Sharing", Icon::Cloud),
+                entry(0, "Mods", Art::Settings.into()),
+                entry(7, "Profiles", Art::Profiles.into()),
+                entry(KEYBINDS, "Keybinds", Art::Keyboard.into()),
+                entry(SCREENSHOTS, "Screenshots", Icon::Camera.into()),
+                entry(17, "Waypoints", Icon::MapPin.into()),
+                entry(26, "Sharing", Art::Cloud.into()),
             ],
         ),
         (
             "Personalization",
-            vec![entry(THEMES, "Themes", Icon::Brush), entry(WARDROBE, "Wardrobe", Icon::Sparkles), entry(PREFERENCES, "Preferences", Icon::Gear)],
+            vec![entry(THEMES, "Themes", Art::Paintbrush.into()), entry(WARDROBE, "Wardrobe", Icon::Sparkles.into()), entry(PREFERENCES, "Preferences", Art::Cog.into())],
         ),
-        ("Vantage", vec![entry(CHANGELOG, "Changelog", Icon::Refresh), entry(8, "Credits", Icon::Star)]),
+        ("Vantage", vec![entry(CHANGELOG, "Changelog", Art::Refresh.into()), entry(8, "Credits", Art::Star.into())]),
     ]
 }
 
