@@ -37,9 +37,98 @@ pub fn search_rect() -> Rect {
     Rect::new(close.x - px(space::M) - width, close.y, width, close.h)
 }
 
+/// The text keys pressed this frame, as characters (a few per frame is all a person can type).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Typed {
+    pub chars: [char; 8],
+    pub len: u8,
+    pub backspaces: u8,
+    pub submit: bool,
+    pub cancel: bool,
+}
+
+/// The character a physical key types on a US keyboard, with Shift held or not.
+fn key_char(key: &str, shift: bool) -> Option<char> {
+    let pick = |plain: char, shifted: char| Some(if shift { shifted } else { plain });
+    if let Some(letter) = key.strip_prefix("Key").filter(|k| k.len() == 1) {
+        let c = letter.chars().next()?.to_ascii_lowercase();
+        return Some(if shift { c.to_ascii_uppercase() } else { c });
+    }
+    if let Some(d) = key.strip_prefix("Digit").or_else(|| key.strip_prefix("Numpad")).filter(|k| k.len() == 1) {
+        let c = d.chars().next()?;
+        if c.is_ascii_digit() {
+            return if key.starts_with("Digit") {
+                match c {
+                    '1' => pick('1', '!'),
+                    '2' => pick('2', '@'),
+                    '3' => pick('3', '#'),
+                    '4' => pick('4', '$'),
+                    '5' => pick('5', '%'),
+                    '6' => pick('6', '^'),
+                    '7' => pick('7', '&'),
+                    '8' => pick('8', '*'),
+                    '9' => pick('9', '('),
+                    _ => pick('0', ')'),
+                }
+            } else {
+                Some(c)
+            };
+        }
+    }
+    match key {
+        "Space" => Some(' '),
+        "Minus" => pick('-', '_'),
+        "Equal" => pick('=', '+'),
+        "Period" | "NumpadDecimal" => pick('.', '>'),
+        "Comma" => pick(',', '<'),
+        "Slash" => pick('/', '?'),
+        "Semicolon" => pick(';', ':'),
+        "Quote" => pick('\'', '"'),
+        "BracketLeft" => pick('[', '{'),
+        "BracketRight" => pick(']', '}'),
+        "Backslash" => pick('\\', '|'),
+        "Backquote" => pick('`', '~'),
+        _ => None,
+    }
+}
+
+/// The keys that type text, which the host only reports to the menu while it has reserved them.
+#[must_use]
+pub fn text_keys() -> Vec<String> {
+    let mut keys: Vec<String> = ('A'..='Z').map(|c| format!("Key{c}")).collect();
+    keys.extend((0..=9).map(|d| format!("Digit{d}")));
+    keys.extend(["Space", "Minus", "Equal", "Period", "Comma", "Slash", "Semicolon", "Quote", "BracketLeft", "BracketRight", "Backslash", "Backquote", "NumpadDecimal"].map(str::to_owned));
+    keys.extend(["Backspace", "Enter", "NumpadEnter", "Escape", "ShiftLeft", "ShiftRight"].map(str::to_owned));
+    keys
+}
+
+/// What this frame's key presses type.
+#[must_use]
+pub fn typed_from_keys(keys: &[String], shift: bool) -> Typed {
+    let mut out = Typed::default();
+    for key in keys {
+        match key.as_str() {
+            "Backspace" => out.backspaces = out.backspaces.saturating_add(1),
+            "Enter" | "NumpadEnter" => out.submit = true,
+            "Escape" => out.cancel = true,
+            other => {
+                if let Some(c) = key_char(other, shift) {
+                    if usize::from(out.len) < out.chars.len() {
+                        out.chars[usize::from(out.len)] = c;
+                        out.len += 1;
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 /// What the pointer did this frame, in the scene's units (the viewport's top left is the origin).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Input {
+    /// The keys typed this frame.
+    pub typed: Typed,
     pub pointer: Option<Vec2>,
     /// The primary button went down this frame.
     pub pressed: bool,
@@ -62,6 +151,8 @@ pub enum Action {
     Event(String),
     /// An event with a value (a switch's new state, a slider's value).
     EventValue(String, f32),
+    /// The text of a field, as typed so far (`submit` when Enter ended the edit).
+    Text { id: String, text: String, submit: bool },
     Close,
 }
 
@@ -125,6 +216,8 @@ enum Act {
     Press(String),
     /// A slider: pressing it starts a drag along `track`.
     Slider { id: String, track: Rect, min: f32, max: f32, step: f32 },
+    /// A text field: pressing it starts typing into it.
+    Field { id: String, text: String },
 }
 
 fn color(c: Rgba) -> Color {
@@ -215,6 +308,10 @@ pub struct GuiMenu {
     dragged: bool,
     /// How open the menu is (0 just opened, 1 settled), for its fade and slide in.
     open: Spring,
+    /// The text field being typed into: its id and its text so far.
+    field: Option<(String, String)>,
+    /// Seconds the menu has been open, for the caret's blink.
+    clock: f32,
 }
 
 /// A press on a card that may become a drag.
@@ -256,6 +353,8 @@ impl Default for GuiMenu {
             grid_view: Rect::default(),
             dragged: false,
             open: Spring::new(0.0, 16.0),
+            field: None,
+            clock: 0.0,
         }
     }
 }
@@ -292,6 +391,7 @@ impl GuiMenu {
         self.searching = false;
         self.card_drag = None;
         self.drag = None;
+        self.field = None;
     }
 
     /// The window's place now: centred, a little low while it fades in.
@@ -303,6 +403,7 @@ impl GuiMenu {
     fn scroll_step(&mut self, input: &Input, tab: usize) {
         self.open.set_target(1.0);
         self.open.step(input.dt);
+        self.clock += input.dt;
         if self.tab != tab {
             self.tab = tab;
             self.scroll.snap(0.0);
@@ -342,6 +443,12 @@ impl GuiMenu {
             (Some(down), Some(up)) if down == up => Some(up),
             _ => None,
         }
+    }
+
+    /// Whether a text field has the keyboard, so the text keys must be reserved for the menu.
+    #[must_use]
+    pub fn wants_text(&self) -> bool {
+        self.field.is_some()
     }
 
     /// Runs one frame of the Mods page.
@@ -685,9 +792,49 @@ impl GuiMenu {
             }
         }
 
+        // Keys typed into the focused field.
+        if let Some((id, text)) = self.field.as_mut() {
+            let typed = input.typed;
+            let before = text.clone();
+            for _ in 0..typed.backspaces {
+                text.pop();
+            }
+            for c in &typed.chars[..usize::from(typed.len)] {
+                if text.chars().count() < 64 {
+                    text.push(*c);
+                }
+            }
+            if typed.submit || typed.cancel {
+                actions.push(Action::Text { id: id.clone(), text: text.clone(), submit: true });
+                self.field = None;
+            } else if *text != before {
+                actions.push(Action::Text { id: id.clone(), text: text.clone(), submit: false });
+            }
+        }
         let scene = menu_v2::with_page(settings, state, tab, &mut |page| self.build_page(settings, state, tab, page, input));
         let was_pressed = self.pressed;
         let click = self.pointer(&scene, &input);
+        // A press anywhere but the field ends typing in it, and a press on a field starts it.
+        if input.pressed {
+            let on_field = match self.pressed {
+                Some(Hit::Act(n)) => match self.acts.get(n) {
+                    Some(Act::Field { id, text }) => Some((id.clone(), text.clone())),
+                    _ => None,
+                },
+                _ => None,
+            };
+            match (on_field, self.field.take()) {
+                (Some((id, text)), previous) => {
+                    if let Some((old_id, old_text)) = previous.filter(|(old, _)| *old != id) {
+                        actions.push(Action::Text { id: old_id, text: old_text, submit: true });
+                    }
+                    let keep = self.field_text(&id).unwrap_or(text);
+                    self.field = Some((id, keep));
+                }
+                (None, Some((old_id, old_text))) => actions.push(Action::Text { id: old_id, text: old_text, submit: true }),
+                (None, None) => {}
+            }
+        }
         // A press on a slider starts a drag at once.
         if input.pressed {
             if let Some(Hit::Act(n)) = self.pressed {
@@ -712,6 +859,11 @@ impl GuiMenu {
             });
         }
         (scene, actions)
+    }
+
+    /// The text typed so far into field `id`, if it is the one being edited.
+    fn field_text(&self, id: &str) -> Option<String> {
+        self.field.as_ref().filter(|(f, _)| f == id).map(|(_, t)| t.clone())
     }
 
     fn build_page(&mut self, settings: &Settings, state: &PanelState, tab: usize, page: &menu_v2::PageView<'_>, input: Input) -> Scene {
@@ -899,9 +1051,31 @@ impl GuiMenu {
                 d.region(hit, pill);
                 control_left = pill.x;
             }
-            Kind::Text { .. } | Kind::Info => {}
+            Kind::Text { value } => {
+                let w = px(170.0);
+                let pill = Rect::new(right - w, mid - px(12.0), w, px(24.0));
+                let n = self.acts.len();
+                self.acts.push(Act::Field { id: opt.id.to_owned(), text: value.to_owned() });
+                let hit = Hit::Act(n);
+                let editing = self.field.as_ref().filter(|(id, _)| id == opt.id).map(|(_, t)| t.clone());
+                d.rect(pill, if editing.is_some() { p.dim } else if d.lit(hit) { p.dim } else { p.field }, Radii::all(px(RADII.xs)));
+                if editing.is_some() {
+                    d.ring(pill, Radii::all(px(RADII.xs)), 1.0, p.accent);
+                }
+                let shown = editing.as_deref().unwrap_or(value);
+                // The end of a long value stays in view while typing.
+                let max_chars = ((pill.w - px(space::XL)) / (px(text::SMALL.size) * 0.55)) as usize;
+                let count = shown.chars().count();
+                let tail: String = shown.chars().skip(count.saturating_sub(max_chars.max(4))).collect();
+                let caret = editing.is_some() && (self.clock * 2.0) as u32 % 2 == 0;
+                let line = if caret { format!("{tail}|") } else { tail };
+                d.line(Rect::new(pill.x + px(space::M), pill.y, pill.w - px(space::M), pill.h), &line, px(text::SMALL.size), p.text, Align::Start);
+                d.region(hit, pill);
+                control_left = pill.x;
+            }
+            Kind::Info => {}
         }
-        if opt.changed && !matches!(opt.kind, Kind::Info | Kind::Text { .. }) {
+        if opt.changed && !matches!(opt.kind, Kind::Info) {
             let reset = Rect::new(control_left - px(52.0), row.y, px(46.0), row.h);
             let n = self.acts.len();
             self.acts.push(Act::Press(format!("{real}_reset")));
@@ -1009,6 +1183,17 @@ mod tests {
     }
 
     #[test]
+    fn keys_type_characters_and_shift_changes_them() {
+        let keys = |names: &[&str], shift| typed_from_keys(&names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>(), shift);
+        let t = keys(&["KeyA", "Digit1", "Space", "Minus"], false);
+        assert_eq!(&t.chars[..usize::from(t.len)], &['a', '1', ' ', '-']);
+        let t = keys(&["KeyA", "Digit1", "Minus"], true);
+        assert_eq!(&t.chars[..usize::from(t.len)], &['A', '!', '_']);
+        let t = keys(&["Backspace", "Enter", "ShiftLeft"], false);
+        assert!(t.backspaces == 1 && t.submit && t.len == 0);
+    }
+
+    #[test]
     fn numbers_show_as_many_decimals_as_the_step() {
         assert_eq!(number(5.0, 1.0), "5");
         assert_eq!(number(0.25, 0.01), "0.25");
@@ -1031,5 +1216,18 @@ mod tests {
         menu.frame(&settings, &state, Input { held: true, ..input(Some(over)) });
         let (_, actions) = menu.frame(&settings, &state, input(Some(over)));
         assert_eq!(actions, vec![Action::EventValue(format!("move_{}", crate::menu_controls::MODS[0].0), 2.0)], "{actions:?}");
+    }
+
+    #[test]
+    fn the_text_keys_fit_the_hosts_reserved_key_limit_with_room_for_the_menu_key() {
+        let keys = text_keys();
+        assert!(keys.len() < 64, "{} keys", keys.len());
+        let mut unique = keys.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), keys.len());
+        for needed in ["Backspace", "Enter", "Escape", "ShiftLeft", "KeyA", "Digit0", "Space"] {
+            assert!(keys.iter().any(|k| k == needed), "{needed} missing");
+        }
     }
 }

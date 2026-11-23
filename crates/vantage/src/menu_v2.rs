@@ -218,7 +218,7 @@ pub fn uses_scene(settings: &Settings, state: &PanelState, tab: usize) -> bool {
     if tab == MODS_PAGE {
         return true;
     }
-    CONVERTED.contains(&tab) && state.picker_view().is_none() && !with_page(settings, state, tab, &mut |page| page.has_text)
+    (CONVERTED.contains(&tab) || tab == WAYPOINTS_PAGE) && state.picker_view().is_none()
 }
 
 /// The panel the toolkit's pages draw in: one node the host paints the published scene into, sized to fit the
@@ -367,7 +367,8 @@ fn option_results_panel(shell: &Shell<'_>, hits: &[PageHit]) -> String {
 const WAYPOINTS_PAGE: usize = 17;
 
 /// The Waypoints page: the view buttons, each waypoint's switch, Edit and Delete, and the editor's fields.
-fn waypoints_panel<'a>(settings: &'a Settings, state: &'a PanelState) -> String {
+/// Builds the Waypoints page and hands it to `f`.
+fn waypoints_view<'a, R>(settings: &'a Settings, state: &'a PanelState, f: &mut dyn FnMut(&PageView<'_>) -> R) -> R {
     use crate::menu::Value as V;
     let wp = &state.wp;
     // Before the page has been synced with the world its texts are empty, which a control label may not be.
@@ -416,26 +417,33 @@ fn waypoints_panel<'a>(settings: &'a Settings, state: &'a PanelState) -> String 
     ];
     let matched = options::search(&groups, state.option_query());
     let shown = options::groups_of(&matched);
-    let entries = entries(WAYPOINTS_PAGE);
-    let sections = sections_of(&entries, "");
-    let shell = Shell {
-        palette: palette(settings),
-        brand: "Vantage",
-        sections: &sections,
-        title: "Waypoints",
-        search_hint: "Search waypoints...",
-        search: state.option_query(),
-        search_id: "opt_search",
-        back_id: "back",
-        account: "Player",
-        account_note: "",
-        backdrop: backdrop(settings),
-    };
     let open = state.open_choice().and_then(|id| match crate::panel::value(settings, state, id) {
         V::Choice(selected, names) => Some(options::Popup { title: "Colour", options: names, selected: selected.min(names.len().saturating_sub(1)) }),
         _ => None,
     });
-    options::panel(&shell, &shown, open.as_ref(), None, None).to_string()
+    f(&PageView { title: "Waypoints", groups: &shown, popup: open.as_ref(), picker: None, element: "", has_text: true })
+}
+
+/// The Waypoints page as a JSON document.
+fn waypoints_panel<'a>(settings: &'a Settings, state: &'a PanelState) -> String {
+    waypoints_view(settings, state, &mut |page| {
+        let entries = entries(WAYPOINTS_PAGE);
+        let sections = sections_of(&entries, "");
+        let shell = Shell {
+            palette: palette(settings),
+            brand: "Vantage",
+            sections: &sections,
+            title: page.title,
+            search_hint: "Search waypoints...",
+            search: state.option_query(),
+            search_id: "opt_search",
+            back_id: "back",
+            account: "Player",
+            account_note: "",
+            backdrop: backdrop(settings),
+        };
+        options::panel(&shell, page.groups, page.popup, None, None).to_string()
+    })
 }
 
 /// The Credits page.
@@ -780,6 +788,9 @@ pub struct PageView<'a> {
 
 /// Builds the page for `tab` and hands it to `f`.
 pub fn with_page<R>(settings: &Settings, state: &PanelState, tab: usize, f: &mut dyn FnMut(&PageView<'_>) -> R) -> R {
+    if tab == WAYPOINTS_PAGE {
+        return waypoints_view(settings, state, f);
+    }
     let defaults = Settings::default();
     let all = rows(settings, state, &defaults, tab);
     let titles = section_titles(tab, &all);

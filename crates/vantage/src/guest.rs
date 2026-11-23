@@ -2659,6 +2659,11 @@ impl State {
         if !details_key.is_empty() && !held.iter().any(|k| *k == details_key) {
             held.push(details_key.clone());
         }
+        // A text field of the toolkit's pages that has the keyboard reads the keys that type, and nothing else.
+        if self.gui.wants_text() {
+            bound = crate::gui::text_keys();
+            held = vec!["ShiftLeft".to_owned(), "ShiftRight".to_owned()];
+        }
         let controls = match input::read_selected_controls(&input::Selection {
             keys_pressed: if capturing { None } else { Some(bound) },
             keys_held: Some(held),
@@ -2862,6 +2867,7 @@ impl State {
                     dt: controls.seconds.clamp(0.0, 0.25),
                     viewport: [layout.width, layout.height],
                     dismiss: controls.keys_pressed.iter().any(|k| matches!(k.as_str(), "Enter" | "NumpadEnter" | "Escape")),
+                    typed: crate::gui::typed_from_keys(&controls.keys_pressed, controls.keys_held.iter().any(|k| k.starts_with("Shift"))),
                 };
                 let tab = self.panel.tab_number();
                 let (scene, actions) = if tab == crate::menu_controls::MODS_PAGE {
@@ -2874,6 +2880,7 @@ impl State {
                     match action {
                         crate::gui::Action::Event(id) => effect = effect.merge(self.panel.event(&mut self.settings, &id, 1.0)),
                         crate::gui::Action::EventValue(id, value) => effect = effect.merge(self.panel.event(&mut self.settings, &id, value)),
+                        crate::gui::Action::Text { id, text, submit } => effect = effect.merge(self.panel.field(&mut self.settings, &id, &text, !submit)),
                         crate::gui::Action::Close => {
                             let _ = panel::close();
                         }
