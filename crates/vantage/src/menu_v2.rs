@@ -218,7 +218,7 @@ pub fn uses_scene(settings: &Settings, state: &PanelState, tab: usize) -> bool {
     if tab == MODS_PAGE {
         return true;
     }
-    (CONVERTED.contains(&tab) || tab == WAYPOINTS_PAGE) && state.picker_view().is_none()
+    (CONVERTED.contains(&tab) || tab == WAYPOINTS_PAGE || tab == CREDITS_PAGE) && state.picker_view().is_none()
 }
 
 /// The panel the toolkit's pages draw in: one node the host paints the published scene into, sized to fit the
@@ -469,8 +469,8 @@ const CREDITS: [(&str, &[&str]); 5] = [
     ("Platform", &["Cinnabar, with Mods Core for its mod list", "and menu hand-over."]),
 ];
 
-/// The Credits page: each section's lines as text rows in the menu shell.
-fn credits_panel(settings: &Settings, state: &PanelState) -> String {
+/// Builds the Credits page and hands it to `f`.
+fn credits_view<R>(state: &PanelState, f: &mut dyn FnMut(&PageView<'_>) -> R) -> R {
     let opts: Vec<Vec<Opt<'_>>> = CREDITS
         .iter()
         .map(|(_, lines)| lines.iter().map(|line| Opt { id: "credit", label: line, help: None, kind: options::Kind::Info, changed: false }).collect())
@@ -478,22 +478,29 @@ fn credits_panel(settings: &Settings, state: &PanelState) -> String {
     let groups: Vec<Group<'_>> = CREDITS.iter().zip(&opts).map(|((title, _), opts)| Group { title, collapsed: false, options: opts }).collect();
     let matched = options::search(&groups, state.option_query());
     let shown = options::groups_of(&matched);
-    let entries = entries(CREDITS_PAGE);
-    let sections = sections_of(&entries, "");
-    let shell = Shell {
-        palette: palette(settings),
-        brand: "Vantage",
-        sections: &sections,
-        title: "Credits",
-        search_hint: "Search credits...",
-        search: state.option_query(),
-        search_id: "opt_search",
-        back_id: "back",
-        account: "Player",
-        account_note: "",
-        backdrop: backdrop(settings),
-    };
-    options::panel(&shell, &shown, None, None, None).to_string()
+    f(&PageView { title: "Credits", groups: &shown, popup: None, picker: None, element: "", has_text: false })
+}
+
+/// The Credits page as a JSON document.
+fn credits_panel(settings: &Settings, state: &PanelState) -> String {
+    credits_view(state, &mut |page| {
+        let entries = entries(CREDITS_PAGE);
+        let sections = sections_of(&entries, "");
+        let shell = Shell {
+            palette: palette(settings),
+            brand: "Vantage",
+            sections: &sections,
+            title: page.title,
+            search_hint: "Search credits...",
+            search: state.option_query(),
+            search_id: "opt_search",
+            back_id: "back",
+            account: "Player",
+            account_note: "",
+            backdrop: backdrop(settings),
+        };
+        options::panel(&shell, page.groups, None, None, None).to_string()
+    })
 }
 
 /// The settings pages the redesign has rebuilt, by tab. The others keep their old design until they are.
@@ -790,6 +797,9 @@ pub struct PageView<'a> {
 pub fn with_page<R>(settings: &Settings, state: &PanelState, tab: usize, f: &mut dyn FnMut(&PageView<'_>) -> R) -> R {
     if tab == WAYPOINTS_PAGE {
         return waypoints_view(settings, state, f);
+    }
+    if tab == CREDITS_PAGE {
+        return credits_view(state, f);
     }
     let defaults = Settings::default();
     let all = rows(settings, state, &defaults, tab);
