@@ -157,12 +157,33 @@ pub fn control_count(groups: &[Group<'_>]) -> usize {
         .sum()
 }
 
+/// The id of a group's heading button: `group_` and the title in lower case with every run of other
+/// characters as one `_`. Pressing it collapses or expands the group.
+#[must_use]
+pub fn group_id(title: &str) -> String {
+    let mut out = String::from("group_");
+    let mut gap = false;
+    for c in title.chars() {
+        if c.is_ascii_alphanumeric() {
+            if gap {
+                out.push('_');
+                gap = false;
+            }
+            out.push(c.to_ascii_lowercase());
+        } else {
+            gap = !out.ends_with('_');
+        }
+    }
+    out
+}
+
 /// The declared controls, in the order [`rows`] numbers them (from `first`).
 #[must_use]
 pub fn declared(groups: &[Group<'_>]) -> Vec<Value> {
     let mut out = Vec::new();
     for (g, group) in groups.iter().enumerate() {
-        out.push(json!({"kind": "button", "id": format!("group_{g}"), "label": group.title}));
+        let _ = g;
+        out.push(json!({"kind": "button", "id": group_id(group.title), "label": group.title}));
         for opt in group.options {
             match opt.kind {
                 Kind::Info => continue,
@@ -787,5 +808,13 @@ mod tests {
     #[test]
     fn changed_bindings_are_safe_names_whatever_the_id_holds() {
         assert_eq!(changed_binding("hud.fps-scale"), "#opt_changed_hud_fps_scale");
+    }
+
+    #[test]
+    fn a_heading_id_is_the_title_in_lower_case_with_runs_of_other_characters_as_one_underscore() {
+        assert_eq!(group_id("Selected profile"), "group_selected_profile");
+        assert_eq!(group_id("Chunk info"), "group_chunk_info");
+        assert_eq!(group_id("A -- B!"), "group_a_b");
+        assert!(group_id("Keybinds").bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
     }
 }

@@ -264,6 +264,10 @@ pub struct PanelState {
     option_search: (usize, String),
     /// The choice whose list of values is open on a redesigned page.
     choice: Option<String>,
+    /// The page sections the person has flipped from how they start: `(tab, heading id)`.
+    flipped: Vec<(usize, String)>,
+    /// The section whose heading was pressed last, which accordion pages keep open.
+    open_section: Option<(usize, String)>,
     /// The tab changed: the host needs that tab's document.
     tab_changed: bool,
     /// The page was opened from the Crosshair page while its window was grown: the window eases back.
@@ -494,6 +498,16 @@ impl PanelState {
 
     pub fn search_text(&self) -> &str {
         &self.search
+    }
+
+    /// Whether the section with heading id `heading` is collapsed on page `tab`, given how it starts.
+    pub fn section_collapsed(&self, tab: usize, heading: &str, starts_collapsed: bool) -> bool {
+        starts_collapsed != self.flipped.iter().any(|(t, h)| *t == tab && h == heading)
+    }
+
+    /// Whether section `heading` of page `tab` is the one an accordion page keeps open.
+    pub fn open_section(&self, tab: usize, heading: &str) -> bool {
+        self.open_section.as_ref().is_some_and(|(t, h)| *t == tab && h == heading)
     }
 
     /// The choice whose list of values is open.
@@ -1067,6 +1081,18 @@ impl PanelState {
             };
         }
         self.choice = None;
+        // A section heading collapses or expands its section.
+        if id.starts_with("group_") {
+            let key = (self.tab, id.to_owned());
+            match self.flipped.iter().position(|k| *k == key) {
+                Some(at) => {
+                    self.flipped.remove(at);
+                }
+                None => self.flipped.push(key.clone()),
+            }
+            self.open_section = if self.open_section.as_ref() == Some(&key) { None } else { Some(key) };
+            return Effect { republish: true, ..Effect::default() };
+        }
         // The colour picker's square and strips.
         if matches!(id, "pk_x" | "pk_y" | "pk_hue" | "pk_op") && self.hex_open() {
             match id {

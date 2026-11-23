@@ -291,6 +291,8 @@ struct Row<'a> {
     label: &'static str,
     value: Value<'a>,
     changed: bool,
+    /// The section the row sits in when the page's own table does not say (the General page's keybinds).
+    section: Option<&'static str>,
 }
 
 /// Whether two values are the same setting.
@@ -312,10 +314,79 @@ fn rows<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Setting
         label: "Enabled",
         value: crate::panel::value(settings, state, id),
         changed: false,
+        section: None,
     });
     switch
         .into_iter()
         .chain(rows_of(settings, state, defaults, tab))
+        .chain((tab == KEYBINDS_PAGE).then(|| keybind_rows(settings, state, defaults)).into_iter().flatten())
+        .collect()
+}
+
+/// The page that also lists every keybind of every mod, in a section of its own.
+const KEYBINDS_PAGE: usize = 6;
+
+/// The name of the page that lists keybind `id` among its options, or a catch-all.
+fn keybind_owner(settings: &Settings, state: &PanelState, defaults: &Settings, id: &str) -> &'static str {
+    CONVERTED
+        .iter()
+        .copied()
+        .filter(|tab| *tab != KEYBINDS_PAGE)
+        .find(|tab| rows_of(settings, state, defaults, *tab).any(|row| row.id == id))
+        .and_then(|tab| TABS.get(tab).copied())
+        .unwrap_or(OTHER_KEYS)
+}
+
+/// The section of keybinds no rebuilt page lists; it is split in several, each opened on its own, so the
+/// page stays within the host's size limit.
+const OTHER_KEYS: &str = "Other keys";
+const OTHER_KEY_SECTIONS: [&str; 10] = [
+    "Other keys 1", "Other keys 2", "Other keys 3", "Other keys 4", "Other keys 5", "Other keys 6", "Other keys 7", "Other keys 8", "Other keys 9", "Other keys 10",
+];
+/// How many keybinds one of those sections holds.
+const OTHER_KEYS_PER_SECTION: usize = 10;
+
+/// Every keybind the menu has that the page does not already list: one row each, grouped by the page that owns it.
+fn keybind_rows<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Settings) -> Vec<Row<'a>> {
+    let listed: Vec<&str> = rows_of(settings, state, defaults, KEYBINDS_PAGE).map(|row| row.id).collect();
+    let mut rows: Vec<Row<'a>> = CONTROLS
+        .iter()
+        .filter(|(kind, id, _)| *kind == Kind::Keybind && !listed.contains(id) && !is_furniture(KEYBINDS_PAGE, id))
+        .map(|&(_, id, label)| {
+            let value = crate::panel::value(settings, state, id);
+            let changed = !same(&value, &crate::panel::value(defaults, state, id));
+            Row { id, label, value, changed, section: Some(keybind_owner(settings, state, defaults, id)) }
+        })
+        .collect();
+    // Rows of one owner sit together, owners in page order and the catch-all last.
+    let order = |row: &Row<'_>| match row.section {
+        Some(name) if name != OTHER_KEYS => TABS.iter().position(|t| *t == name).unwrap_or(usize::MAX - 1),
+        _ => usize::MAX,
+    };
+    rows.sort_by_key(order);
+    let mut others = 0;
+    for row in rows.iter_mut().filter(|row| row.section == Some(OTHER_KEYS)) {
+        let part = (others / OTHER_KEYS_PER_SECTION).min(OTHER_KEY_SECTIONS.len() - 1);
+        row.section = Some(OTHER_KEY_SECTIONS[part]);
+        others += 1;
+    }
+    rows
+}
+
+/// For each row, the other keybinds that use the same key, as a line of help (none when it is alone on its key).
+fn conflict_notes(rows: &[Row<'_>]) -> Vec<Option<String>> {
+    fn key<'r>(row: &'r Row<'_>) -> Option<&'r str> {
+        match row.value {
+            Value::Key(key) if !key.is_empty() && key != "None" => Some(key),
+            _ => None,
+        }
+    }
+    rows.iter()
+        .map(|row| {
+            let mine = key(row)?;
+            let others: Vec<&str> = rows.iter().filter(|other| other.id != row.id && key(other) == Some(mine)).map(|other| other.label).collect();
+            (!others.is_empty()).then(|| format!("Also used by {}", others.join(", ")))
+        })
         .collect()
 }
 
@@ -355,7 +426,7 @@ const SECTIONS: [(usize, &[(&str, &str)]); 5] = [
     (7, &[("cfg_slot_0", "Profiles"), ("cfg_name", "Selected profile"), ("cfg_export", "Share")]),
     (1, &[("pos_x", "Position"), ("scale", "Size"), ("armor_horizontal", "Armor"), ("show_chunk", "Chunk info")]),
     (2, &[("bg_color", "Box"), ("text_color", "Text"), ("labels", "Display"), ("chroma_on", "Chroma"), ("background", "Extras"), ("box_border", "Border")]),
-    (4, &[("zoom_initial", "Zoom"), ("zoom_step_in", "Scroll steps"), ("zoom_smooth", "Smoothing"), ("zoom_sens", "Controls"), ("zoom_p_default", "Presets")]),
+    (4, &[("zoom_initial", "Amount"), ("zoom_step_in", "Scroll steps"), ("zoom_smooth", "Smoothing"), ("zoom_sens", "Controls"), ("zoom_p_default", "Presets")]),
     (5, &[("ch_shape", "Shape"), ("ch_dot", "Dot"), ("ch_target", "Targets"), ("ch_weapon", "Weapon"), ("ch_color", "Colour"), ("ch_outline", "Outline")]),
 ];
 
@@ -367,6 +438,9 @@ fn section_titles<'a>(tab: usize, rows: &[Row<'_>]) -> Vec<&'a str> {
         .map(|row| {
             if let Some((_, title)) = starts.iter().find(|(id, _)| *id == row.id) {
                 current = title;
+            }
+            if let Some(section) = row.section {
+                return section;
             }
             current
         })
@@ -384,7 +458,7 @@ fn rows_of<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Sett
             }
             let value = crate::panel::value(settings, state, id);
             let changed = !same(&value, &crate::panel::value(defaults, state, id));
-            Some(Row { id, label, value, changed })
+            Some(Row { id, label, value, changed, section: None })
         })
 }
 
@@ -394,8 +468,14 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
     let defaults = Settings::default();
     let all = rows(settings, state, &defaults, tab);
     let titles = section_titles(tab, &all);
-    let (rows, titles): (Vec<Row<'_>>, Vec<&str>) =
-        all.into_iter().zip(titles).filter(|(row, _)| !switched_off(settings, state, row.id)).unzip();
+    let notes = conflict_notes(&all);
+    let ((rows, titles), notes): ((Vec<Row<'_>>, Vec<&str>), Vec<Option<String>>) = all
+        .into_iter()
+        .zip(titles)
+        .zip(notes)
+        .filter(|((row, _), _)| !switched_off(settings, state, row.id))
+        .map(|((row, title), note)| ((row, title), note))
+        .unzip();
     // A choice opens its list of values on press, so its control is declared under its own id.
     let ids: Vec<String> = rows
         .iter()
@@ -404,10 +484,11 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
     let opts: Vec<Opt<'_>> = rows
         .iter()
         .zip(&ids)
-        .map(|(row, id)| Opt {
+        .zip(&notes)
+        .map(|((row, id), note)| Opt {
             id,
             label: row.label,
-            help: None,
+            help: note.as_deref(),
             kind: match &row.value {
                 Value::Toggle(on) => options::Kind::Toggle { on: *on },
                 Value::Slider(value, min, max, step) => {
@@ -431,7 +512,11 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
     for end in 1..=opts.len() {
         if end == opts.len() || titles[end] != titles[start] {
             let heading = if titles[start].is_empty() { title.as_str() } else { titles[start] };
-            group.push(Group { title: heading, collapsed: false, options: &opts[start..end] });
+            // The keybind sections are many and long: one is open at a time, and none starts open.
+            let keybinds = tab == KEYBINDS_PAGE && rows[start].section.is_some();
+            let id = options::group_id(heading);
+            let collapsed = if keybinds { !state.open_section(tab, &id) } else { state.section_collapsed(tab, &id, false) };
+            group.push(Group { title: heading, collapsed, options: &opts[start..end] });
             start = end;
         }
     }
@@ -708,6 +793,68 @@ mod tests {
         let page: serde_json::Value = serde_json::from_str(&settings_panel(&settings, &state, 10)).unwrap();
         for control in page["controls"].as_array().unwrap() {
             assert!(!control["label"].as_str().unwrap_or("x").is_empty(), "{} has no label", control["id"]);
+        }
+    }
+
+    #[test]
+    fn keybinds_on_the_same_key_name_each_other_and_unbound_ones_never_conflict() {
+        let row = |id: &'static str, label: &'static str, key: &'static str| Row { id, label, value: Value::Key(key), changed: false, section: None };
+        let rows = [row("a", "Alpha", "KeyZ"), row("b", "Beta", "KeyZ"), row("c", "Gamma", "KeyX"), row("d", "Delta", ""), row("e", "Eps", "")];
+        let notes = conflict_notes(&rows);
+        assert_eq!(notes[0].as_deref(), Some("Also used by Beta"));
+        assert_eq!(notes[1].as_deref(), Some("Also used by Alpha"));
+        assert_eq!((notes[2].as_ref(), notes[3].as_ref(), notes[4].as_ref()), (None, None, None));
+    }
+
+    #[test]
+    fn the_general_page_lists_every_keybind_once_in_its_own_section() {
+        let settings = Settings::default();
+        let state = PanelState::default();
+        let defaults = Settings::default();
+        let all = rows(&settings, &state, &defaults, KEYBINDS_PAGE);
+        let keys: Vec<&str> = all.iter().filter(|r| matches!(r.value, Value::Key(_))).map(|r| r.id).collect();
+        for id in &keys {
+            assert_eq!(keys.iter().filter(|k| *k == id).count(), 1, "{id} is listed twice");
+        }
+        let expected = CONTROLS.iter().filter(|(kind, ..)| *kind == Kind::Keybind).count();
+        assert_eq!(keys.len(), expected);
+    }
+
+    #[test]
+    fn every_rebuilt_page_fits_the_panel_size_limit() {
+        // The host's limits (`ui::mod_panel::MAX_PANEL_BYTES` and `MAX_PANEL_CONTROLS`), which this crate cannot import.
+        const MAX_PANEL_BYTES: usize = 320 * 1024;
+        const MAX_PANEL_CONTROLS: usize = 512;
+        const MAX_SURFACE_BINDINGS: usize = 256;
+        const MAX_SURFACE_BYTES: usize = 192 * 1024;
+        let settings = Settings::default();
+        let state = PanelState::default();
+        for &tab in &CONVERTED {
+            let page = settings_panel(&settings, &state, tab);
+            assert!(page.len() <= MAX_PANEL_BYTES, "page {tab} is {} bytes", page.len());
+            let document = serde_json::from_str::<serde_json::Value>(&page).unwrap()["surface"]["document"].as_str().unwrap().len();
+            assert!(document <= MAX_SURFACE_BYTES, "page {tab}'s document is {document} bytes");
+            let controls = serde_json::from_str::<serde_json::Value>(&page).unwrap()["controls"].as_array().unwrap().len();
+            assert!(controls <= MAX_PANEL_CONTROLS, "page {tab} declares {controls} controls");
+            let bindings = serde_json::from_str::<serde_json::Value>(&page).unwrap()["surface"]["bindings"].as_object().unwrap().len();
+            assert!(bindings <= MAX_SURFACE_BINDINGS, "page {tab} binds {bindings} values");
+        }
+    }
+
+    #[test]
+    fn each_keybind_section_fits_the_surface_limit_when_it_is_opened_alone() {
+        let defaults = Settings::default();
+        let mut sections: Vec<&str> = rows(&defaults, &PanelState::default(), &defaults, KEYBINDS_PAGE).iter().filter_map(|row| row.section).collect();
+        sections.dedup();
+        assert!(sections.len() > 2, "the keybinds are grouped by owner");
+        for section in sections {
+            let mut settings = Settings::default();
+            let mut state = PanelState::default();
+            state.event(&mut settings, "tab_6", 1.0);
+            state.event(&mut settings, &options::group_id(section), 1.0);
+            let page: serde_json::Value = serde_json::from_str(&settings_panel(&settings, &state, KEYBINDS_PAGE)).unwrap();
+            let document = page["surface"]["document"].as_str().unwrap().len();
+            assert!(document <= 192 * 1024, "{section} opens to a {document} byte document");
         }
     }
 }
