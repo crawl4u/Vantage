@@ -103,6 +103,29 @@ mod tests {
     }
 
     #[test]
+    fn the_waypoints_page_is_valid_empty_and_with_every_slot_used() {
+        let mut settings = Settings::default();
+        let mut state = PanelState::default();
+        state.event(&mut settings, "tab_17", 1.0);
+        state.wp.sync(&settings, "world", 0, [0, 64, 0], true);
+        assert_valid(&menu_v2::page(&settings, &state).unwrap(), "the empty Waypoints page");
+        for n in 0..vantage::waypoints::MAX_WAYPOINTS {
+            let name = format!("A waypoint with a fairly long name {n}");
+            settings.gameplay.waypoints.push(vantage::waypoints::Waypoint {
+                name: name.chars().take(48).collect(),
+                world: "world".to_owned(),
+                dimension: 0,
+                pos: [n as i32 * 1000, 64, -(n as i32) * 1000],
+                color: 0,
+                visible: n % 2 == 0,
+                group: "Base".to_owned(),
+            });
+        }
+        state.wp.sync(&settings, "world", 0, [0, 64, 0], true);
+        assert_valid(&menu_v2::page(&settings, &state).unwrap(), "the full Waypoints page");
+    }
+
+    #[test]
     fn the_search_results_page_is_a_valid_panel_to_the_host() {
         let mut settings = Settings::default();
         let mut state = PanelState::default();

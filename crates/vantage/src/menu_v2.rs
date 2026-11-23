@@ -97,7 +97,7 @@ pub fn cards<'a>(settings: &'a Settings, state: &'a PanelState) -> Vec<Card<'a>>
 
 /// The pages the sidebar lists, as `(tab, title)`, in groups: where the sidebar goes when a page is open.
 const SIDEBAR: [(&str, &[(usize, &str)]); 2] = [
-    ("Mods and options", &[(0, "Mods"), (7, "Profiles"), (26, "Sharing")]),
+    ("Mods and options", &[(0, "Mods"), (17, "Waypoints"), (7, "Profiles"), (26, "Sharing")]),
     ("Menu", &[(6, "General"), (8, "Credits")]),
 ];
 
@@ -138,6 +138,7 @@ fn icon_of(tab: usize) -> &'static str {
         6 => icons::SETTINGS,
         7 => icons::PACKAGE,
         8 => icons::HEART,
+        17 => icons::MAP_PIN,
         26 => icons::CLOUD,
         _ => "",
     }
@@ -292,6 +293,81 @@ fn option_results_panel(shell: &Shell<'_>, hits: &[PageHit]) -> String {
     options::panel(&shell, &shown, None, None, None).to_string()
 }
 
+/// The Waypoints page.
+const WAYPOINTS_PAGE: usize = 17;
+
+/// The Waypoints page: the view buttons, each waypoint's switch, Edit and Delete, and the editor's fields.
+fn waypoints_panel<'a>(settings: &'a Settings, state: &'a PanelState) -> String {
+    use crate::menu::Value as V;
+    let wp = &state.wp;
+    // Before the page has been synced with the world its texts are empty, which a control label may not be.
+    let or = |text: &'a str, fallback: &'static str| if text.is_empty() { fallback } else { text };
+    let value = |id: &str| crate::panel::value(settings, state, id);
+    // The ids of the waypoint rows' controls, kept so each Opt can borrow its own.
+    let ids: Vec<[String; 3]> = (0..wp.rows.len()).map(|n| [format!("wp_vis_{n}"), format!("wp_edit_{n}"), format!("wp_del_{n}")]).collect();
+    let labels: Vec<[String; 2]> = wp.rows.iter().map(|row| [format!("Edit {}", row.name), format!("Delete {}", row.name)]).collect();
+    let mut list: Vec<Opt<'_>> = Vec::new();
+    for (n, row) in wp.rows.iter().enumerate() {
+        list.push(Opt { id: &ids[n][0], label: &row.name, help: Some(&row.pos), kind: options::Kind::Toggle { on: row.visible }, changed: false });
+        list.push(Opt { id: &ids[n][1], label: &labels[n][0], help: None, kind: options::Kind::Button { label: "Edit" }, changed: false });
+        list.push(Opt { id: &ids[n][2], label: &labels[n][1], help: None, kind: options::Kind::Button { label: "Delete" }, changed: false });
+    }
+    if list.is_empty() {
+        list.push(Opt { id: "wp_empty", label: or(&wp.info, "No waypoints here yet."), help: None, kind: options::Kind::Info, changed: false });
+    }
+    let button = |id: &'static str, label: &'static str, shown: &'a str| Opt { id, label, help: None, kind: options::Kind::Button { label: shown }, changed: false };
+    let view = [
+        button("wp_fdim", "Show", or(&wp.dim_label, "Show: Here")),
+        button("wp_fsort", "Sort", or(&wp.sort_label, "Sort: Nearest")),
+        button("wp_fgroup", "Group", or(&wp.group_label, "Group: All")),
+    ];
+    let text = |id: &'static str, label: &'static str, shown: &'a str| Opt { id, label, help: None, kind: options::Kind::Text { value: shown }, changed: false };
+    let mut editor = vec![
+        text("wp_name", "Name", &wp.name),
+        text("wp_x", "X", &wp.x),
+        text("wp_y", "Y", &wp.y),
+        text("wp_z", "Z", &wp.z),
+        text("wp_group", "Group", &wp.group),
+    ];
+    if let V::Choice(selected, names) = value("gp_wp_edit_color") {
+        editor.push(Opt { id: "choose_gp_wp_edit_color", label: "Colour", help: None, kind: options::Kind::Choice { options: names, selected }, changed: false });
+    }
+    let status = if wp.error.is_empty() { wp.info.as_str() } else { wp.error.as_str() };
+    editor.push(Opt { id: "wp_status", label: "Status", help: Some(status), kind: options::Kind::Info, changed: false });
+    editor.push(button("wp_save", "Save", "Save"));
+    editor.push(button("wp_cancel", "Cancel", "Cancel"));
+    editor.push(button("wp_undo", "Undo", or(&wp.undo_label, "Nothing to undo")));
+    let confirm = Opt { id: "gp_wp_confirm", label: "Confirm waypoint deletion", help: None, kind: options::Kind::Toggle { on: matches!(value("gp_wp_confirm"), V::Toggle(true)) }, changed: false };
+    editor.push(confirm);
+    let groups = [
+        Group { title: "View", collapsed: false, options: &view },
+        Group { title: "Your waypoints", collapsed: false, options: &list },
+        Group { title: or(&wp.mode, "Add waypoint"), collapsed: false, options: &editor },
+    ];
+    let matched = options::search(&groups, state.option_query());
+    let shown = options::groups_of(&matched);
+    let entries = entries(WAYPOINTS_PAGE);
+    let sections = sections_of(&entries, "");
+    let shell = Shell {
+        palette: palette(settings),
+        brand: "Vantage",
+        sections: &sections,
+        title: "Waypoints",
+        search_hint: "Search waypoints...",
+        search: state.option_query(),
+        search_id: "opt_search",
+        back_id: "back",
+        account: "Player",
+        account_note: "",
+        backdrop: backdrop(settings),
+    };
+    let open = state.open_choice().and_then(|id| match crate::panel::value(settings, state, id) {
+        V::Choice(selected, names) => Some(options::Popup { title: "Colour", options: names, selected: selected.min(names.len().saturating_sub(1)) }),
+        _ => None,
+    });
+    options::panel(&shell, &shown, open.as_ref(), None, None).to_string()
+}
+
 /// The Credits page.
 const CREDITS_PAGE: usize = 8;
 
@@ -343,12 +419,12 @@ fn credits_panel(settings: &Settings, state: &PanelState) -> String {
 }
 
 /// The settings pages the redesign has rebuilt, by tab. The others keep their old design until they are.
-const CONVERTED: [usize; 23] = [1, 2, 7, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26];
+const CONVERTED: [usize; 24] = [1, 2, 7, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25, 26];
 
 /// Whether the redesign draws this tab (the Mods grid and the rebuilt settings pages).
 #[must_use]
 pub fn handles(tab: usize) -> bool {
-    tab == MODS_PAGE || tab == CREDITS_PAGE || CONVERTED.contains(&tab)
+    tab == MODS_PAGE || tab == CREDITS_PAGE || tab == WAYPOINTS_PAGE || CONVERTED.contains(&tab)
 }
 
 /// The page for the open tab, when the redesign draws it.
@@ -360,6 +436,9 @@ pub fn page(settings: &Settings, state: &PanelState) -> Option<String> {
     }
     if tab == CREDITS_PAGE {
         return Some(credits_panel(settings, state));
+    }
+    if tab == WAYPOINTS_PAGE {
+        return Some(waypoints_panel(settings, state));
     }
     CONVERTED.contains(&tab).then(|| settings_panel(settings, state, tab))
 }
