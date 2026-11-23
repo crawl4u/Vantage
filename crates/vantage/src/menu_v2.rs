@@ -97,7 +97,7 @@ pub fn cards<'a>(settings: &'a Settings, state: &'a PanelState) -> Vec<Card<'a>>
 
 /// The pages the sidebar lists, as `(tab, title)`, in groups: where the sidebar goes when a page is open.
 const SIDEBAR: [(&str, &[(usize, &str)]); 2] = [
-    ("Mods and options", &[(0, "Mods"), (7, "Config"), (26, "Sharing")]),
+    ("Mods and options", &[(0, "Mods"), (7, "Profiles"), (26, "Sharing")]),
     ("Menu", &[(6, "General"), (8, "Credits")]),
 ];
 
@@ -220,7 +220,7 @@ pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
 }
 
 /// The settings pages the redesign has rebuilt, by tab. The others keep their old design until they are.
-const CONVERTED: [usize; 22] = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26];
+const CONVERTED: [usize; 23] = [1, 2, 7, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26];
 
 /// Whether the redesign draws this tab (the Mods grid and the rebuilt settings pages).
 #[must_use]
@@ -262,6 +262,12 @@ fn referenced(document: usize) -> Vec<usize> {
         }
     }
     order
+}
+
+/// Whether `id` is the menu's own furniture on page `tab`, so it is not listed as an option there. The
+/// Profiles page (the old Config page) is made of the `cfg_` controls, which are its options.
+fn is_furniture(tab: usize, id: &str) -> bool {
+    is_chrome(id) && !(tab == 7 && id.starts_with("cfg_"))
 }
 
 /// Controls that are the menu's own furniture (tabs, setups, the HUD mover, popups), not options of a page.
@@ -345,7 +351,8 @@ const DEPENDS: [(&str, &str); 17] = [
 
 /// Titled sections of the busier pages: `(tab, [(the option a section starts at, its title)])`. A page not
 /// listed is one section.
-const SECTIONS: [(usize, &[(&str, &str)]); 4] = [
+const SECTIONS: [(usize, &[(&str, &str)]); 5] = [
+    (7, &[("cfg_slot_0", "Profiles"), ("cfg_name", "Selected profile"), ("cfg_export", "Share")]),
     (1, &[("pos_x", "Position"), ("scale", "Size"), ("armor_horizontal", "Armor"), ("show_chunk", "Chunk info")]),
     (2, &[("bg_color", "Box"), ("text_color", "Text"), ("labels", "Display"), ("chroma_on", "Chroma"), ("background", "Extras"), ("box_border", "Border")]),
     (4, &[("zoom_initial", "Zoom"), ("zoom_step_in", "Scroll steps"), ("zoom_smooth", "Smoothing"), ("zoom_sens", "Controls"), ("zoom_p_default", "Presets")]),
@@ -370,9 +377,9 @@ fn section_titles<'a>(tab: usize, rows: &[Row<'_>]) -> Vec<&'a str> {
 fn rows_of<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Settings, tab: usize) -> impl Iterator<Item = Row<'a>> {
     referenced(crate::menu::document_index(tab, state.element().index()))
         .into_iter()
-        .filter_map(|index| {
+        .filter_map(move |index| {
             let (kind, id, label) = CONTROLS[index];
-            if is_chrome(id) || !matches!(kind, Kind::Toggle | Kind::Slider | Kind::Choice | Kind::Keybind | Kind::Button) {
+            if is_furniture(tab, id) || !matches!(kind, Kind::Toggle | Kind::Slider | Kind::Choice | Kind::Keybind | Kind::Button | Kind::Text) {
                 return None;
             }
             let value = crate::panel::value(settings, state, id);
@@ -408,14 +415,15 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
                 }
                 Value::Choice(selected, names) => options::Kind::Choice { options: names, selected: (*selected).min(names.len().saturating_sub(1)) },
                 Value::Key(key) => options::Kind::Keybind { key },
-                Value::Button(label) => options::Kind::Button { label: label.unwrap_or("Apply") },
+                Value::Button(label) => options::Kind::Button { label: label.unwrap_or(row.label) },
+                Value::Text(value) => options::Kind::Text { value },
                 _ => options::Kind::Info,
             },
             changed: row.changed,
         })
         .collect();
     let element = state.element().label();
-    let page = TABS.get(tab).copied().unwrap_or("Settings");
+    let page = if tab == 7 { "Profiles" } else { TABS.get(tab).copied().unwrap_or("Settings") };
     let title = if matches!(tab, 1 | 2) { format!("{page}: {element}") } else { page.to_owned() };
     // Consecutive rows of one section make a group; a page with no sections is one group named for the page.
     let mut group: Vec<Group<'_>> = Vec::new();
@@ -620,7 +628,7 @@ mod tests {
         let defaults = Settings::default();
         for &tab in &CONVERTED {
             for row in rows(&settings, &state, &defaults, tab) {
-                assert!(!is_chrome(row.id), "{} is furniture", row.id);
+                assert!(!is_furniture(tab, row.id), "{} is furniture", row.id);
             }
         }
     }
