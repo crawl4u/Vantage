@@ -289,7 +289,7 @@ fn option_results_panel(shell: &Shell<'_>, hits: &[PageHit]) -> String {
     let matched = options::search(&group, "");
     let shown = options::groups_of(&matched);
     let shell = Shell { title: "Search results", ..*shell };
-    options::panel(&shell, &shown, None, None).to_string()
+    options::panel(&shell, &shown, None, None, None).to_string()
 }
 
 /// The Credits page.
@@ -339,7 +339,7 @@ fn credits_panel(settings: &Settings, state: &PanelState) -> String {
         account_note: "",
         backdrop: backdrop(settings),
     };
-    options::panel(&shell, &shown, None, None).to_string()
+    options::panel(&shell, &shown, None, None, None).to_string()
 }
 
 /// The settings pages the redesign has rebuilt, by tab. The others keep their old design until they are.
@@ -680,7 +680,48 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
         let rgb = u32::from_str_radix(hex, 16).unwrap_or(0);
         crate::menu_v2::picker_data(settings, title, hsv, opacity, hex, rgb)
     });
-    options::panel(&shell, &shown, popup.as_ref(), picker.as_ref()).to_string()
+    let preview = (tab == 5).then(|| crosshair_preview(settings));
+    options::panel(&shell, &shown, popup.as_ref(), picker.as_ref(), preview.as_ref()).to_string()
+}
+
+/// The crosshair as it looks at rest, drawn from the settings.
+fn crosshair_preview(settings: &Settings) -> options::Side<'static> {
+    use crate::crosshair::{self, Target};
+    use vantage_ui::{node, tokens::px};
+    const BOX: f32 = 112.0;
+    let c = &settings.crosshair;
+    let frame = c.frame(Target::None, false);
+    let look = c.look(false, false);
+    let outline = if c.outline && frame.outline[3] > 0.0 { crosshair::snap(c.outline_width as f32, 1) } else { 0.0 };
+    let half = BOX / 2.0;
+    let p = crosshair::preview_with(&look, outline, c.outline_round, half);
+    // The side card is 160 units wide: the drawing is centred in it, below the title.
+    let (left, top) = (px(24.0), px(36.0));
+    let at = |x: f32, y: f32| [left + px(x), top + px(y)];
+    let mut body = vec![node::rounded("backdrop", at(0.0, 0.0), [px(BOX), px(BOX)], px(vantage_ui::tokens::RADII.xs), [0.0, 0.0, 0.0, 0.35])];
+    let circle = |name: &str, ring: Option<crosshair::Ring>, centre: [f32; 2], colour: [f32; 4], body: &mut Vec<serde_json::Value>| {
+        if let Some(r) = ring {
+            let outer = r.radius + r.width / 2.0;
+            let inner = (r.radius - r.width / 2.0).max(0.0);
+            // A ring is a disc of its outer radius with a hole; the disc of the Dot shape has none.
+            body.push(node::rounded(name, at(centre[0] - outer, centre[1] - outer), [px(outer * 2.0), px(outer * 2.0)], px(outer), colour));
+            if inner > 0.0 {
+                body.push(node::rounded(&format!("{name}_hole"), at(centre[0] - inner, centre[1] - inner), [px(inner * 2.0), px(inner * 2.0)], px(inner), [0.0, 0.0, 0.0, 0.0]));
+            }
+        }
+    };
+    let middle = [half, half];
+    circle("ring_edge", p.ring_edge, middle, frame.outline, &mut body);
+    circle("disc_edge", p.disc_edge, p.disc_at, frame.outline, &mut body);
+    for (i, (rect, radius)) in p.edges.iter().zip(&p.edge_radius).enumerate() {
+        body.push(node::rounded(&format!("edge_{i}"), at(rect[0], rect[1]), [px(rect[2]), px(rect[3])], px(*radius), frame.outline));
+    }
+    circle("ring", p.ring, middle, frame.fill, &mut body);
+    circle("disc", p.disc, p.disc_at, frame.fill, &mut body);
+    for (i, (rect, radius)) in p.fill.iter().zip(&p.fill_radius).enumerate() {
+        body.push(node::rounded(&format!("bar_{i}"), at(rect[0], rect[1]), [px(rect[2]), px(rect[3])], px(*radius), frame.fill));
+    }
+    options::Side { title: "Preview", size: [160.0, 160.0], body }
 }
 
 /// The picker card for the colour being edited.

@@ -76,6 +76,24 @@ mod tests {
     }
 
     #[test]
+    fn the_crosshair_page_with_its_preview_is_valid_for_every_shape_and_outline() {
+        for shape in 0..vantage::crosshair::SHAPES.len() {
+            for (outline, dot, round) in [(false, false, false), (true, true, true), (true, false, false)] {
+                let mut settings = Settings::default();
+                settings.crosshair.shape = shape;
+                settings.crosshair.outline = outline;
+                settings.crosshair.dot = dot;
+                settings.crosshair.dot_round = round;
+                settings.crosshair.round_lines = round;
+                settings.crosshair.outline_round = round;
+                let mut state = PanelState::default();
+                state.event(&mut settings, "tab_5", 1.0);
+                assert_valid(&menu_v2::page(&settings, &state).unwrap(), &format!("the Crosshair page, shape {shape}"));
+            }
+        }
+    }
+
+    #[test]
     fn the_search_results_page_is_a_valid_panel_to_the_host() {
         let mut settings = Settings::default();
         let mut state = PanelState::default();

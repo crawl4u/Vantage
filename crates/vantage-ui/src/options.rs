@@ -610,6 +610,19 @@ pub fn popup_controls(p: &Palette, popup: &Popup<'_>, area: [f32; 4], first: usi
     ]
 }
 
+/// A card at the right of the page, beside the rows: a title and a drawing.
+#[derive(Clone, Debug)]
+pub struct Side<'a> {
+    pub title: &'a str,
+    /// The card's width and height in design units.
+    pub size: [f32; 2],
+    /// The drawing's controls, placed in GUI pixels from the card's top left.
+    pub body: Vec<Value>,
+}
+
+/// The gap between the rows and the side card, in design units.
+const SIDE_GAP: f32 = 16.0;
+
 /// The settings page: the shell with the groups as scrolling rows in its pane.
 #[must_use]
 pub fn panel(
@@ -617,6 +630,7 @@ pub fn panel(
     groups: &[Group<'_>],
     popup: Option<&Popup<'_>>,
     picker: Option<&crate::picker::Picker<'_>>,
+    side: Option<&Side<'_>>,
 ) -> Value {
     let p = shell_state.palette;
     let shell_declared = crate::shell::declared_controls(shell_state);
@@ -624,15 +638,32 @@ pub fn panel(
     let [x, y, w, h] = crate::shell::content_rect();
     let pad = px(space::XL);
     let (view_w, view_h) = (w - pad * 2.0, h - pad * 2.0);
-    let laid = rows(&p, groups, view_w - 8.0, first);
+    let side_w = side.map_or(0.0, |side| px(side.size[0] + SIDE_GAP));
+    let laid = rows(&p, groups, view_w - side_w - 8.0, first);
     let mut controls = crate::shell::controls(shell_state);
     controls.push(node::scroll_view(
         "rows",
         [x + pad, y + pad],
-        [view_w, view_h],
+        [view_w - side_w, view_h],
         laid.controls,
         laid.height.max(view_h),
     ));
+    if let Some(side) = side {
+        let (w, h) = (px(side.size[0]), px(side.size[1]));
+        let at = [x + pad + view_w - w, y + pad];
+        controls.push(node::rounded("side_card", at, [w, h], px(RADII.md), p.raised));
+        controls.push(node::outline("side_edge", at, [w, h], px(RADII.md), 1.0, p.border));
+        controls.push(node::label(
+            "side_title",
+            side.title,
+            [at[0] + px(space::L), at[1] + px(space::M)],
+            [w - px(space::L * 2.0), line(text::SMALL)],
+            p.muted,
+            scale(text::SMALL),
+            Align::Left,
+        ));
+        controls.push(node::panel("side_body", at, [w, h], side.body.clone()));
+    }
     let mut declared = shell_declared;
     declared.extend(self::declared(groups));
     if let Some(popup) = popup {
