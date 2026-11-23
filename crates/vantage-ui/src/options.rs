@@ -683,13 +683,14 @@ pub fn panel(
         map.extend(shell_state.backdrop.bindings());
     }
     json!({
-        "reference_size": [ww, wh],
+        "reference_size": crate::shell::reference_size(),
+        "fill": true,
         "controls": declared,
         "surface": {
             "screen": "vantage.root",
             "document": json!({
                 "namespace": "vantage",
-                "root": {"type": "panel", "size": [ww, wh], "controls": controls},
+                "root": crate::shell::root([ww, wh], controls),
             }).to_string(),
             "bindings": bindings,
             "transitions": crate::shell::Backdrop::transitions(),

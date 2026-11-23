@@ -567,13 +567,14 @@ pub fn panel(
         );
     }
     json!({
-        "reference_size": [w, h],
+        "reference_size": crate::shell::reference_size(),
+        "fill": true,
         "controls": declared,
         "surface": {
             "screen": "vantage.root",
             "document": json!({
                 "namespace": "vantage",
-                "root": {"type": "panel", "size": [w, h], "controls": controls},
+                "root": crate::shell::root([w, h], controls),
             }).to_string(),
             "collections": collections,
             "bindings": p_backdrop.bindings(),

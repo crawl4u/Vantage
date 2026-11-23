@@ -127,6 +127,7 @@ pub fn sample_panel() -> Panel {
     Panel {
         surface: sample_surface(&controls),
         reference_size: None,
+        fill: false,
         controls,
         widget_colors: None,
         capture_key: false,

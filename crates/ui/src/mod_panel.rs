@@ -72,6 +72,10 @@ pub struct Panel {
     /// Logical authored-surface dimensions to fit within smaller viewports.
     #[serde(default)]
     pub reference_size: Option<[f32; 2]>,
+    /// Scale the surface up as well as down so its reference size fills the viewport, instead of
+    /// only shrinking it to fit.
+    #[serde(default)]
+    pub fill: bool,
     /// Value-bearing input widgets the host routes surface actions to.
     #[serde(default)]
     pub controls: Vec<Control>,

@@ -44,6 +44,43 @@ pub(crate) use widgets::Palette;
 
 const SCREEN: &str = "cinnabar_personal.panel";
 
+/// The display scale at which a surface of `reference` logical size fits `content` pixels: never above 1
+/// unless `fill` lets it grow to fill the viewport.
+fn fitted_scale(content: [f32; 2], reference: [f32; 2], fill: bool) -> f32 {
+    let fit = content
+        .into_iter()
+        .zip(reference)
+        .map(|(available, required)| available / (required * FONT_DESIGN_PIXEL_TEXELS as f32))
+        .fold(f32::INFINITY, f32::min);
+    let ceiling = if fill { UiScale::DISPLAY_MAX } else { 1.0 };
+    fit.min(ceiling).clamp(UiScale::DISPLAY_MIN, ceiling)
+}
+
+#[cfg(test)]
+mod fit_tests {
+    use super::*;
+
+    const TEXELS: f32 = FONT_DESIGN_PIXEL_TEXELS as f32;
+
+    #[test]
+    fn a_surface_only_shrinks_unless_it_asks_to_fill() {
+        let reference = [100.0, 50.0];
+        let roomy = [reference[0] * TEXELS * 3.0, reference[1] * TEXELS * 3.0];
+        assert_eq!(fitted_scale(roomy, reference, false), 1.0);
+        assert!((fitted_scale(roomy, reference, true) - 3.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn the_tighter_axis_decides_and_a_small_viewport_shrinks_either_way() {
+        let reference = [100.0, 50.0];
+        let wide = [reference[0] * TEXELS * 4.0, reference[1] * TEXELS * 2.0];
+        assert!((fitted_scale(wide, reference, true) - 2.0).abs() < 1e-4);
+        let tiny = [reference[0] * TEXELS * 0.5, reference[1] * TEXELS * 0.5];
+        assert!((fitted_scale(tiny, reference, false) - 0.5).abs() < 1e-4);
+        assert!((fitted_scale(tiny, reference, true) - 0.5).abs() < 1e-4);
+    }
+}
+
 pub(super) struct ModPanel {
     pub(super) owner: PanelUiOwner,
     embeds: crate::hud_surface::embed::Embeds,
@@ -408,14 +445,7 @@ impl ModUi {
         let content = paint_frame.content;
         // Authored surfaces may declare their logical extent for viewport fitting.
         let scale = panel.panel.reference_size.map_or(1.0, |size| {
-            content
-                .into_iter()
-                .zip(size)
-                .map(|(available, required)| {
-                    available / (required * FONT_DESIGN_PIXEL_TEXELS as f32)
-                })
-                .fold(1.0, f32::min)
-                .clamp(UiScale::DISPLAY_MIN, 1.0)
+            fitted_scale(content, size, panel.panel.fill)
         });
         paint_frame.metrics.scale =
             UiScale::new_display(scale).expect("fitted display scale is valid");

@@ -143,6 +143,33 @@ pub fn window_px() -> [f32; 2] {
     [px(WINDOW[0]), px(WINDOW[1])]
 }
 
+/// The size the host fits the window to: the window with a margin all round, so it scales up to nearly fill
+/// the screen and no further.
+#[must_use]
+pub fn reference_size() -> [f32; 2] {
+    let [w, h] = window_px();
+    [w * SCREEN_MARGIN, h * SCREEN_MARGIN]
+}
+
+/// The room left around the window when it fills the screen, as a factor of its size.
+const SCREEN_MARGIN: f32 = 1.12;
+
+/// The root of a page: a panel filling the viewport, with the window centred in it.
+#[must_use]
+pub fn root(size: [f32; 2], controls: Vec<Value>) -> Value {
+    json!({
+        "type": "panel",
+        "size": ["100%", "100%"],
+        "controls": [{"window": {
+            "type": "panel",
+            "size": size,
+            "anchor_from": "center",
+            "anchor_to": "center",
+            "controls": controls,
+        }}],
+    })
+}
+
 /// Where a page is drawn: the content pane, in GUI pixels.
 #[must_use]
 pub fn content_rect() -> Rect {
@@ -421,11 +448,7 @@ pub fn document(shell: &Shell<'_>) -> Value {
     let [w, h] = window_px();
     json!({
         "namespace": "vantage",
-        "root": {
-            "type": "panel",
-            "size": [w, h],
-            "controls": controls(shell),
-        },
+        "root": root([w, h], controls(shell)),
     })
 }
 
@@ -434,7 +457,8 @@ pub fn document(shell: &Shell<'_>) -> Value {
 pub fn panel(shell: &Shell<'_>) -> Value {
     let [w, h] = window_px();
     json!({
-        "reference_size": [w, h],
+        "reference_size": reference_size(),
+        "fill": true,
         "controls": declared_controls(shell),
         "surface": {
             "screen": "vantage.root",
@@ -507,7 +531,7 @@ mod tests {
         assert_eq!(declared, 9);
         let document: Value =
             serde_json::from_str(panel["surface"]["document"].as_str().unwrap()).unwrap();
-        let controls = document["root"]["controls"].as_array().unwrap();
+        let controls = document["root"]["controls"][0]["window"]["controls"].as_array().unwrap();
         let presses: Vec<&str> = controls
             .iter()
             .filter_map(|control| node::body(control)["button_mappings"][0]["to_button_id"].as_str())
