@@ -144,7 +144,14 @@ impl Instance {
             }
             None
         } else {
-            let Some(admission) = budget.reserve_resumable_frame(entry) else {
+            // A trusted mod is not admitted against the shared fuel pool: it runs on its own, and the scheduler still
+            // splits its work across frames.
+            let admission = if self.store.data().grants.trusted {
+                Some((crate::TRUSTED_FUEL, crate::callback_budget::FrameReservation::unmetered(&budget)))
+            } else {
+                budget.reserve_resumable_frame(entry)
+            };
+            let Some(admission) = admission else {
                 self.last_fuel = 0;
                 return Ok(CallbackOutcome::Deferred);
             };

@@ -180,14 +180,15 @@ impl Instance {
         state.touch.restart_guest();
         store.limiter(|state| &mut state.limits);
         store.data_mut().begin_callback();
-        let initial = FRAME_FUEL;
+        let trusted = store.data().grants.trusted;
+        let initial = if trusted { crate::TRUSTED_FUEL } else { FRAME_FUEL };
         crate::execution::arm(store, initial, true)?;
         let instance = crate::execution::complete(pre.instantiate_async(&mut *store))?;
         let (init, exports) = exports::Exports::find(store, &instance)?;
         let instantiated = initial - store.get_fuel().unwrap_or(0).min(initial);
         let mut armed = initial;
         if exports.loads_session() {
-            armed = LOAD_FUEL;
+            armed = if trusted { crate::TRUSTED_FUEL } else { LOAD_FUEL };
             crate::execution::arm(store, armed, true)?;
         }
         crate::execution::complete(init.call_async(&mut *store, ()))?;

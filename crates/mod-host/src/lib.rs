@@ -177,6 +177,9 @@ pub const MAX_LABEL_BYTES: usize = 256;
 /// `mod_api::TOTAL_MOD_FRAME_FUEL`. These estimates are not wall-clock guarantees;
 /// host imports and cache effects can take longer.
 pub const FRAME_FUEL: u64 = 1_000_000;
+/// The fuel a trusted mod runs on in every callback: so much that only a loop that never ends reaches it, and the
+/// scheduler still splits its work across frames.
+pub const TRUSTED_FUEL: u64 = u64::MAX / 4;
 /// One frame callback per observed world session may use this larger allowance.
 pub const WORLD_ENTRY_FRAME_FUEL: u64 = 4 * FRAME_FUEL;
 const _: () = assert!(

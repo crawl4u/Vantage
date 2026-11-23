@@ -36,7 +36,8 @@ impl Instance {
             "action filter authority denied"
         );
         let count = frame.transitions.len();
-        crate::execution::arm(&mut self.store, FILTER_FUEL, false)?;
+        let filter_fuel = if self.store.data().grants.trusted { crate::TRUSTED_FUEL } else { FILTER_FUEL };
+        crate::execution::arm(&mut self.store, filter_fuel, false)?;
         self.store.call_hook(|_, hook| {
             anyhow::ensure!(
                 !matches!(hook, wasmtime::CallHook::CallingHost),

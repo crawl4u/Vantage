@@ -3,6 +3,8 @@
 use super::*;
 
 struct Reservation {
+    /// A trusted mod's invocation takes nothing from the shared pool and gives nothing back.
+    unmetered: bool,
     paid: u64,
     frame: u64,
     current_paid: u64,
@@ -39,6 +41,7 @@ impl CallbackBudget {
             FrameReservation {
                 budget: self.clone(),
                 state: Arc::new(Mutex::new(Reservation {
+                    unmetered: false,
                     paid,
                     frame: pool.generation,
                     current_paid: paid,
@@ -50,9 +53,20 @@ impl CallbackBudget {
 }
 
 impl FrameReservation {
+    /// A reservation that never touches the pool, for an invocation that runs on no fuel allowance.
+    pub(crate) fn unmetered(budget: &CallbackBudget) -> Self {
+        Self {
+            budget: budget.clone(),
+            state: Arc::new(Mutex::new(Reservation { unmetered: true, paid: 0, frame: 0, current_paid: 0, settled: false })),
+        }
+    }
+
     /// Reserves one more service frame without replenishing the guest's invocation fuel.
     pub(crate) fn resume(&self) -> bool {
         let mut state = self.state.lock().expect("mod frame reservation");
+        if state.unmetered {
+            return !state.settled;
+        }
         let mut pool = self.budget.allowance.lock().expect("mod callback budget");
         if state.settled || pool.frame < crate::FRAME_FUEL {
             return false;
@@ -74,6 +88,9 @@ impl FrameReservation {
             return;
         }
         state.settled = true;
+        if state.unmetered {
+            return;
+        }
         let mut pool = self.budget.allowance.lock().expect("mod callback budget");
         if used > state.paid {
             let extra = used - state.paid;
@@ -90,6 +107,19 @@ impl FrameReservation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unmetered_invocation_neither_drains_nor_refills_the_shared_pool() {
+        let pool = mod_api::TOTAL_MOD_FRAME_FUEL;
+        let budget = CallbackBudget::new(pool);
+        let reservation = FrameReservation::unmetered(&budget);
+        for _ in 0..100 {
+            assert!(reservation.resume(), "it resumes even with the pool empty");
+        }
+        reservation.settle(u64::MAX / 8);
+        assert_eq!(budget.remaining(), pool, "even a huge use leaves the pool and its debt alone");
+        assert!(!reservation.resume(), "settled is final");
+    }
 
     #[test]
     fn cancelled_world_entry_leaves_only_its_actual_fuel_charge() {

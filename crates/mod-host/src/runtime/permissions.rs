@@ -31,6 +31,15 @@ mod tests {
     }
 
     #[test]
+    fn a_trusted_mod_may_grow_its_memory_past_the_sandbox_limit() {
+        use wasmtime::ResourceLimiter as _;
+        let state = |grants| State::new(grants, String::new(), super::super::Declared::default());
+        let past = crate::MEMORY_BYTES * 8;
+        assert!(state(ModGrants::trusted(Vec::new())).limits.memory_growing(0, past, None).unwrap());
+        assert!(state(ModGrants::default()).limits.memory_growing(0, past, None).is_err(), "the sandbox traps on growth past its limit");
+    }
+
+    #[test]
     fn the_account_is_readable_only_with_its_grant() {
         use super::super::cinnabar::extension::account::Host as _;
         crate::runtime::set_account(Some(crate::runtime::AccountData {

@@ -143,17 +143,23 @@ pub(crate) struct State {
 
 impl State {
     pub(crate) fn new(grants: ModGrants, settings: String, declared: Declared) -> Self {
+        let trusted = grants.trusted;
         let wasi = grants.trusted.then(|| Box::new(std::sync::Mutex::new(WasiParts::trusted())));
         Self {
             wasi,
-            limits: StoreLimitsBuilder::new()
-                .memory_size(MEMORY_BYTES)
-                .table_elements(4096)
-                .instances(16)
-                .memories(1)
-                .tables(2)
-                .trap_on_grow_failure(true)
-                .build(),
+            limits: if trusted {
+                // A trusted mod may use as much memory, tables and instances as the system gives it.
+                StoreLimitsBuilder::new().build()
+            } else {
+                StoreLimitsBuilder::new()
+                    .memory_size(MEMORY_BYTES)
+                    .table_elements(4096)
+                    .instances(16)
+                    .memories(1)
+                    .tables(2)
+                    .trap_on_grow_failure(true)
+                    .build()
+            },
             terrain: Default::default(),
             pressed: false,
             label: None,
@@ -627,6 +633,8 @@ impl Instance {
         }
         let timing = self.callback_timing();
         self.store.data_mut().begin_callback();
+        // A trusted mod is not held to a fuel allowance.
+        let allowance = if self.store.data().grants.trusted { crate::TRUSTED_FUEL } else { allowance };
         if fuel == FRAME_FUEL && !self.exports.requires_synchronous_frames() {
             let epoch_yields = self
                 .callback_budget

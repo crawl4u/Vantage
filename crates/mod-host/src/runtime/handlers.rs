@@ -64,7 +64,7 @@ impl Instance {
         call: impl FnOnce(&exports::Exports, &mut Store<State>) -> Result<R>,
     ) -> Result<R> {
         self.last_fuel = 0;
-        let fuel = mod_api::HANDLER_CALL_FUEL;
+        let fuel = if self.store.data().grants.trusted { crate::TRUSTED_FUEL } else { mod_api::HANDLER_CALL_FUEL };
         crate::execution::arm(&mut self.store, fuel, false)?;
         self.store.call_hook(|_, hook| {
             anyhow::ensure!(
