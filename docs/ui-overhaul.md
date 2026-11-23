@@ -124,7 +124,7 @@ Not built, in the order they should be taken:
 3. Group headers on the Mods grid that collapse by type.
 4. (done, seen live: dependent rows, titled sections on Layout, Style, Zoom and Crosshair, and the colour picker with square, hue and opacity strips, hex field, saved, recent and preset colours; the square drag and typing in the hex field were not exercised live) More sections on the other pages
    on the converted pages, the Crosshair preview.
-5. Profiles (the old setups), Keybinds (grouped, with conflict marking and a keyboard map), Themes (pick,
+5. (Profiles: the old Config page now on the option rows, seen live as a plain list of slots and buttons, not yet a card list; not exercised beyond opening) Keybinds (grouped, with conflict marking and a keyboard map), Themes (pick,
    light theme, custom editor) and Preferences pages; Config, Credits and Waypoints still on the old design.
 6. Global search results page across all options; notifications; changelog.
 7. HUD editor: drag with snapping, grouping, history, vanilla ghosts.
