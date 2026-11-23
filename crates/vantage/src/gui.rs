@@ -942,9 +942,27 @@ impl GuiMenu {
                 shadow: None,
             });
             d.line(bar, card.name, px(text::LABEL.size * 1.15), if card.on { p.on_accent } else { p.text }, Align::Centre);
-            d.icon(Rect::new(r.x, r.y + px(8.0), r.w, r.h - bar_h - px(8.0)), card.icon, px(54.0), p.text);
+            // A soft shadow under the icon lifts it off the card, and an enabled card's dot glows.
+            let icon_area = Rect::new(r.x, r.y + px(8.0), r.w, r.h - bar_h - px(8.0));
+            let centre = icon_area.centre();
+            let halo = d.at(Rect::new(centre.x - px(15.0), centre.y - px(11.0), px(30.0), px(30.0)));
+            d.scene.push(Primitive::Rect {
+                rect: halo,
+                fill: Fill::Solid(Color::rgba(0.0, 0.0, 0.0, 0.0)),
+                radii: Radii::all(px(15.0)),
+                border: None,
+                shadow: Some(vantage_gui::style::Shadow { offset: [0.0, px(3.0)], blur: px(18.0), color: Color::rgba(0.0, 0.0, 0.0, 0.30) }),
+            });
+            d.icon(icon_area, card.icon, px(54.0), p.text);
             let dot = px(7.0);
-            d.rect(Rect::new(r.right() - px(space::L) - dot, r.y + px(space::L), dot, dot), if card.on { p.accent } else { p.dim }, Radii::all(dot / 2.0));
+            let dot_rect = d.at(Rect::new(r.right() - px(space::L) - dot, r.y + px(space::L), dot, dot));
+            d.scene.push(Primitive::Rect {
+                rect: dot_rect,
+                fill: Fill::Solid(color(if card.on { p.accent } else { p.dim })),
+                radii: Radii::all(dot / 2.0),
+                border: None,
+                shadow: card.on.then(|| vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(9.0), color: Color::rgba(p.accent[0], p.accent[1], p.accent[2], 0.6) }),
+            });
             if glow > 0.02 {
                 let fade = |c: Rgba| [c[0], c[1], c[2], c[3] * glow];
                 d.glyph(Rect::new(r.x + px(space::M), r.y + px(space::S), px(20.0), px(20.0)), Icon::Star, px(18.0), if card.favorite { fade(p.star) } else { fade(p.muted) });
