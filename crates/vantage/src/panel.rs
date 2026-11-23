@@ -1976,7 +1976,8 @@ fn pick_element(id: &str, index: usize) -> Option<Element> {
 /// The whole menu for the current settings (the bundle, or a changed menu key).
 #[inline(never)]
 pub fn build(settings: &Settings, state: &PanelState) -> String {
-    if settings.new_menu {
+    // While HUD elements are being moved the layout bar of the original document is shown, not a page.
+    if settings.new_menu && !state.moving {
         if let Some(page) = crate::menu_v2::page(settings, state) {
             return page;
         }

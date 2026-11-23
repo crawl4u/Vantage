@@ -393,7 +393,7 @@ fn referenced(document: usize) -> Vec<usize> {
 /// Whether `id` is the menu's own furniture on page `tab`, so it is not listed as an option there. The
 /// Profiles page (the old Config page) is made of the `cfg_` controls, which are its options.
 fn is_furniture(tab: usize, id: &str) -> bool {
-    is_chrome(id) && !(tab == 7 && id.starts_with("cfg_"))
+    is_chrome(id) && !(tab == 7 && id.starts_with("cfg_")) && !(tab == LAYOUT_PAGE && id == "move")
 }
 
 /// Controls that are the menu's own furniture (tabs, setups, the HUD mover, popups), not options of a page.
@@ -449,6 +449,9 @@ fn rows<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Setting
         .chain((tab == KEYBINDS_PAGE).then(|| keybind_rows(settings, state, defaults)).into_iter().flatten())
         .collect()
 }
+
+/// The Layout page.
+const LAYOUT_PAGE: usize = 1;
 
 /// The General page's theme switch.
 fn appearance_row<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Settings) -> Row<'a> {
@@ -1065,5 +1068,25 @@ mod tests {
             let document = page["surface"]["document"].as_str().unwrap().len();
             assert!(document <= 192 * 1024, "{section} opens to a {document} byte document");
         }
+    }
+
+    #[test]
+    fn the_layout_page_starts_the_hud_mover_and_the_mover_hides_the_page_until_it_is_done() {
+        let mut settings = Settings::default();
+        let mut state = PanelState::default();
+        state.event(&mut settings, "tab_1", 1.0);
+        let ids = |page: &str| -> Vec<String> {
+            let value: serde_json::Value = serde_json::from_str(page).unwrap();
+            value["controls"].as_array().unwrap().iter().filter_map(|c| c["id"].as_str().map(str::to_owned)).collect()
+        };
+        assert!(ids(&crate::panel::build(&settings, &state)).contains(&"move".to_owned()));
+        state.event(&mut settings, "move", 1.0);
+        assert!(state.moving);
+        // The original document, with its layout bar, is what is shown while moving.
+        assert!(ids(&crate::panel::build(&settings, &state)).contains(&"move_done".to_owned()));
+        state.event(&mut settings, "move_done", 1.0);
+        state.event(&mut settings, "move_done", 1.0);
+        assert!(!state.moving);
+        assert!(ids(&crate::panel::build(&settings, &state)).contains(&"move".to_owned()));
     }
 }
