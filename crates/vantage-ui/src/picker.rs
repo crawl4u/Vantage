@@ -123,10 +123,8 @@ pub fn controls(p: &Palette, picker: &Picker<'_>, area: [f32; 4], first: usize) 
     let hue_rgb = (picker.to_rgb)(hue, 1.0, 1.0);
     let rgb = (picker.to_rgb)(hue, sat, val);
     let opaque = |c: [f32; 3]| [c[0], c[1], c[2], 1.0];
-    let mut c: Vec<Value> = Vec::new();
-
     // The square: white to the hue left to right, then clear to black top to bottom.
-    c.push(node::rounded("sv_base", at(PAD, top), at(SQUARE[0], SQUARE[1]), px(RADII.xs), opaque(hue_rgb)));
+    let mut c: Vec<Value> = vec![node::rounded("sv_base", at(PAD, top), at(SQUARE[0], SQUARE[1]), px(RADII.xs), opaque(hue_rgb))];
     c.push(node::fade("sv_white", at(PAD, top), at(SQUARE[0], SQUARE[1]), [1.0, 1.0, 1.0, 1.0], [hue_rgb[0], hue_rgb[1], hue_rgb[2], 0.0]));
     c.push(fade_down("sv_black", at(PAD, top), at(SQUARE[0], SQUARE[1]), [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]));
     c.push(node::outline("sv_edge", at(PAD, top), at(SQUARE[0], SQUARE[1]), px(RADII.xs), 1.0, p.border));
@@ -220,7 +218,7 @@ pub fn controls(p: &Palette, picker: &Picker<'_>, area: [f32; 4], first: usize) 
     let recent_base = first + 8;
     let favorite_base = recent_base + picker.recent.len();
     let preset_base = favorite_base + picker.favorites.len();
-    let mut place = |kind: char, list: &[u32], base: usize, per_row: usize, row_y: &mut f32, c: &mut Vec<Value>| {
+    let place = |kind: char, list: &[u32], base: usize, per_row: usize, row_y: &mut f32, c: &mut Vec<Value>| {
         for (n, rgb) in list.iter().enumerate() {
             let (col, row) = (n % per_row, n / per_row);
             let sx = PAD + col as f32 * (SWATCH[0] + SWATCH_GAP);

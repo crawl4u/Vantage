@@ -589,11 +589,9 @@ fn keybind_rows<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a
         _ => usize::MAX,
     };
     rows.sort_by_key(order);
-    let mut others = 0;
-    for row in rows.iter_mut().filter(|row| row.section == Some(OTHER_KEYS)) {
+    for (others, row) in rows.iter_mut().filter(|row| row.section == Some(OTHER_KEYS)).enumerate() {
         let part = (others / OTHER_KEYS_PER_SECTION).min(OTHER_KEY_SECTIONS.len() - 1);
         row.section = Some(OTHER_KEY_SECTIONS[part]);
-        others += 1;
     }
     rows
 }
@@ -694,13 +692,15 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
     let all = rows(settings, state, &defaults, tab);
     let titles = section_titles(tab, &all);
     let notes = conflict_notes(&all);
-    let ((rows, titles), notes): ((Vec<Row<'_>>, Vec<&str>), Vec<Option<String>>) = all
-        .into_iter()
-        .zip(titles)
-        .zip(notes)
-        .filter(|((row, _), _)| !switched_off(settings, state, row.id))
-        .map(|((row, title), note)| ((row, title), note))
-        .unzip();
+    let (mut rows, mut kept_titles, mut kept_notes) = (Vec::new(), Vec::new(), Vec::new());
+    for ((row, title), note) in all.into_iter().zip(titles).zip(notes) {
+        if !switched_off(settings, state, row.id) {
+            rows.push(row);
+            kept_titles.push(title);
+            kept_notes.push(note);
+        }
+    }
+    let (titles, notes) = (kept_titles, kept_notes);
     // A choice opens its list of values on press, so its control is declared under its own id.
     let ids: Vec<String> = rows
         .iter()
@@ -723,7 +723,6 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
                 Value::Key(key) => options::Kind::Keybind { key },
                 Value::Button(label) => options::Kind::Button { label: label.unwrap_or(row.label) },
                 Value::Text(value) => options::Kind::Text { value },
-                _ => options::Kind::Info,
             },
             changed: row.changed,
         })
