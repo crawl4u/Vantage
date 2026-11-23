@@ -203,7 +203,34 @@ pub struct GuiMenu {
     drag: Option<(String, Rect, f32, f32, f32, f32)>,
     /// Each switch's knob position (0 off, 1 on), by control id.
     knobs: HashMap<String, Spring>,
+    /// A card being dragged to a new place in the grid.
+    card_drag: Option<CardDrag>,
+    /// Where each card is drawn, easing toward its cell (so the grid re-flows smoothly), by card index.
+    card_pos: Vec<[Spring; 2]>,
+    placed: Vec<bool>,
+    /// The grid's cells and area as last drawn, in window units, for dropping a card on one.
+    cells: Vec<Rect>,
+    grid_view: Rect,
+    /// A press on a card turned into a drag, so its release is not a click.
+    dragged: bool,
 }
+
+/// A press on a card that may become a drag.
+#[derive(Clone, Copy, Debug)]
+struct CardDrag {
+    /// The card's index among all cards, and its place in the grid when the press began.
+    card: usize,
+    from: usize,
+    /// The pointer when it began, and where it grabbed the card (from the card's top left).
+    start: Vec2,
+    grab: Vec2,
+    lifted: bool,
+    /// The place the card would take if dropped now.
+    target: usize,
+}
+
+/// How far the pointer travels before a press on a card becomes a drag, in window units.
+const DRAG_START: f32 = 6.0;
 
 impl Default for GuiMenu {
     fn default() -> Self {
@@ -220,6 +247,12 @@ impl Default for GuiMenu {
             acts: Vec::new(),
             drag: None,
             knobs: HashMap::new(),
+            card_drag: None,
+            card_pos: Vec::new(),
+            placed: Vec::new(),
+            cells: Vec::new(),
+            grid_view: Rect::default(),
+            dragged: false,
         }
     }
 }
@@ -305,12 +338,81 @@ impl GuiMenu {
             glow.step(input.dt);
         }
         self.search_focus(&input);
-        let scene = self.build_mods(state, &cards, &order, &chips, active_chip, active_sort, input);
         let mut actions = Vec::new();
-        if let Some(up) = self.pointer(&scene, &input) {
+        self.update_card_drag(&input, &cards, &order, &mut actions);
+        let lifted = self.card_drag.filter(|d| d.lifted);
+        // While a card is lifted the others re-flow around the place it would take.
+        let show: Vec<usize> = match lifted {
+            Some(d) => {
+                let mut shown = order.clone();
+                if d.from < shown.len() {
+                    let card = shown.remove(d.from);
+                    shown.insert(d.target.min(shown.len()), card);
+                }
+                shown
+            }
+            None => order.clone(),
+        };
+        let scene = self.build_mods(state, &cards, &show, &chips, active_chip, active_sort, input);
+        let click = self.pointer(&scene, &input);
+        // A press that became a drag is not a click.
+        if let Some(up) = click.filter(|_| !self.dragged) {
             actions.extend(mods_click(up, &cards, &order, &chips));
         }
+        if !input.held {
+            self.dragged = false;
+        }
         (scene, actions)
+    }
+
+    /// Starts, follows and ends a drag of a card: dropping it sends its new place.
+    fn update_card_drag(&mut self, input: &Input, cards: &[vantage_ui::mods::Card<'_>], order: &[usize], actions: &mut Vec<Action>) {
+        let origin = window_origin(input.viewport);
+        let pointer = input.pointer.map(|p| Vec2::new(p.x - origin.x, p.y - origin.y));
+        if input.pressed {
+            self.card_drag = match (self.hover, pointer) {
+                (Some(Hit::Card(n)), Some(p)) if n < order.len() => {
+                    let cell = self.cells.get(n).copied().unwrap_or_default();
+                    let top = cell.y + self.grid_view.y - self.scroll.value();
+                    Some(CardDrag { card: order[n], from: n, start: p, grab: Vec2::new(p.x - (self.grid_view.x + cell.x), p.y - top), lifted: false, target: n })
+                }
+                _ => None,
+            };
+        }
+        let Some(mut drag) = self.card_drag else { return };
+        if !input.held {
+            if drag.lifted && drag.target != drag.from {
+                if let Some(card) = cards.get(drag.card) {
+                    actions.push(Action::EventValue(format!("move_{}", card.id), drag.target as f32));
+                }
+            }
+            self.card_drag = None;
+            return;
+        }
+        let Some(p) = pointer else { return };
+        if !drag.lifted && (p.x - drag.start.x).hypot(p.y - drag.start.y) >= DRAG_START {
+            drag.lifted = true;
+            self.dragged = true;
+        }
+        if drag.lifted {
+            // The cell whose middle is nearest the pointer.
+            let scroll = self.scroll.value();
+            let nearest = self
+                .cells
+                .iter()
+                .take(order.len())
+                .enumerate()
+                .min_by(|(_, a), (_, b)| {
+                    let d = |r: &Rect| {
+                        let c = Vec2::new(self.grid_view.x + r.x + r.w / 2.0, self.grid_view.y + r.y - scroll + r.h / 2.0);
+                        (c.x - p.x).powi(2) + (c.y - p.y).powi(2)
+                    };
+                    d(a).total_cmp(&d(b))
+                })
+                .map_or(drag.from, |(i, _)| i);
+            drag.target = nearest;
+        }
+        self.card_drag = Some(drag);
     }
 
     /// The window, sidebar, header and search pill common to every page. Returns the content pane.
@@ -432,16 +534,41 @@ impl GuiMenu {
         let (cells, content) = layout::grid(order.len(), [cell_w, cell_w * 0.78], gap, view.w);
         self.content = content;
         self.view = view.h;
+        self.cells = cells.clone();
+        self.grid_view = view;
+        if self.card_pos.len() < cards.len() {
+            self.card_pos.resize(cards.len(), [Spring::new(0.0, 20.0), Spring::new(0.0, 20.0)]);
+            self.placed.resize(cards.len(), false);
+        }
         let clip = d.at(view);
         d.scene.push(Primitive::PushClip { rect: clip, radii: Radii::default() });
         let scroll = self.scroll.value();
+        let lifted = self.card_drag.filter(|c| c.lifted);
+        let mut ghost: Option<(usize, usize)> = None;
         for (n, cell) in cells.iter().enumerate() {
             let Some(card) = order.get(n).and_then(|i| cards.get(*i)) else { continue };
-            let r = Rect::new(view.x + cell.x, view.y + cell.y - scroll, cell.w, cell.h);
+            let index = order[n];
+            // Each card eases toward its cell, so a filter, a sort or a drag re-flows the grid smoothly.
+            let (tx, ty) = (view.x + cell.x, view.y + cell.y);
+            let [sx, sy] = &mut self.card_pos[index];
+            if !self.placed[index] {
+                sx.snap(tx);
+                sy.snap(ty);
+                self.placed[index] = true;
+            }
+            sx.set_target(tx);
+            sy.set_target(ty);
+            sx.step(input.dt);
+            sy.step(input.dt);
+            if lifted.is_some_and(|c| c.card == index) {
+                ghost = Some((n, index));
+                continue;
+            }
+            let r = Rect::new(sx.value(), sy.value() - scroll, cell.w, cell.h);
             if r.bottom() < view.y || r.y > view.bottom() {
                 continue;
             }
-            let glow = self.glow.get(order[n]).map_or(0.0, Spring::value);
+            let glow = self.glow.get(index).map_or(0.0, Spring::value);
             let bar_h = px(26.0);
             let body = color(p.raised).mix(Color::rgba(1.0, 1.0, 1.0, 0.12), glow * 0.5);
             let body_rect = d.at(r);
@@ -471,6 +598,28 @@ impl GuiMenu {
             d.region(Hit::Star(n), Rect::new(r.x + px(space::M - 1.0), r.y + px(space::S - 1.0), px(22.0), px(22.0)));
             d.region(Hit::Hide(n), Rect::new(r.x + px(space::M + 21.0), r.y + px(space::S - 1.0), px(22.0), px(22.0)));
         }
+        // The lifted card follows the pointer, a little see-through, over the others.
+        if let (Some((_, index)), Some(drag), Some(pointer)) = (ghost, lifted, input.pointer) {
+            if let Some(card) = cards.get(index) {
+                let o = d.origin;
+                let cell = cells.first().copied().unwrap_or_default();
+                let r = Rect::new(pointer.x - o.x - drag.grab.x, pointer.y - o.y - drag.grab.y, cell.w, cell.h);
+                d.scene.push(Primitive::PushOpacity(0.92));
+                let bar_h = px(26.0);
+                let rr = d.at(r);
+                d.scene.push(Primitive::Rect {
+                    rect: rr,
+                    fill: Fill::Solid(color(p.raised)),
+                    radii: Radii::all(px(RADII.md)),
+                    border: Some(Border { width: 1.0, color: color(p.accent) }),
+                    shadow: Some(vantage_gui::style::Shadow { offset: [0.0, 6.0], blur: 14.0, color: Color::rgba(0.0, 0.0, 0.0, 0.5) }),
+                });
+                let bar = Rect::new(r.x, r.bottom() - bar_h, r.w, bar_h);
+                d.line(bar, card.name, px(text::LABEL.size), p.text, Align::Centre);
+                d.icon(Rect::new(r.x, r.y + px(14.0), r.w, r.h - bar_h - px(14.0)), card.icon, px(46.0), p.text);
+                d.scene.push(Primitive::PopOpacity);
+            }
+        }
         d.scene.push(Primitive::PopClip);
         d.scene
     }
@@ -497,7 +646,7 @@ impl GuiMenu {
             }
         }
 
-        let scene = menu_v2::with_page(settings, state, tab, &mut |page| self.build_page(state, tab, page, input));
+        let scene = menu_v2::with_page(settings, state, tab, &mut |page| self.build_page(settings, state, tab, page, input));
         let was_pressed = self.pressed;
         let click = self.pointer(&scene, &input);
         // A press on a slider starts a drag at once.
@@ -526,14 +675,19 @@ impl GuiMenu {
         (scene, actions)
     }
 
-    fn build_page(&mut self, state: &PanelState, tab: usize, page: &menu_v2::PageView<'_>, input: Input) -> Scene {
+    fn build_page(&mut self, settings: &Settings, state: &PanelState, tab: usize, page: &menu_v2::PageView<'_>, input: Input) -> Scene {
         let p = Palette::dark();
         let mut d = Painter { scene: Scene::new(), origin: window_origin(input.viewport), p, hover: self.hover };
         let pane = self.shell(&mut d, page.title, tab, "Search options...", state.option_query());
         self.acts.clear();
 
-        let view = Rect::new(pane[0], pane[1], pane[2], pane[3]);
-        let clip = d.at(view);
+        // The Crosshair page has a preview card beside its rows.
+        let side = if tab == 5 { px(160.0) + px(space::L) } else { 0.0 };
+        if tab == 5 {
+            self.preview_card(&mut d, Rect::new(pane[0] + pane[2] - px(160.0), pane[1], px(160.0), px(160.0)), crate::menu_v2::crosshair_shapes(settings));
+        }
+        let view = Rect::new(pane[0], pane[1], pane[2] - side, pane[3]);
+        let clip = d.at(Rect::new(pane[0], pane[1], pane[2], pane[3]));
         d.scene.push(Primitive::PushClip { rect: clip, radii: Radii::default() });
         let scroll = self.scroll.value();
         let mut y = view.y - scroll;
@@ -594,6 +748,31 @@ impl GuiMenu {
             }
         }
         d.scene
+    }
+
+    /// The crosshair preview: a card with a dark box and the crosshair's shapes in it.
+    fn preview_card(&mut self, d: &mut Painter, card: Rect, shapes: Vec<crate::menu_v2::PreviewShape>) {
+        let p = d.p;
+        d.rect(card, p.raised, Radii::all(px(RADII.md)));
+        d.text(Rect::new(card.x + px(space::L), card.y + px(space::M), card.w, px(text::SMALL.size) * 1.5), "Preview", px(text::SMALL.size), p.muted, Align::Start);
+        let side = px(crate::menu_v2::PREVIEW_BOX);
+        let boxr = Rect::new(card.x + (card.w - side) / 2.0, card.y + px(36.0), side, side);
+        d.rect(boxr, [0.0, 0.0, 0.0, 0.35], Radii::all(px(RADII.xs)));
+        for shape in shapes {
+            match shape {
+                crate::menu_v2::PreviewShape::Bar { rect, radius, color } => {
+                    d.rect(Rect::new(boxr.x + px(rect[0]), boxr.y + px(rect[1]), px(rect[2]), px(rect[3])), color, Radii::all(px(radius)));
+                }
+                crate::menu_v2::PreviewShape::Ring { centre, outer, inner, color } => {
+                    let r = Rect::new(boxr.x + px(centre[0] - outer), boxr.y + px(centre[1] - outer), px(outer * 2.0), px(outer * 2.0));
+                    if inner <= 0.0 {
+                        d.rect(r, color, Radii::all(px(outer)));
+                    } else {
+                        d.ring(r, Radii::all(px(outer)), px(outer - inner), color);
+                    }
+                }
+            }
+        }
     }
 
     /// One option as a row card: its name and help on the left, its control on the right.
@@ -793,5 +972,23 @@ mod tests {
         assert_eq!(number(5.0, 1.0), "5");
         assert_eq!(number(0.25, 0.01), "0.25");
         assert_eq!(number(1.5, 0.1), "1.5");
+    }
+
+    #[test]
+    fn dragging_a_card_over_another_cell_and_letting_go_sends_its_new_place_and_is_not_a_click() {
+        let settings = Settings::default();
+        let state = PanelState::default();
+        let mut menu = GuiMenu::default();
+        // Two frames lay the grid out and let the hover settle on the first card.
+        let (scene, _) = menu.frame(&settings, &state, input(None));
+        let card = |n: usize| scene.regions.iter().find(|r| Hit::from_id(r.id) == Some(Hit::Card(n))).unwrap().rect;
+        let (from, to) = (card(0), card(2));
+        let start = Vec2::new(from.x + from.w / 2.0, from.y + from.h / 3.0);
+        menu.frame(&settings, &state, input(Some(start)));
+        menu.frame(&settings, &state, Input { pressed: true, held: true, ..input(Some(start)) });
+        let over = Vec2::new(to.x + to.w / 2.0, to.y + to.h / 3.0);
+        menu.frame(&settings, &state, Input { held: true, ..input(Some(over)) });
+        let (_, actions) = menu.frame(&settings, &state, input(Some(over)));
+        assert_eq!(actions, vec![Action::EventValue(format!("move_{}", crate::menu_controls::MODS[0].0), 2.0)], "{actions:?}");
     }
 }

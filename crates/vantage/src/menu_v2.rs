@@ -218,8 +218,7 @@ pub fn uses_scene(settings: &Settings, state: &PanelState, tab: usize) -> bool {
     if tab == MODS_PAGE {
         return true;
     }
-    // The Crosshair page keeps its live preview card, which the toolkit does not draw yet.
-    CONVERTED.contains(&tab) && tab != 5 && state.picker_view().is_none() && !with_page(settings, state, tab, &mut |page| page.has_text)
+    CONVERTED.contains(&tab) && state.picker_view().is_none() && !with_page(settings, state, tab, &mut |page| page.has_text)
 }
 
 /// The panel the toolkit's pages draw in: one node the host paints the published scene into, sized to fit the
@@ -924,6 +923,42 @@ fn crosshair_preview(settings: &Settings) -> options::Side<'static> {
         body.push(node::rounded(&format!("bar_{i}"), at(rect[0], rect[1]), [px(rect[2]), px(rect[3])], px(*radius), frame.fill));
     }
     options::Side { title: "Preview", size: [160.0, 160.0], body }
+}
+
+/// One shape of the crosshair preview, in design units inside a box [`PREVIEW_BOX`] across.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PreviewShape {
+    /// A bar, as `[x, y, width, height]`, with a corner radius.
+    Bar { rect: [f32; 4], radius: f32, color: [f32; 4] },
+    /// A ring (or a disc when `inner` is zero) around `centre`.
+    Ring { centre: [f32; 2], outer: f32, inner: f32, color: [f32; 4] },
+}
+
+/// The side of the crosshair preview's box, in design units.
+pub const PREVIEW_BOX: f32 = 112.0;
+
+/// The crosshair at rest as shapes, back to front, from the settings.
+#[must_use]
+pub fn crosshair_shapes(settings: &Settings) -> Vec<PreviewShape> {
+    use crate::crosshair::{self, Target};
+    let c = &settings.crosshair;
+    let frame = c.frame(Target::None, false);
+    let look = c.look(false, false);
+    let outline = if c.outline && frame.outline[3] > 0.0 { crosshair::snap(c.outline_width as f32, 1) } else { 0.0 };
+    let half = PREVIEW_BOX / 2.0;
+    let p = crosshair::preview_with(&look, outline, c.outline_round, half);
+    let ring = |r: Option<crosshair::Ring>, centre: [f32; 2], color: [f32; 4]| {
+        r.map(|r| PreviewShape::Ring { centre, outer: r.radius + r.width / 2.0, inner: (r.radius - r.width / 2.0).max(0.0), color })
+    };
+    let middle = [half, half];
+    let mut out: Vec<PreviewShape> = Vec::new();
+    out.extend(ring(p.ring_edge, middle, frame.outline));
+    out.extend(ring(p.disc_edge, p.disc_at, frame.outline));
+    out.extend(p.edges.iter().zip(&p.edge_radius).map(|(rect, radius)| PreviewShape::Bar { rect: *rect, radius: *radius, color: frame.outline }));
+    out.extend(ring(p.ring, middle, frame.fill));
+    out.extend(ring(p.disc, p.disc_at, frame.fill));
+    out.extend(p.fill.iter().zip(&p.fill_radius).map(|(rect, radius)| PreviewShape::Bar { rect: *rect, radius: *radius, color: frame.fill }));
+    out
 }
 
 /// The picker card for the colour being edited.
