@@ -91,6 +91,9 @@ pub(crate) struct Declared {
 }
 
 pub(crate) struct State {
+    /// WASI's context and resource table, only for a trusted mod. It moves with the store's data across a frame's
+    /// transaction so handles the guest holds stay valid.
+    wasi: Option<Box<std::sync::Mutex<WasiParts>>>,
     exclusive: crate::exclusive::Exclusive,
     terrain: crate::terrain::TerrainState,
     limits: StoreLimits,
@@ -140,7 +143,9 @@ pub(crate) struct State {
 
 impl State {
     pub(crate) fn new(grants: ModGrants, settings: String, declared: Declared) -> Self {
+        let wasi = grants.trusted.then(|| Box::new(std::sync::Mutex::new(WasiParts::trusted())));
         Self {
+            wasi,
             limits: StoreLimitsBuilder::new()
                 .memory_size(MEMORY_BYTES)
                 .table_elements(4096)
@@ -287,6 +292,75 @@ impl cinnabar::extension::environment::Host for State {
         }
         self.environment.pending_time = Some(ticks);
         Ok(Ok(()))
+    }
+}
+
+/// The signed-in account as the client last reported it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AccountData {
+    pub display_name: String,
+    pub xuid: String,
+    pub uuid: String,
+    /// The sign-in token, when the client holds one for the session.
+    pub access_token: Option<String>,
+}
+
+static ACCOUNT: std::sync::RwLock<Option<AccountData>> = std::sync::RwLock::new(None);
+
+/// Tells the host who is signed in (or that nobody is). Mods read it only with the account grant.
+pub fn set_account(account: Option<AccountData>) {
+    *ACCOUNT.write().unwrap_or_else(std::sync::PoisonError::into_inner) = account;
+}
+
+fn current_account() -> Option<AccountData> {
+    ACCOUNT.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
+}
+
+/// WASI's context and its resource table.
+pub(crate) struct WasiParts {
+    ctx: wasmtime_wasi::WasiCtx,
+    table: wasmtime::component::ResourceTable,
+}
+
+impl WasiParts {
+    /// The player's whole system: files, environment, arguments, network and the standard streams.
+    fn trusted() -> Self {
+        let mut builder = wasmtime_wasi::WasiCtxBuilder::new();
+        builder.inherit_stdio().inherit_env().inherit_args().inherit_network().allow_ip_name_lookup(true);
+        Self { ctx: builder.build(), table: wasmtime::component::ResourceTable::new() }
+    }
+}
+
+impl wasmtime_wasi::WasiView for State {
+    fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
+        // Only a trusted mod links WASI; any other gets an empty context.
+        let parts = self.wasi.get_or_insert_with(|| {
+            Box::new(std::sync::Mutex::new(WasiParts { ctx: wasmtime_wasi::WasiCtxBuilder::new().build(), table: wasmtime::component::ResourceTable::new() }))
+        });
+        // The store owns this exclusively; the mutex only lets the host stay shareable between threads.
+        let parts = parts.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner);
+        wasmtime_wasi::WasiCtxView { ctx: &mut parts.ctx, table: &mut parts.table }
+    }
+}
+
+impl cinnabar::extension::account::Host for State {
+    fn read_account(&mut self) -> Result<Result<cinnabar::extension::account::AccountInfo, String>> {
+        if !self.grants.account {
+            return Ok(Err("account capability denied".into()));
+        }
+        Ok(current_account()
+            .map(|a| cinnabar::extension::account::AccountInfo { display_name: a.display_name, xuid: a.xuid, uuid: a.uuid })
+            .ok_or_else(|| "not signed in".to_owned()))
+    }
+
+    fn read_sign_in(&mut self) -> Result<Result<cinnabar::extension::account::SignIn, String>> {
+        if !self.grants.account {
+            return Ok(Err("account capability denied".into()));
+        }
+        Ok(current_account()
+            .and_then(|a| a.access_token)
+            .map(|access_token| cinnabar::extension::account::SignIn { access_token })
+            .ok_or_else(|| "no sign-in data".to_owned()))
     }
 }
 

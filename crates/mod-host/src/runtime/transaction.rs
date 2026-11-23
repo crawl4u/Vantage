@@ -7,6 +7,8 @@ impl State {
     /// The complete field list makes each new capability choose its transaction policy.
     pub(super) fn frame_transaction(&self) -> Self {
         Self {
+            // The store's own WASI state is moved in by the caller, so the handles in it stay valid.
+            wasi: None,
             exclusive: crate::exclusive::Exclusive {
                 camera: self.exclusive.camera,
                 camera_claimed: false,
@@ -102,6 +104,7 @@ impl State {
         refused_before: u64,
     ) {
         let Self {
+            wasi: _,
             exclusive,
             terrain,
             limits: _,

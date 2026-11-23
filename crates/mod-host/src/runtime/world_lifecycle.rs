@@ -21,6 +21,7 @@ impl State {
     /// explicit lifetime decision here; local UI, preferences and input routing survive.
     pub(super) fn clear_world_output(&mut self) {
         let Self {
+            wasi: _,
             exclusive,
             terrain: _,
             limits: _,

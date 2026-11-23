@@ -214,9 +214,35 @@ grants! {
     /// Links WASI clocks, randomness and captured output into a packet mod, never files or network.
     #[permission("WASI runtime", false, true)]
     pub wasi: bool,
+    /// Links all of WASI preview 2 with the player's real files, environment and network: the mod is not sandboxed.
+    #[permission("Full system access", true)]
+    pub trusted: bool,
+    /// Allows reading the signed-in account: its name, its identifiers and the sign-in data held for the session.
+    #[permission("Account and sign-in data", true)]
+    pub account: bool,
 }
 
+/// What a mod that asks for the account is told before the player allows it.
+pub const ACCOUNT_WARNING: &str = "This mod can read your account name and your sign-in data. Only allow it if you trust where it came from: a mod with this access can sign in as you.";
+
 impl ModGrants {
+    /// Every capability on, for a mod the player has chosen to trust fully. Command names stay as the player listed them.
+    #[must_use]
+    pub fn trusted(commands: Vec<String>) -> Self {
+        let mut grants = Self::default();
+        for capability in Self::CAPABILITIES {
+            (capability.set)(&mut grants, true, None);
+        }
+        grants.commands = commands;
+        grants
+    }
+
+    /// The warning the player must see before these grants are allowed, if they reach account or sign-in data.
+    #[must_use]
+    pub fn identity_warning(&self) -> Option<&'static str> {
+        self.account.then_some(ACCOUNT_WARNING)
+    }
+
     /// Whether retained authority includes any capability restricted to packet runtimes.
     pub fn has_packet_only(&self) -> bool {
         Self::CAPABILITIES
@@ -320,6 +346,8 @@ mod tests {
     #[test]
     fn gameplay_authority_is_marked_in_its_capability_definition() {
         for name in [
+            "account",
+            "trusted",
             "camera",
             "item_use",
             "interaction",
@@ -348,6 +376,18 @@ mod tests {
                 .sensitive
         );
     }
+    #[test]
+    fn a_trusted_mod_holds_every_capability_and_only_the_account_ones_warn() {
+        let trusted = ModGrants::trusted(vec!["help".into()]);
+        for capability in ModGrants::CAPABILITIES {
+            assert!((capability.enabled)(&trusted), "{}", capability.name);
+        }
+        assert_eq!(trusted.commands, vec!["help".to_owned()]);
+        assert_eq!(trusted.identity_warning(), Some(ACCOUNT_WARNING));
+        assert!(ModGrants { camera: true, ..Default::default() }.identity_warning().is_none());
+        assert!(ModGrants::default().identity_warning().is_none());
+    }
+
     #[test]
     fn cap_keeps_only_authority_the_ceiling_holds() {
         let mut grants = ModGrants::default();

@@ -75,6 +75,7 @@ impl State {
     /// Exhaustive matching requires an explicit recovery decision for new host fields.
     fn rollback_callback(&mut self) {
         let Self {
+            wasi: _,
             exclusive: _,
             terrain: _,
             limits: _,

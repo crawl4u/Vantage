@@ -157,7 +157,9 @@ impl Instance {
             }
             // Keep committed owners in native state; imports receive frozen reads and deltas.
             let transaction = self.store.data().frame_transaction();
-            let native = std::mem::replace(self.store.data_mut(), transaction);
+            let mut native = std::mem::replace(self.store.data_mut(), transaction);
+            // A trusted mod's WASI handles travel with the invocation's state, not with the frozen copy.
+            self.store.data_mut().wasi = native.wasi.take();
             let store = std::mem::replace(&mut self.store, Store::new(self.pre.engine(), native));
             let mut invocation = InvocationStore {
                 store: Some(store),
@@ -223,7 +225,8 @@ impl Instance {
                 let current_frame = call.origin_frame == slice.frame;
                 let same_ui = call.ui_generation == self.ui_generation;
                 let native = std::mem::replace(&mut self.store, store).into_data();
-                let transaction = std::mem::replace(self.store.data_mut(), native);
+                let mut transaction = std::mem::replace(self.store.data_mut(), native);
+                self.store.data_mut().wasi = transaction.wasi.take();
                 self.last_fuel = used;
                 if let Err(error) = result {
                     slice

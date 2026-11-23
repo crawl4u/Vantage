@@ -73,6 +73,8 @@ impl Instance {
         let component = Component::new(engine, bytes)?;
         let mut linker = Linker::new(engine);
         HandledPlayerMod::add_to_linker::<_, HasSelf<_>>(&mut linker, |state: &mut State| state)?;
+        // A trusted mod may import WASI, so validation accepts it; loading links it only for a mod that holds `trusted`.
+        wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
         super::legacy_input::link(engine, &component, &mut linker)?;
         exports::Exports::check(&linker.instantiate_pre(&component)?)
     }
@@ -117,6 +119,9 @@ impl Instance {
         );
         let mut linker = Linker::new(engine);
         HandledPlayerMod::add_to_linker::<_, HasSelf<_>>(&mut linker, |state: &mut State| state)?;
+        if grants.trusted {
+            wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
+        }
         let mut state = State::new(grants, settings, declared);
         state.drawing_policy = policy;
         if let Some(mut session) = policy {

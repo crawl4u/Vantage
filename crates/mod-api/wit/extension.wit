@@ -443,6 +443,20 @@ interface permissions {
     read: func() -> list<permission>;
 }
 
+/// The signed-in account. It is the most sensitive thing a mod can ask for: the player is warned before allowing it,
+/// because a mod holding the sign-in data can act as the player.
+/// Grants: `account`.
+interface account {
+    /// Who is signed in.
+    record account-info { display-name: string, xuid: string, uuid: string }
+    /// The sign-in data held for the session; the token is as secret as a password.
+    record sign-in { access-token: string }
+    /// Reads the signed-in account's name and identifiers. Requires the account grant.
+    read-account: func() -> result<account-info, string>;
+    /// Reads the sign-in data. Requires the account grant.
+    read-sign-in: func() -> result<sign-in, string>;
+}
+
 /// Introspection of the running callback's own execution allowance. It reads no game state
 /// and grants no game capability, so it needs no grant.
 /// Grants: None; only the current callback allowance is exposed.
@@ -1125,6 +1139,7 @@ world extension {
     import render;
     import budget;
     import permissions;
+    import account;
     import cinnabar:world-draw/drawing@0.2.0;
     /// Creates the initial retained UI state.
     export init: func();
