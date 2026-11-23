@@ -12,6 +12,16 @@ pub fn install(base: Arc<RuntimeFontCatalog>) -> Result<Arc<RuntimeFontCatalog>,
     {
         return Ok(base);
     }
+    static DISPLAY: OnceLock<Result<RuntimeFontCatalog, String>> = OnceLock::new();
+    let display = DISPLAY.get_or_init(|| {
+        assets::rasterize_outline_font(
+            include_bytes!("../../../assets/fonts/Poppins-Medium.ttf"),
+            18.0,
+            2,
+            render_model::UI_LOCAL_FONT_PAGE_SIDE,
+        )
+    });
+    let display = display.as_ref().map_err(Clone::clone)?;
     static SANS: OnceLock<Result<RuntimeFontCatalog, String>> = OnceLock::new();
     let sans = SANS.get_or_init(|| {
         assets::rasterize_outline_font(
@@ -23,6 +33,7 @@ pub fn install(base: Arc<RuntimeFontCatalog>) -> Result<Arc<RuntimeFontCatalog>,
     });
     let sans = sans.as_ref().map_err(Clone::clone)?;
     base.with_named_font(ui::mod_panel::SANS_FONT_NAME, sans)
+        .and_then(|catalog| catalog.with_named_font(ui::mod_panel::DISPLAY_FONT_NAME, display))
         .map(Arc::new)
         .map_err(|error| error.to_string())
 }

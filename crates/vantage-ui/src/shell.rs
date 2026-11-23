@@ -223,14 +223,6 @@ pub fn controls(shell: &Shell<'_>) -> Vec<Value> {
     let [w, h] = window_px();
     let mut out = vec![
         node::rounded("window", [0.0, 0.0], [w, h], px(RADII.lg), p.panel),
-        node::outline("window_edge", [0.0, 0.0], [w, h], px(RADII.lg), 1.0, p.border),
-        node::rounded(
-            "sidebar_edge",
-            [px(SIDEBAR_WIDTH) - 1.0, px(RADII.lg)],
-            [1.0, h - px(RADII.lg) * 2.0],
-            0.0,
-            p.border,
-        ),
     ];
 
     // Brand.
@@ -430,15 +422,6 @@ pub fn controls(shell: &Shell<'_>) -> Vec<Value> {
         ],
     ));
 
-    // The pane pages are drawn in.
-    let pane = content_rect();
-    out.push(node::rounded(
-        "pane",
-        [pane[0], pane[1]],
-        [pane[2], pane[3]],
-        px(RADII.md),
-        p.surface,
-    ));
     out
 }
 

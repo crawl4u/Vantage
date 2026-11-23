@@ -6,7 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [package.metadata.cinnabar]
-reads = ["assets/fonts/InterVariable.ttf"]
+reads = ["assets/fonts/InterVariable.ttf", "assets/fonts/Poppins-Medium.ttf"]
 
 [features]
 test-support = ["ui-engine/test-support"]

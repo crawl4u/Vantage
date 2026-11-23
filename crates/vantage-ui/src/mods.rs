@@ -238,6 +238,8 @@ const GAP: f32 = space::M;
 const BAR: f32 = 26.0;
 /// The side of a card's corner and handle controls, in design units: a little larger than their glyphs.
 const TARGET: f32 = 24.0;
+/// The distance between the icons at a card's top left, in design units.
+const CLUSTER_STEP: f32 = 22.0;
 /// The icon font's scale factors: a card's icon and its favourite star.
 const CARD_ICON: f32 = 3.0;
 const STAR_ICON: f32 = 1.3;
@@ -295,31 +297,23 @@ pub fn template(p: &Palette, icons: bool) -> Value {
     let tile = px(48.0);
     let controls = vec![
         node::rounded("plate", [0.0, 0.0], [w, h], px(RADII.md), p.raised),
-        node::outline("edge", [0.0, 0.0], [w, h], px(RADII.md), 1.0, p.border),
         with_bindings(
             node::rounded("hover", [0.0, 0.0], [w, h], px(RADII.md), [1.0, 1.0, 1.0, 0.07]),
             alpha("#item_open_hover"),
         ),
         // Below the strip that holds the hide, drag and favourite controls, so a press there is theirs alone.
-        press("open", "open", [0.0, px(TARGET + space::S * 2.0)], [w, h - bar - px(TARGET + space::S * 2.0)]),
-        node::rounded(
-            "tile",
-            [(w - tile) / 2.0, (h - bar - tile) / 2.0 - px(space::XS)],
-            [tile, tile],
-            px(RADII.sm),
-            p.dim,
-        ),
+        press("open", "open", [0.0, px(CLUSTER_STEP + space::S * 2.0)], [w, h - bar - px(CLUSTER_STEP + space::S * 2.0)]),
         {
             // The icon, or the name's first letter when the cards have none, centred in the tile.
             let top = (h - bar - tile) / 2.0 - px(space::XS);
             if icons {
-                node::bound_icon("initial", "#item_icon", [(w - tile) / 2.0, top + (tile - px(40.0)) / 2.0], [tile, px(40.0)], p.text, CARD_ICON)
+                node::bound_icon("initial", "#item_icon", [0.0, top + (tile - px(40.0)) / 2.0], [w, px(40.0)], p.text, CARD_ICON)
             } else {
                 let mut initial = node::label(
                     "initial",
                     "#item_initial",
-                    [(w - tile) / 2.0, top + (tile - px(text::DISPLAY.size) * 1.6) / 2.0],
-                    [tile, px(text::DISPLAY.size) * 1.6],
+                    [0.0, top + (tile - px(text::DISPLAY.size) * 1.6) / 2.0],
+                    [w, px(text::DISPLAY.size) * 1.6],
                     p.text,
                     scale(text::DISPLAY),
                     Align::Center,
@@ -330,9 +324,15 @@ pub fn template(p: &Palette, icons: bool) -> Value {
             }
         },
         // The bar: neutral when off, accent when on (cross-faded by the toggle's progress).
+        // The bar's top corners are square: a flat strip over the rounded bar's upper half.
         node::rounded("bar_off", [0.0, h - bar], [w, bar], px(RADII.md), p.dim),
+        node::rounded("bar_off_top", [0.0, h - bar], [w, bar / 2.0], 0.0, p.dim),
         with_bindings(
             node::rounded("bar_on", [0.0, h - bar], [w, bar], px(RADII.md), p.accent),
+            alpha("#item_toggle_toggle_progress"),
+        ),
+        with_bindings(
+            node::rounded("bar_on_top", [0.0, h - bar], [w, bar / 2.0], 0.0, p.accent),
             alpha("#item_toggle_toggle_progress"),
         ),
         {
@@ -365,23 +365,23 @@ pub fn template(p: &Palette, icons: bool) -> Value {
             name
         },
         press("switch", "toggle", [0.0, h - bar], [w, bar]),
-        // The favourite star: an outline glyph that fills with the gold when set.
-        node::icon("star_off", crate::icons::STAR, [w - px(space::XXL), px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
+        // Top left: the favourite star (an outline that fills with the gold when set), the hide eye and the
+        // drag handle, side by side.
+        node::icon("star_off", crate::icons::STAR, [px(space::M), px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
         node::bound(
-            node::icon("star_on", crate::icons::STAR, [w - px(space::XXL), px(space::S)], [px(20.0), px(20.0)], p.star, STAR_ICON),
+            node::icon("star_on", crate::icons::STAR, [px(space::M), px(space::S)], [px(20.0), px(20.0)], p.star, STAR_ICON),
             alpha("#item_favorite_toggle_progress"),
         ),
-        // The hide control: an eye in the opposite corner.
-        node::icon("eye", crate::icons::EYE, [px(space::S), px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
-        press("hide", "hide", [px(space::S + 4.0), px(space::S)], [px(TARGET), px(TARGET)]),
-        // The drag handle, top centre: press it and drag the card to another place in the grid.
-        node::icon("grip", crate::icons::LIST, [(w - px(20.0)) / 2.0, px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
-        press("handle", "reorder", [(w - px(TARGET)) / 2.0 + px(8.0), px(space::S)], [px(TARGET), px(TARGET)]),
-        press(
-            "star",
-            "favorite",
-            [w - px(TARGET), px(space::S)],
-            [px(TARGET), px(TARGET)],
+        node::icon("eye", crate::icons::EYE, [px(space::M + CLUSTER_STEP), px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
+        node::icon("grip", crate::icons::LIST, [px(space::M + CLUSTER_STEP * 2.0), px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
+        press("star", "favorite", [px(space::M - 1.0), px(space::S - 2.0)], [px(CLUSTER_STEP), px(CLUSTER_STEP)]),
+        press("hide", "hide", [px(space::M - 1.0 + CLUSTER_STEP), px(space::S - 2.0)], [px(CLUSTER_STEP), px(CLUSTER_STEP)]),
+        press("handle", "reorder", [px(space::M - 1.0 + CLUSTER_STEP * 2.0), px(space::S - 2.0)], [px(CLUSTER_STEP), px(CLUSTER_STEP)]),
+        // Top right: a dot that is blue while the mod is on.
+        node::rounded("dot_off", [w - px(space::L + 8.0), px(space::L)], [px(8.0), px(8.0)], px(4.0), p.dim),
+        with_bindings(
+            node::rounded("dot_on", [w - px(space::L + 8.0), px(space::L)], [px(8.0), px(8.0)], px(4.0), p.accent),
+            alpha("#item_toggle_toggle_progress"),
         ),
     ];
     json!({

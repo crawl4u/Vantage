@@ -43,6 +43,8 @@ pub const FONT_NAME: &str = "mod_panel";
 pub const MAX_FONT_GLYPHS: usize = 512;
 /// A shipped, smoothly sampled sans face for authored native panels.
 pub const SANS_FONT_NAME: &str = "mod_panel_sans";
+/// The shipped display face (Poppins Medium), selected with `font_type` [`DISPLAY_FONT_NAME`].
+pub const DISPLAY_FONT_NAME: &str = "mod_panel_display";
 /// Fonts a surface label selects through `font_type`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum LabelFont {

@@ -6,7 +6,7 @@ use serde_json::{Map, Value, json};
 use crate::tokens::Rgba;
 
 /// The label font Cinnabar draws authored panels with.
-pub const FONT: &str = "mod_panel_sans";
+pub const FONT: &str = "mod_panel_display";
 /// The font of the menu's icons (see [`crate::icons`]).
 pub const ICON_FONT: &str = "mod_panel";
 
@@ -103,10 +103,16 @@ pub fn label(
 /// An icon: one glyph of the icon font in a box, `scale` times the font's size.
 #[must_use]
 pub fn icon(name: &str, glyph: &str, offset: [f32; 2], size: [f32; 2], color: Rgba, scale: f32) -> Value {
+    // The font's glyphs carry space after the ink, so a centred glyph sits right of the box's middle:
+    // the box is moved back by that share of the glyph's size.
+    let offset = [offset[0] - scale * ICON_CENTRE_BIAS, offset[1]];
     let mut control = label(name, glyph, offset, size, color, scale, Align::Center);
     control[name]["font_type"] = json!(ICON_FONT);
     control
 }
+
+/// How far an icon's ink sits right of its box's middle, as a fraction of the icon's scale.
+const ICON_CENTRE_BIAS: f32 = 0.34;
 
 /// An icon whose glyph is the host binding `binding` (such as `#item_icon`).
 #[must_use]

@@ -582,6 +582,16 @@ SOFTWARE.
 - Font SHA-256: `4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf`
 
 Authored native panels may select Inter with `font_type: "mod_panel_sans"`.
+
+## Poppins
+
+- File: `assets/fonts/Poppins-Medium.ttf`
+- Source: https://github.com/itfoundry/Poppins (as distributed in https://github.com/google/fonts, `ofl/poppins`)
+- Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)
+- License: SIL Open Font License 1.1; full text in `assets/licenses/Poppins-OFL-1.1.txt`.
+- Font SHA-256: `90373e7d838d32468438fc3e152dca0bdb12edcab99ea639f158790b1ba1fd05`
+
+Authored native panels may select Poppins Medium with `font_type: "mod_panel_display"`.
 The cosmetic regression geometry and textures in `crates/render-model/src/hats/` are original Cinnabar artwork, distributed under the repository license. Editable projects and production catalog assets are maintained in cinnabar-mc/cinnabar-api.
 
 ## pp-rs shader preprocessor

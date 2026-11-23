@@ -63,16 +63,16 @@ impl Palette {
     #[must_use]
     pub const fn dark() -> Self {
         Self {
-            panel: rgb(0x11171C, 0.88),
-            surface: rgb(0x151C22, 0.80),
-            raised: rgb(0x232D32, 0.80),
-            dim: rgb(0x232D32, 0.35),
-            field: rgb(0x1A2229, 1.0),
-            border: rgb(0xFFFFFF, 0.10),
-            text: rgb(0xD5DBFF, 1.0),
-            muted: rgb(0x8A8FA3, 1.0),
+            panel: rgb(0x151B2B, 0.97),
+            surface: rgb(0x151B2B, 0.0),
+            raised: rgb(0x1E2638, 1.0),
+            dim: rgb(0x2E3548, 1.0),
+            field: rgb(0x1A2132, 1.0),
+            border: rgb(0xFFFFFF, 0.08),
+            text: rgb(0xE3E8FA, 1.0),
+            muted: rgb(0x8E96AC, 1.0),
             highlight: rgb(0xFFFFFF, 1.0),
-            accent: rgb(0x5262F5, 1.0),
+            accent: rgb(0x2459F5, 1.0),
             on_accent: rgb(0xFFFFFF, 1.0),
             star: rgb(0xFFD700, 1.0),
             danger: rgb(0xE5484D, 1.0),
@@ -111,10 +111,10 @@ pub struct Radii {
 
 /// The menu's corner radii.
 pub const RADII: Radii = Radii {
-    xs: 6.0,
-    sm: 8.0,
-    md: 12.0,
-    lg: 16.0,
+    xs: 8.0,
+    sm: 10.0,
+    md: 16.0,
+    lg: 28.0,
 };
 
 impl Radii {
