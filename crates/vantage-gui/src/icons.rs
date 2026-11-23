@@ -246,15 +246,22 @@ impl Icon {
                 circle(12.0, 13.5, 3.6),
             ],
             Icon::Brush => {
-                // A paintbrush along the diagonal: a leaf-shaped tuft, a ferrule and a handle.
-                let tip = [3.2_f32, 20.8];
+                // A paintbrush along the diagonal: a small pointed tuft, a ferrule band and a capsule handle.
+                let tip = [3.0_f32, 21.0];
                 let (dx, dy) = (0.7071_f32, -0.7071_f32);
                 let (nx, ny) = (0.7071_f32, 0.7071_f32);
                 let at = |s: f32, w: f32| [tip[0] + dx * s + nx * w, tip[1] + dy * s + ny * w];
-                let half = |s: f32| 4.2 * (s / 11.5).powf(0.6) * (1.0 - 0.28 * s / 11.5);
-                let mut tuft: Contour = (0..=14).map(|i| 11.5 * (1.0 - i as f32 / 14.0)).map(|s| at(s, half(s))).collect();
-                tuft.extend((0..=14).map(|i| 11.5 * i as f32 / 14.0).map(|s| at(s, -half(s))));
-                vec![closed(tuft), closed(vec![at(11.5, 3.6), at(14.0, 2.9), at(14.0, -2.9), at(11.5, -3.6)]), line(at(14.0, 0.0), [20.6, 3.4])]
+                let tuft = closed(vec![at(0.0, 0.0), at(3.4, 3.0), at(7.4, 3.4), at(7.4, -3.4), at(3.4, -3.0)]);
+                let ferrule = line(at(9.4, 3.0), at(9.4, -3.0));
+                let centre = 20.0;
+                let mut handle = vec![at(11.0, 2.4), at(centre, 2.4)];
+                handle.extend((0..=12).map(|i| {
+                    let t = (90.0 - 180.0 * i as f32 / 12.0) * PI / 180.0;
+                    let c = at(centre, 0.0);
+                    [c[0] + 2.4 * (dx * t.cos() + nx * t.sin()), c[1] + 2.4 * (dy * t.cos() + ny * t.sin())]
+                }));
+                handle.extend([at(centre, -2.4), at(11.0, -2.4)]);
+                vec![tuft, ferrule, closed(handle)]
             }
             Icon::Sparkles => vec![sparkle(10.0, 13.0, 8.0), sparkle(19.0, 5.0, 3.2)],
             Icon::Gear => {
@@ -269,10 +276,22 @@ impl Icon {
                 vec![closed(teeth), circle(12.0, 12.0, 3.0)]
             }
             Icon::Refresh => {
-                let mut ring = arc(12.0, 12.0, 8.0, 30.0, 300.0);
-                let end = *ring.last().unwrap_or(&[12.0, 4.0]);
-                ring.shrink_to_fit();
-                vec![ring, vec![[end[0] + 4.2, end[1] + 0.4], end, [end[0] + 0.4, end[1] + 4.4]]]
+                // Two arcs chasing each other round a circle, each ending in an arrowhead.
+                let half = |from: f32, to: f32| -> Vec<Contour> {
+                    let ring = arc(12.0, 12.0, 8.0, from, to);
+                    let end = *ring.last().unwrap_or(&[12.0, 4.0]);
+                    let a = to * PI / 180.0;
+                    let dir = [-a.sin(), a.cos()];
+                    let turn = |angle: f32| {
+                        let (c, s) = (angle.cos(), angle.sin());
+                        [dir[0] * c - dir[1] * s, dir[0] * s + dir[1] * c]
+                    };
+                    let (l, r) = (turn(150.0 * PI / 180.0), turn(-150.0 * PI / 180.0));
+                    vec![ring, vec![[end[0] + l[0] * 4.4, end[1] + l[1] * 4.4], end, [end[0] + r[0] * 4.4, end[1] + r[1] * 4.4]]]
+                };
+                let mut v = half(195.0, 325.0);
+                v.extend(half(15.0, 145.0));
+                v
             }
             Icon::Star => vec![star(12.0, 12.8, 9.6, 4.3, 5)],
             Icon::MapPin => {
