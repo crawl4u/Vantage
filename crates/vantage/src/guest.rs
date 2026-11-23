@@ -2881,6 +2881,9 @@ impl State {
                 }
             }
         }
+        if !controls.panel_open {
+            self.gui.closed();
+        }
         // Texts typed in the Config page's fields and the hex editor's (before the keys, so Enter applies what was just typed).
         if controls.panel_open && (self.panel.on_config() || self.panel.on_mods() || self.panel.on_waypoints() || self.panel.hex_open() || (self.settings.new_menu && crate::menu_v2::handles(self.panel.tab_number()))) {
             let read = input::read_field_events();

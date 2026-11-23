@@ -213,6 +213,8 @@ pub struct GuiMenu {
     grid_view: Rect,
     /// A press on a card turned into a drag, so its release is not a click.
     dragged: bool,
+    /// How open the menu is (0 just opened, 1 settled), for its fade and slide in.
+    open: Spring,
 }
 
 /// A press on a card that may become a drag.
@@ -253,6 +255,7 @@ impl Default for GuiMenu {
             cells: Vec::new(),
             grid_view: Rect::default(),
             dragged: false,
+            open: Spring::new(0.0, 16.0),
         }
     }
 }
@@ -283,7 +286,23 @@ fn slider_value(x: f32, track: Rect, min: f32, max: f32, step: f32) -> f32 {
 
 impl GuiMenu {
     /// Moves the scroll for the wheel and this frame's time, over content of the last frame's size.
+    /// The menu was closed: it fades in again the next time it opens.
+    pub fn closed(&mut self) {
+        self.open.snap(0.0);
+        self.searching = false;
+        self.card_drag = None;
+        self.drag = None;
+    }
+
+    /// The window's place now: centred, a little low while it fades in.
+    fn window_place(&self, viewport: [f32; 2]) -> Vec2 {
+        let o = window_origin(viewport);
+        Vec2::new(o.x, o.y + (1.0 - self.open.value()) * px(14.0))
+    }
+
     fn scroll_step(&mut self, input: &Input, tab: usize) {
+        self.open.set_target(1.0);
+        self.open.step(input.dt);
         if self.tab != tab {
             self.tab = tab;
             self.scroll.snap(0.0);
@@ -457,6 +476,13 @@ impl GuiMenu {
             y += px(space::M);
         }
 
+        // The player at the bottom of the sidebar.
+        let foot = Rect::new(px(space::XL), h - px(52.0), side - px(space::XL * 2.0), px(40.0));
+        d.rect(Rect::new(foot.x, foot.y - px(space::S), foot.w, 1.0), [1.0, 1.0, 1.0, 0.08], Radii::default());
+        d.rect(Rect::new(foot.x, foot.y, px(32.0), px(32.0)), p.dim, Radii::all(px(RADII.xs)));
+        d.line(Rect::new(foot.x + px(42.0), foot.y - px(4.0), foot.w, px(20.0)), "Player", px(text::LABEL.size), p.text, Align::Start);
+        d.line(Rect::new(foot.x + px(42.0), foot.y + px(12.0), foot.w, px(16.0)), "Vantage", px(text::CAPTION.size), p.muted, Align::Start);
+
         // Header: arrow, title, search pill, close.
         let pane = vantage_ui::shell::content_rect();
         let back = Rect::new(pane[0] - px(space::S), px(space::XL), px(24.0), px(28.0));
@@ -494,7 +520,8 @@ impl GuiMenu {
         input: Input,
     ) -> Scene {
         let p = Palette::dark();
-        let mut d = Painter { scene: Scene::new(), origin: window_origin(input.viewport), p, hover: self.hover };
+        let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover };
+        d.scene.push(Primitive::PushOpacity(self.open.value()));
         let pane = self.shell(&mut d, "Mods", crate::menu_controls::MODS_PAGE, "Search mods...", state.search_text());
 
         // Chips and the sort segments.
@@ -503,13 +530,24 @@ impl GuiMenu {
         let char_w = px(text::LABEL.size) * 0.62;
         let mut x = pane[0];
         for (n, (name, number)) in chips.iter().enumerate() {
-            let cw = name.chars().count() as f32 * char_w + px(24.0);
+            let glyph = match *name {
+                "All" => icons::LAYERS,
+                "Enabled" => icons::SPARKLE,
+                "Favorites" => icons::STAR,
+                "HUD" => icons::GRID_3X3,
+                "Visual" => icons::PALETTE,
+                "Mechanic" => icons::SETTINGS,
+                _ => icons::BOX,
+            };
+            let cw = name.chars().count() as f32 * char_w * 0.84 + px(20.0) + px(26.0);
             let on = *number == active_chip;
             let r = Rect::new(x, chip_y, cw, chip_h);
             let hit = Hit::Chip(n);
             let fill = if on { p.accent } else if d.lit(hit) { p.dim } else { p.raised };
             d.rect(r, fill, Radii::all(px(RADII.xs)));
-            d.line(r, name, px(text::LABEL.size), if on { p.on_accent } else { p.text }, Align::Centre);
+            let ink = if on { p.on_accent } else { p.text };
+            d.icon(Rect::new(r.x + px(space::S), r.y, px(18.0), r.h), glyph, px(20.0), ink);
+            d.line(Rect::new(r.x + px(26.0), r.y, r.w - px(26.0), r.h), name, px(text::LABEL.size), ink, Align::Centre);
             d.region(hit, r);
             x += cw + px(space::XS);
         }
@@ -621,6 +659,7 @@ impl GuiMenu {
             }
         }
         d.scene.push(Primitive::PopClip);
+        d.scene.push(Primitive::PopOpacity);
         d.scene
     }
 
@@ -677,7 +716,8 @@ impl GuiMenu {
 
     fn build_page(&mut self, settings: &Settings, state: &PanelState, tab: usize, page: &menu_v2::PageView<'_>, input: Input) -> Scene {
         let p = Palette::dark();
-        let mut d = Painter { scene: Scene::new(), origin: window_origin(input.viewport), p, hover: self.hover };
+        let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover };
+        d.scene.push(Primitive::PushOpacity(self.open.value()));
         let pane = self.shell(&mut d, page.title, tab, "Search options...", state.option_query());
         self.acts.clear();
 
@@ -747,6 +787,7 @@ impl GuiMenu {
                 d.region(hit, r);
             }
         }
+        d.scene.push(Primitive::PopOpacity);
         d.scene
     }
 
