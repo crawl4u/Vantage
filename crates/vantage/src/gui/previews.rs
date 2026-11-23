@@ -27,6 +27,7 @@ const PREVIEW_SCALE: f32 = 1.15;
 /// A row of text in the game, in unscaled GUI pixels, and the room the text keeps from a box's sides.
 const ROW: f32 = 10.0;
 const PAD: f32 = 5.0;
+const PAD_X: f32 = 5.0;
 
 /// The game font's size for the HUD's text, in unscaled GUI pixels.
 const HUD_TEXT: f32 = 9.0;
@@ -108,6 +109,22 @@ fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
         d.rect(r, sample.background, Radii::all(if sample.rounded { 3.0 * k } else { 0.0 }));
     }
     let s = sample.scale.max(0.1);
+    if let Some(marks) = &sample.compass {
+        // The strip as the game draws it: a tick over each mark, the marks fading towards the ends of the window.
+        let step = 22.0 * s * k;
+        let ink = sample.lines.first().map_or([1.0, 1.0, 1.0, 1.0], |l| l.color);
+        let ink = if sample.lines.is_empty() { [1.0, 1.0, 1.0, 1.0] } else { ink };
+        let size = HUD_TEXT * s * k;
+        for (n, (text, alpha)) in marks.iter().enumerate() {
+            let cx = r.x + r.w / 2.0 + (n as f32 - 4.0) * step;
+            let colour = [ink[0], ink[1], ink[2], ink[3] * alpha];
+            let tick_top = r.y + (sample.pad_y + 2.0) * s * k;
+            d.rect(Rect::new(cx - 0.5 * s * k, tick_top, (1.0 * s * k).max(1.0), 5.0 * s * k), colour, Radii::default());
+            d.text_in(Rect::new(cx - step / 2.0, tick_top + 6.0 * s * k, step, size * 1.5), text, size, colour, Align::Centre, GAME_FONT);
+        }
+        d.scene.push(Primitive::PopClip);
+        return;
+    }
     let row = ROW * s * k;
     // The rows are centred in the box, and the whole block of them shrinks if its widest line would not fit.
     let line_text = |line: &hud::Line| -> Vec<(String, Rgba)> {
@@ -150,6 +167,20 @@ fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
             d.rect(Rect::new(bar_x - (bw * k).max(1.0) / 2.0, r.y + by * k * fit.max(0.5), (bw * k).max(1.0), bh * k * fit), line.color, Radii::default());
             put(d, cell(bar_x - space / 2.0 - lw - 2.0, lw + 2.0), left, line.color, Align::End);
             put(d, cell(bar_x + space / 2.0, rw + 4.0 * s * k), right, line.color, Align::Start);
+            continue;
+        }
+        if line.head.is_some() {
+            // Coordinates: the label and number sit at the left of the box, and the heading marks stand in a column
+            // at its right edge, as the game lays them out.
+            let (head, head_color) = line.head.clone().unwrap_or_default();
+            let hw = hud::text_width(&head) * s * k * fit;
+            let tw = hud::text_width(&line.text) * s * k * fit;
+            let left = r.x + PAD_X * s * k;
+            put(d, cell(left, hw + 4.0 * s * k), &head, head_color, Align::Start);
+            put(d, cell(left + hw + gap * fit, tw + 4.0 * s * k), &line.text, line.color, Align::Start);
+            if let Some((tail, color)) = &line.tail {
+                put(d, cell(r.right() - PAD_X * s * k - 40.0 * s * k, 40.0 * s * k), tail, *color, Align::End);
+            }
             continue;
         }
         let pieces = line_text(line);

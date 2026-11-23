@@ -141,9 +141,9 @@ impl Views {
             cps: [12, 8],
             cps_stats: [87, 14, 320],
             fps: Some(144),
-            feet: [128, 64, -42],
-            feet_exact: [128.5, 64.0, -41.5],
-            facing: Some(2),
+            feet: [38, -57, 4],
+            feet_exact: [38.5, -56.5, 4.5],
+            facing: Some(3),
             yaw: Some(360),
             overworld: true,
             slime: Some(true),
@@ -182,15 +182,25 @@ pub struct Sample {
     pub lines: Vec<Line>,
     /// CPS's separator bar between the two counts as `[x, y, width, height]` in the box's pixels.
     pub bar: Option<[f32; 4]>,
+    /// Direction's compass: each mark's text and how opaque it is, from the left of the strip to the right.
+    pub compass: Option<Vec<(String, f32)>>,
+    /// The box's vertical padding in GUI pixels at size 1.
+    pub pad_y: f32,
 }
 
 /// `element` at its default settings, or none when it has no text to show (keys, items, effects and elements that
 /// need live data such as a target).
 #[must_use]
 pub fn sample(element: Element) -> Option<Sample> {
-    let settings = Settings::default();
+    // Direction is drawn as the compass strip, the way the game shows it by default.
+    let settings = Settings { facing_text: false, ..Settings::default() };
     let lines = lines(element, &Views::preview(), &settings);
-    if lines.iter().all(|l| l.text.is_empty() && l.head.is_none() && l.tail.is_none()) {
+    let compass = compass_on(&settings, element).then(|| {
+        (-4..=4)
+            .map(|n: i32| (compass_mark(240 + n * COMPASS_DEG as i32), 1.0 - 0.65 * (n.abs() as f32 / 4.0).powi(2)))
+            .collect::<Vec<_>>()
+    });
+    if compass.is_none() && lines.iter().all(|l| l.text.is_empty() && l.head.is_none() && l.tail.is_none()) {
         return None;
     }
     let style = settings.style(element);
@@ -198,7 +208,7 @@ pub fn sample(element: Element) -> Option<Sample> {
     // fitted to them: as wide as the longest line and a row for each.
     let [base_w, base_h] = size(&settings, element);
     let k = settings.style(element).scale as f32;
-    let widest = lines.iter().map(|l| text_width(&format!("{} {} {}", l.head.as_ref().map_or("", |h| h.0.as_str()), l.text, l.tail.as_ref().map_or("", |t| t.0.as_str())).trim().to_owned())).fold(0.0_f32, f32::max);
+    let widest = if compass.is_some() { 0.0 } else { lines.iter().map(|l| text_width(&format!("{} {} {}", l.head.as_ref().map_or("", |h| h.0.as_str()), l.text, l.tail.as_ref().map_or("", |t| t.0.as_str())).trim().to_owned())).fold(0.0_f32, f32::max) };
     let fitted = [(widest + 2.0 * PAD_X) * k, (pad_y(style) * 2.0 + ROW_H * lines.len() as f32) * k];
     Some(Sample {
         size: [base_w.max(fitted[0]), base_h.max(fitted[1])],
@@ -206,6 +216,8 @@ pub fn sample(element: Element) -> Option<Sample> {
         rounded: style.rounded,
         shadow: style.shadow,
         scale: k,
+        compass,
+        pad_y: pad_y(style),
         bar: cps_bar(&settings, element).then(|| {
             let at = cps_bar_offset(&lines[0].text, &settings);
             [at[0], at[1], k, CPS_BAR_HEIGHT * k]
