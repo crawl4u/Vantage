@@ -225,16 +225,8 @@ pub fn controls(shell: &Shell<'_>) -> Vec<Value> {
         node::rounded("window", [0.0, 0.0], [w, h], px(RADII.lg), p.panel),
     ];
 
-    // Brand.
-    out.push(node::label(
-        "brand",
-        shell.brand,
-        [px(space::XXL + space::XS), px(BRAND_TOP)],
-        line_box(text::TITLE, SIDEBAR_WIDTH - 60.0),
-        p.highlight,
-        scale(text::TITLE),
-        Align::Left,
-    ));
+    // Brand: the logo, the width of the sidebar less its margins.
+    out.extend(crate::logo::logo([px(space::XXL + space::XS), px(BRAND_TOP)], px(SIDEBAR_WIDTH - 72.0)));
 
     // Sections and entries.
     let mut y = NAV_TOP;
@@ -438,7 +430,6 @@ pub fn document(shell: &Shell<'_>) -> Value {
 /// The shell as a native panel description: the document as a surface at the window's size.
 #[must_use]
 pub fn panel(shell: &Shell<'_>) -> Value {
-    let [w, h] = window_px();
     json!({
         "reference_size": reference_size(),
         "fill": true,

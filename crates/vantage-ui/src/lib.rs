@@ -4,7 +4,9 @@
 //! The crate has no engine dependency: it produces documents as JSON values, so every layout is
 //! testable as data.
 
+pub mod brand;
 pub mod icons;
+pub mod logo;
 pub mod mods;
 pub mod node;
 pub mod options;
