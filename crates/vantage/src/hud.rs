@@ -178,6 +178,8 @@ pub struct Sample {
     pub rounded: bool,
     pub shadow: bool,
     pub lines: Vec<Line>,
+    /// CPS's separator bar between the two counts as `[x, y, width, height]` in the box's pixels.
+    pub bar: Option<[f32; 4]>,
 }
 
 /// `element` at its default settings, or none when it has no text to show (keys, items, effects and elements that
@@ -190,11 +192,21 @@ pub fn sample(element: Element) -> Option<Sample> {
         return None;
     }
     let style = settings.style(element);
+    // The element's own size is fitted to the lines it shows live; here they are the example ones, so the box is
+    // fitted to them: as wide as the longest line and a row for each.
+    let [base_w, base_h] = size(&settings, element);
+    let k = settings.style(element).scale as f32;
+    let widest = lines.iter().map(|l| text_width(&format!("{} {} {}", l.head.as_ref().map_or("", |h| h.0.as_str()), l.text, l.tail.as_ref().map_or("", |t| t.0.as_str())).trim().to_owned())).fold(0.0_f32, f32::max);
+    let fitted = [(widest + 2.0 * PAD_X) * k, (pad_y(style) * 2.0 + ROW_H * lines.len() as f32) * k];
     Some(Sample {
-        size: size(&settings, element),
+        size: [base_w.max(fitted[0]), base_h.max(fitted[1])],
         background: rgba(style.bg_color, if style.background { style.opacity / 100.0 } else { 0.0 }),
         rounded: style.rounded,
         shadow: style.shadow,
+        bar: cps_bar(&settings, element).then(|| {
+            let at = cps_bar_offset(&lines[0].text, &settings);
+            [at[0], at[1], k, CPS_BAR_HEIGHT * k]
+        }),
         lines,
     })
 }
@@ -202,7 +214,8 @@ pub fn sample(element: Element) -> Option<Sample> {
 /// The Keystrokes element at its default settings: its keys and their idle colour.
 #[must_use]
 pub fn sample_keys() -> (Vec<Key>, [f32; 4]) {
-    let settings = Settings::default();
+    // The space bar is shown too, so the card shows the whole element.
+    let settings = Settings { show_space: true, show_mouse: true, ..Settings::default() };
     let style = settings.style(Element::Keystrokes);
     (keys(&settings), rgba(style.bg_color, if style.background { style.opacity / 100.0 } else { 0.0 }))
 }

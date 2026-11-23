@@ -247,9 +247,16 @@ struct Painter {
     lit_amounts: Vec<(Hit, f32)>,
     /// The window's size while it opens, as a fraction of its size once open: everything is drawn about its centre.
     zoom: f32,
+    /// The light theme is on: lines and veils that are white on the dark theme are black on it.
+    light: bool,
 }
 
 impl Painter {
+    /// A faint line or veil of the theme's ink at `alpha`: white on the dark theme, black on the light one.
+    fn veil(&self, alpha: f32) -> Rgba {
+        if self.light { [0.0, 0.0, 0.0, alpha] } else { [1.0, 1.0, 1.0, alpha] }
+    }
+
     /// How lit region `h` is, from 0 (untouched) to 1 (under the pointer).
     fn amount(&self, h: Hit) -> f32 {
         self.lit_amounts.iter().find(|(k, _)| *k == h).map_or(0.0, |(_, v)| *v)
@@ -368,6 +375,8 @@ impl Painter {
 pub struct GuiMenu {
     scroll: Spring,
     scroll_target: f32,
+    /// The filter, sort and search the grid was last laid out for: a change takes the page back to the top.
+    grid_key: (usize, usize, String),
     hover: Option<Hit>,
     /// Hover easing for every region the pointer has lately been over.
     hot: Vec<(Hit, Spring)>,
@@ -449,6 +458,7 @@ impl Default for GuiMenu {
         Self {
             scroll: Spring::new(0.0, 22.0),
             scroll_target: 0.0,
+            grid_key: (usize::MAX, usize::MAX, String::new()),
             hover: None,
             hot: Vec::new(),
             page: Spring::new(1.0, 14.0),
@@ -588,8 +598,8 @@ impl GuiMenu {
         let h = px(74.0);
         let r = Rect::new(self.bell.right() - w + px(6.0), self.bell.y - h - px(10.0) + (1.0 - t) * px(8.0), w, h);
         d.scene.push(Primitive::PushOpacity(t));
-        d.rect(r, [0.05, 0.05, 0.08, 1.0], Radii::all(px(RADII.sm)));
-        d.ring(r, Radii::all(px(RADII.sm)), 0.3, [1.0, 1.0, 1.0, 0.14]);
+        d.rect(r, if d.light { [1.0, 1.0, 1.0, 1.0] } else { [0.05, 0.05, 0.08, 1.0] }, Radii::all(px(RADII.sm)));
+        d.ring(r, Radii::all(px(RADII.sm)), 0.3, d.veil(0.14));
         d.line(Rect::new(r.x + px(14.0), r.y + px(10.0), r.w - px(20.0), px(20.0)), "Notifications", px(text::LABEL.size), p.text, Align::Start);
         d.line(Rect::new(r.x + px(14.0), r.y + px(34.0), r.w - px(20.0), px(20.0)), "You are all caught up.", px(text::SMALL.size), p.muted, Align::Start);
         d.scene.push(Primitive::PopOpacity);
@@ -712,6 +722,15 @@ impl GuiMenu {
             self.glow.resize(cards.len(), Spring::new(0.0, 18.0));
         }
         self.scroll_step(&input, crate::menu_controls::MODS_PAGE);
+        // A new filter, sort or search shows a different list, so it starts at the top.
+        let key = (active_chip, active_sort, state.search_text().to_owned());
+        if key != self.grid_key {
+            if self.grid_key.0 != usize::MAX {
+                self.scroll.snap(0.0);
+                self.scroll_target = 0.0;
+            }
+            self.grid_key = key;
+        }
         for (i, glow) in self.glow.iter_mut().enumerate() {
             let on = matches!(self.hover, Some(Hit::Card(n) | Hit::Switch(n) | Hit::Star(n) | Hit::Hide(n)) if n == i);
             glow.set_target(if on { 1.0 } else { 0.0 });
@@ -733,7 +752,7 @@ impl GuiMenu {
             }
             None => order.clone(),
         };
-        let scene = self.build_mods(state, &cards, &show, &chips, active_chip, active_sort, input);
+        let scene = self.build_mods(state, &cards, &show, &chips, active_chip, active_sort, settings.menu_light, input);
         let scene = self.finish(scene);
         let click = self.pointer(&scene, &input);
         // A press that became a drag is not a click.
@@ -802,14 +821,14 @@ impl GuiMenu {
         let p = d.p;
         let [w, h] = window_px();
         d.rect(Rect::new(0.0, 0.0, w, h), p.panel, Radii::all(px(WINDOW_RADIUS)));
-        d.ring(Rect::new(0.0, 0.0, w, h), Radii::all(px(WINDOW_RADIUS)), 0.3, [1.0, 1.0, 1.0, 0.10]);
+        d.ring(Rect::new(0.0, 0.0, w, h), Radii::all(px(WINDOW_RADIUS)), 0.3, d.veil(0.10));
 
         // Sidebar and logo, divided from the pages by a hairline.
         let side = px(SIDEBAR_WIDTH);
         // The sidebar is a lighter pane than the pages beside it.
         let lg = px(WINDOW_RADIUS);
-        d.rect(Rect::new(0.0, 0.0, side, h), [0.09, 0.09, 0.11, 0.62], Radii { tl: lg, tr: 0.0, br: 0.0, bl: lg });
-        d.rect(Rect::new(side, 0.0, 0.35, h), [1.0, 1.0, 1.0, 0.12], Radii::default());
+        d.rect(Rect::new(0.0, 0.0, side, h), if d.light { [1.0, 1.0, 1.0, 0.45] } else { [0.09, 0.09, 0.11, 0.62] }, Radii { tl: lg, tr: 0.0, br: 0.0, bl: lg });
+        d.rect(Rect::new(side, 0.0, 0.35, h), d.veil(0.12), Radii::default());
         let logo_w = side - px(space::XXL * 2.0);
         let logo = Rect::new(px(space::XXL), px(space::XL), logo_w, logo_w * vantage_ui::brand::SIZE[1] / vantage_ui::brand::SIZE[0]);
         let logo_rect = d.at(logo);
@@ -847,7 +866,7 @@ impl GuiMenu {
 
         // The player at the bottom of the sidebar.
         let foot = Rect::new(px(space::XL), h - px(52.0), side - px(space::XL * 2.0), px(40.0));
-        d.rect(Rect::new(0.0, foot.y - px(space::S), side, 0.35), [1.0, 1.0, 1.0, 0.12], Radii::default());
+        d.rect(Rect::new(0.0, foot.y - px(space::S), side, 0.35), d.veil(0.12), Radii::default());
         d.rect(Rect::new(foot.x, foot.y, px(32.0), px(32.0)), p.dim, Radii::all(px(RADII.xs)));
         let bell = Rect::new(foot.right() - px(26.0), foot.y + px(3.0), px(26.0), px(26.0));
         self.bell = bell;
@@ -871,7 +890,7 @@ impl GuiMenu {
         d.region(Hit::Close, close);
         let pill = search_rect();
         d.rect(pill, if self.searching { p.dim } else { p.field }, Radii::all(px(RADII.xs)));
-        d.ring(pill, Radii::all(px(RADII.xs)), 0.3, if self.searching { p.accent } else { [1.0, 1.0, 1.0, 0.10] });
+        d.ring(pill, Radii::all(px(RADII.xs)), 0.3, if self.searching { p.accent } else { d.veil(0.10) });
         d.glyph(Rect::new(pill.x + px(space::M), pill.y, px(18.0), pill.h), Art::Search, px(15.0), p.muted);
         if !self.searching {
             let (shown, ink) = if query.is_empty() { (hint, p.muted) } else { (query, p.text) };
@@ -889,10 +908,11 @@ impl GuiMenu {
         chips: &[(&str, usize)],
         active_chip: usize,
         active_sort: usize,
+        light: bool,
         input: Input,
     ) -> Scene {
-        let p = Palette::dark();
-        let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts(), zoom: self.zoom() };
+        let p = if light { Palette::light() } else { Palette::dark() };
+        let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts(), zoom: self.zoom(), light };
         d.scene.push(Primitive::PushOpacity(self.open.value()));
         let pane = self.shell(&mut d, "Mods", crate::menu_controls::MODS_PAGE, "Search mods...", state.search_text());
 
@@ -918,7 +938,7 @@ impl GuiMenu {
             let fill = if on { p.accent } else { d.hot(hit, p.raised, p.dim) };
             d.rect(r, fill, Radii::all(px(RADII.xs)));
             if !on {
-                d.ring(r, Radii::all(px(RADII.xs)), 0.3, [1.0, 1.0, 1.0, 0.10]);
+                d.ring(r, Radii::all(px(RADII.xs)), 0.3, d.veil(0.10));
             }
             let ink = if on { p.on_accent } else { p.text };
             // The icon and the label are centred in the chip as one group.
@@ -936,7 +956,7 @@ impl GuiMenu {
         self.sort_slide.set_target(if active_sort == 1 { 1.0 } else { 0.0 });
         self.sort_slide.step(input.dt);
         d.rect(switch, p.field, Radii::all(px(RADII.xs)));
-        d.ring(switch, Radii::all(px(RADII.xs)), 0.3, [1.0, 1.0, 1.0, 0.10]);
+        d.ring(switch, Radii::all(px(RADII.xs)), 0.3, d.veil(0.10));
         let slide = self.sort_slide.value();
         d.rect(Rect::new(switch.x + px(2.0) + seg_w * slide, switch.y + px(2.0), seg_w, switch.h - px(4.0)), p.dim, Radii::all(px(RADII.xs - 2.0)));
         let mut tip: Option<(Rect, &str)> = None;
@@ -1013,7 +1033,7 @@ impl GuiMenu {
                 rect: body_rect,
                 fill: Fill::Gradient { from: top, to: bottom, angle: 0.0 },
                 radii: Radii::all(px(CARD_RADIUS)),
-                border: Some(Border { width: 0.35, color: Color::rgba(1.0, 1.0, 1.0, 0.13 + glow * 0.08) }),
+                border: Some(Border { width: 0.35, color: { let v = d.veil(0.13 + glow * 0.08); Color::rgba(v[0], v[1], v[2], v[3]) } }),
                 shadow: None,
             });
             let bar = Rect::new(r.x, r.bottom() - bar_h, r.w, bar_h);
@@ -1035,14 +1055,14 @@ impl GuiMenu {
                 fill: Fill::Solid(Color::rgba(0.0, 0.0, 0.0, 0.0)),
                 radii: Radii::all(px(3.0)),
                 border: None,
-                shadow: Some(vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(64.0), color: Color::rgba(0.0, 0.0, 0.0, 0.26) }),
+                shadow: Some(vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(64.0), color: Color::rgba(0.0, 0.0, 0.0, if d.light { 0.07 } else { 0.26 }) }),
             });
             match crate::mod_icons::kind(card.id) {
                 crate::mod_icons::Kind::Preview => {
                     previews::paint(&mut d, card.id, icon_area, [0.92, 0.93, 1.0, 1.0]);
                 }
-                crate::mod_icons::Kind::Art(art) => d.glyph(icon_area, art, px(44.0), [0.74, 0.75, 0.88, 1.0]),
-                crate::mod_icons::Kind::Glyph => d.icon(icon_area, card.icon, px(54.0), [0.74, 0.75, 0.88, 1.0]),
+                crate::mod_icons::Kind::Art(art) => d.glyph(icon_area, art, px(44.0), if d.light { [0.30, 0.31, 0.45, 1.0] } else { [0.74, 0.75, 0.88, 1.0] }),
+                crate::mod_icons::Kind::Glyph => d.icon(icon_area, card.icon, px(54.0), if d.light { [0.30, 0.31, 0.45, 1.0] } else { [0.74, 0.75, 0.88, 1.0] }),
             }
             let dot = px(7.0);
             let dot_rect = d.at(Rect::new(r.right() - px(space::L) - dot, r.y + px(space::L), dot, dot));
@@ -1094,8 +1114,8 @@ impl GuiMenu {
                 let w = text_shown.chars().count() as f32 * char_w * 0.9 + px(26.0);
                 let r = Rect::new(anchor.right() - w + px(10.0), anchor.bottom() + px(8.0), w, px(28.0));
                 d.scene.push(Primitive::PushOpacity(t));
-                d.rect(r, [0.05, 0.05, 0.08, 0.96], Radii::all(px(RADII.xs)));
-                d.ring(r, Radii::all(px(RADII.xs)), 0.3, [1.0, 1.0, 1.0, 0.14]);
+                d.rect(r, if d.light { [1.0, 1.0, 1.0, 0.97] } else { [0.05, 0.05, 0.08, 0.96] }, Radii::all(px(RADII.xs)));
+                d.ring(r, Radii::all(px(RADII.xs)), 0.3, d.veil(0.14));
                 d.line(r, text_shown, px(text::SMALL.size), p.text, Align::Centre);
                 d.scene.push(Primitive::PopOpacity);
             }
@@ -1208,8 +1228,9 @@ impl GuiMenu {
     }
 
     fn build_page(&mut self, settings: &Settings, state: &PanelState, tab: usize, page: &menu_v2::PageView<'_>, input: Input) -> Scene {
-        let p = Palette::dark();
-        let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts(), zoom: self.zoom() };
+        let light = settings.menu_light;
+        let p = if light { Palette::light() } else { Palette::dark() };
+        let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts(), zoom: self.zoom(), light };
         d.scene.push(Primitive::PushOpacity(self.open.value()));
         // An element page is titled with the element, by Vantage, with its Style and Layout pages as sub-tabs.
         let sub_tabs = matches!(tab, 1 | 2) && self.virt.is_none();
@@ -1228,7 +1249,7 @@ impl GuiMenu {
                 let on = tab == target;
                 d.rect(r, if on { p.accent } else { d.hot(hit, p.raised, p.dim) }, Radii::all(px(RADII.xs)));
                 if !on {
-                    d.ring(r, Radii::all(px(RADII.xs)), 0.3, [1.0, 1.0, 1.0, 0.10]);
+                    d.ring(r, Radii::all(px(RADII.xs)), 0.3, d.veil(0.10));
                 }
                 let ink = if on { p.on_accent } else { p.text };
                 let label_w = name.chars().count() as f32 * px(text::LABEL.size) * 0.62 * 0.92;
@@ -1450,7 +1471,7 @@ fn mods_click(hit: Hit, cards: &[vantage_ui::mods::Card<'_>], order: &[usize], c
     let one = |id: String| vec![Action::Event(id)];
     match hit {
         Hit::Card(n) => card(n).map(|c| one(c.open.to_owned())).unwrap_or_default(),
-        Hit::Switch(n) => card(n).map(|c| one(c.id.to_owned())).unwrap_or_default(),
+        Hit::Switch(n) => card(n).map(|c| vec![Action::EventValue(c.id.to_owned(), if c.on { 0.0 } else { 1.0 })]).unwrap_or_default(),
         Hit::Star(n) => card(n).map(|c| one(format!("fav_{}", c.id))).unwrap_or_default(),
         Hit::Hide(n) => card(n).map(|c| one(format!("hide_{}", c.id))).unwrap_or_default(),
         Hit::Chip(n) => chips.get(n).map(|(_, number)| one(format!("flt_{number}"))).unwrap_or_default(),

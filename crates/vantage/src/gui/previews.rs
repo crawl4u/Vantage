@@ -99,6 +99,10 @@ fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
     if sample.background[3] > 0.0 {
         d.rect(r, sample.background, Radii::all(if sample.rounded { 3.0 * k } else { 0.0 }));
     }
+    if let Some([bx, by, bw, bh]) = sample.bar {
+        let ink = sample.lines.first().map_or([1.0; 4], |l| l.color);
+        d.rect(Rect::new(r.x + bx * k, r.y + by * k, (bw * k).max(1.0), bh * k), ink, Radii::default());
+    }
     let slot = r.h / sample.lines.len().max(1) as f32;
     let size = HUD_TEXT * k;
     for (i, line) in sample.lines.iter().enumerate() {
@@ -138,6 +142,12 @@ fn paint_keys(d: &mut Painter, area: Rect) {
         let r = Rect::new(x0 + x, y0 + y, w, h);
         d.rect(r, idle, Radii::all(2.5 * k));
         let size = HUD_TEXT * k;
+        if key.name == "Space" {
+            // A short bar across the middle of the key, like the game draws it.
+            let bar = Rect::new(r.x + r.w / 4.0, r.y + r.h / 2.0 - 0.5 * k, r.w / 2.0, k.max(1.0));
+            d.rect(bar, [1.0, 1.0, 1.0, 1.0], Radii::default());
+            continue;
+        }
         d.text_in(Rect::new(r.x, r.y + (r.h - size * 1.5) / 2.0, r.w, size * 1.5), &key.label, size, [1.0, 1.0, 1.0, 1.0], Align::Centre, GAME_FONT);
     }
 }
