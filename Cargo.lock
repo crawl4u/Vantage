@@ -9599,6 +9599,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vantage-gui"
+version = "0.2.3"
+
+[[package]]
 name = "vantage-ui"
 version = "0.2.3"
 dependencies = [

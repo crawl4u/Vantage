@@ -1,0 +1,14 @@
+[package]
+name = "vantage-gui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+publish = false
+description = "Vantage's own menu toolkit: geometry, style, scene, layout and animation, with no engine dependency."
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
