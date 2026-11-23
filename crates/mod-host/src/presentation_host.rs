@@ -148,6 +148,12 @@ fn spans(
 }
 
 /// Requires distinct nonzero runtime IDs within a bound.
+/// How many rows a mod may set: its sandbox limit, or any number for a trusted mod. The renderers take the rows as
+/// plain lists and maps, so nothing downstream is sized to the limit.
+fn bound(trusted: bool, sandbox: usize) -> usize {
+    if trusted { usize::MAX } else { sandbox }
+}
+
 fn keyed<T>(rows: Vec<(u64, T)>, limit: usize) -> Result<BTreeMap<u64, T>, String> {
     if rows.len() > limit {
         return Err("too many actor rows".into());
@@ -161,7 +167,7 @@ fn keyed<T>(rows: Vec<(u64, T)>, limit: usize) -> Result<BTreeMap<u64, T>, Strin
 }
 
 /// Converts and validates every annotation, dropping those with no spans on either surface.
-fn annotations(annotations: Vec<wit::Annotation>) -> Result<BTreeMap<u64, Annotation>, String> {
+fn annotations(annotations: Vec<wit::Annotation>, limit: usize) -> Result<BTreeMap<u64, Annotation>, String> {
     let rows = annotations
         .into_iter()
         .map(|annotation| {
@@ -174,7 +180,7 @@ fn annotations(annotations: Vec<wit::Annotation>) -> Result<BTreeMap<u64, Annota
             ))
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let mut rows = keyed(rows, MAX_ANNOTATIONS)?;
+    let mut rows = keyed(rows, limit)?;
     rows.retain(|_, annotation| annotation.nametag.is_some() || annotation.roster.is_some());
     Ok(rows)
 }
@@ -215,8 +221,8 @@ fn names_actor(selector: wit::ActorSelector) -> bool {
 }
 
 /// Converts and validates at most [`MAX_NAMETAG_RULES`] nametag rules.
-fn nametag_rules(rules: Vec<wit::NametagRule>) -> Result<Vec<NametagRule>, String> {
-    if rules.len() > MAX_NAMETAG_RULES {
+fn nametag_rules(rules: Vec<wit::NametagRule>, limit: usize) -> Result<Vec<NametagRule>, String> {
+    if rules.len() > limit {
         return Err("too many nametag rules".into());
     }
     rules
@@ -236,8 +242,8 @@ fn nametag_rules(rules: Vec<wit::NametagRule>) -> Result<Vec<NametagRule>, Strin
 }
 
 /// Converts and validates at most [`MAX_TINT_RULES`] tint rules, each with a valid colour.
-fn tint_rules(tints: Vec<wit::ActorTint>) -> Result<Vec<TintRule>, String> {
-    if tints.len() > MAX_TINT_RULES {
+fn tint_rules(tints: Vec<wit::ActorTint>, limit: usize) -> Result<Vec<TintRule>, String> {
+    if tints.len() > limit {
         return Err("too many tint rules".into());
     }
     tints
@@ -282,7 +288,7 @@ impl wit::Host for State {
         if let Err(error) = admit(self, !rows.is_empty())? {
             return Ok(Err(error));
         }
-        match annotations(rows) {
+        match annotations(rows, bound(self.grants.trusted, MAX_ANNOTATIONS)) {
             Ok(rows) => {
                 self.presentation
                     .replace(|output| &mut output.annotations, rows);
@@ -297,7 +303,7 @@ impl wit::Host for State {
         if let Err(error) = admit(self, actor_rows)? {
             return Ok(Err(error));
         }
-        match nametag_rules(rules) {
+        match nametag_rules(rules, bound(self.grants.trusted, MAX_NAMETAG_RULES)) {
             Ok(rules) => {
                 self.presentation
                     .replace(|output| &mut output.nametag_rules, rules);
@@ -312,7 +318,7 @@ impl wit::Host for State {
         if let Err(error) = admit(self, actor_rows)? {
             return Ok(Err(error));
         }
-        match tint_rules(rows) {
+        match tint_rules(rows, bound(self.grants.trusted, MAX_TINT_RULES)) {
             Ok(rules) => {
                 self.presentation
                     .replace(|output| &mut output.tint_rules, rules);
@@ -326,7 +332,7 @@ impl wit::Host for State {
         if let Err(error) = admit(self, false)? {
             return Ok(Err(error));
         }
-        if lines.len() > MAX_TOOLTIP_LINES {
+        if lines.len() > bound(self.grants.trusted, MAX_TOOLTIP_LINES) {
             return Ok(Err("too many tooltip lines".into()));
         }
         let lines: Vec<_> = lines
@@ -350,7 +356,7 @@ impl wit::Host for State {
         if let Err(error) = admit(self, false)? {
             return Ok(Err(error));
         }
-        if actions.len() > MAX_CHAT_ACTIONS {
+        if actions.len() > bound(self.grants.trusted, MAX_CHAT_ACTIONS) {
             return Ok(Err("too many chat actions".into()));
         }
         let actions: Vec<_> = actions
