@@ -367,7 +367,7 @@ pub fn path_stroke(contours: &[Vec<[f32; 2]>], width: f32, closed: bool, color: 
 
 /// A disc of `inner` radius that fades out to `outer`, appended to `mesh`.
 fn disc(mesh: &mut Mesh, centre: [f32; 2], inner: f32, outer: f32, color: [u8; 4]) {
-    const N: usize = 12;
+    const N: usize = 8;
     let fade = [color[0], color[1], color[2], 0];
     let mid = mesh.push(centre, color);
     let ring = |mesh: &mut Mesh, r: f32, c: [u8; 4]| -> Vec<u32> {
@@ -415,8 +415,21 @@ pub fn polyline_stroke(contours: &[Vec<[f32; 2]>], width: f32, color: Color) -> 
                 mesh.indices.extend([i, i + 1, i + 3, i, i + 3, i + 2]);
             }
         }
-        for p in contour {
-            disc(&mut mesh, *p, inner, outer, c);
+        // Round joins and ends only where the line turns sharply or stops: along a smooth curve the quads already
+        // meet, and a disc at every point would swamp the frame's index budget.
+        let last = contour.len().saturating_sub(1);
+        for (i, p) in contour.iter().enumerate() {
+            let sharp = if i == 0 || i == last {
+                true
+            } else {
+                let (a, b, n) = (contour[i - 1], *p, contour[i + 1]);
+                let (u, v) = ([b[0] - a[0], b[1] - a[1]], [n[0] - b[0], n[1] - b[1]]);
+                let (lu, lv) = ((u[0] * u[0] + u[1] * u[1]).sqrt(), (v[0] * v[0] + v[1] * v[1]).sqrt());
+                lu > 1e-5 && lv > 1e-5 && (u[0] * v[0] + u[1] * v[1]) / (lu * lv) < 0.94
+            };
+            if sharp {
+                disc(&mut mesh, *p, inner, outer, c);
+            }
         }
     }
     mesh
