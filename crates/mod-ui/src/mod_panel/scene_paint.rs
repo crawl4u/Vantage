@@ -34,8 +34,9 @@ fn bytes(c: Color) -> [u8; 4] {
 
 /// The engine geometry of a tessellated mesh, placed in `origin` (the node's top left) and normalised to the
 /// mesh's own bounds, as the engine expects of a node's mesh. `None` for an empty or oversized mesh.
-fn engine_mesh(mesh: &Mesh, origin: [f32; 2], fade: f32, solid_page: u16) -> Option<(Arc<UiMesh>, [f32; 4])> {
+fn engine_mesh(mesh: &Mesh, origin: [f32; 2], scale: f32, fade: f32, solid_page: u16) -> Option<(Arc<UiMesh>, [f32; 4])> {
     let bounds = mesh.bounds()?;
+    let bounds = Rect::new(bounds.x * scale, bounds.y * scale, bounds.w * scale, bounds.h * scale);
     if bounds.w <= 0.0 || bounds.h <= 0.0 || mesh.indices.is_empty() {
         return None;
     }
@@ -43,7 +44,7 @@ fn engine_mesh(mesh: &Mesh, origin: [f32; 2], fade: f32, solid_page: u16) -> Opt
         .vertices
         .iter()
         .map(|v| UiMeshVertex {
-            position: [(v.pos[0] - bounds.x) / bounds.w, (v.pos[1] - bounds.y) / bounds.h],
+            position: [(v.pos[0] * scale - bounds.x) / bounds.w, (v.pos[1] * scale - bounds.y) / bounds.h],
             clip_z: 0.0,
             clip_w: 1.0,
             uv: [0.5, 0.5],
@@ -80,6 +81,8 @@ impl CustomRenderer for SceneRenderer<'_> {
             return Ok(true);
         };
         let origin = [node.dest[0], node.dest[1]];
+        // The scene is in the panel's units; one unit is this many logical pixels.
+        let scale = canvas.px();
         let base_clip = canvas.clip().unwrap_or(canvas.screen());
         let mut clips = vec![base_clip];
         let mut fades = vec![1.0_f32];
@@ -89,13 +92,13 @@ impl CustomRenderer for SceneRenderer<'_> {
             match primitive {
                 Primitive::Rect { .. } => {
                     if let Some(mesh) = tess::primitive(primitive)
-                        && let Some((mesh, bounds)) = engine_mesh(&mesh, origin, fade, canvas.solid_page())
+                        && let Some((mesh, bounds)) = engine_mesh(&mesh, origin, scale, fade, canvas.solid_page())
                     {
                         canvas.push(UiVisual::Mesh(mesh), bounds)?;
                     }
                 }
                 Primitive::Text { rect, text, size, color, align, font } => {
-                    let dest = [origin[0] + rect.x, origin[1] + rect.y, origin[0] + rect.right(), origin[1] + rect.bottom()];
+                    let dest = [origin[0] + rect.x * scale, origin[1] + rect.y * scale, origin[0] + rect.right() * scale, origin[1] + rect.bottom() * scale];
                     let options = text_options(font);
                     let align = match align {
                         Align::Start => json_ui::TextAlign::Left,
@@ -120,7 +123,7 @@ impl CustomRenderer for SceneRenderer<'_> {
                     )?;
                 }
                 Primitive::Icon { rect, glyph, size, color } => {
-                    let dest = [origin[0] + rect.x, origin[1] + rect.y, origin[0] + rect.right(), origin[1] + rect.bottom()];
+                    let dest = [origin[0] + rect.x * scale, origin[1] + rect.y * scale, origin[0] + rect.right() * scale, origin[1] + rect.bottom() * scale];
                     let options = text_options(ui::mod_panel::FONT_NAME);
                     let mut c = bytes(*color);
                     c[3] = (f32::from(c[3]) * fade).round() as u8;
@@ -141,7 +144,7 @@ impl CustomRenderer for SceneRenderer<'_> {
                 }
                 Primitive::PushClip { rect, .. } => {
                     let outer = *clips.last().unwrap_or(&base_clip);
-                    let inner = Rect::new(origin[0] + rect.x, origin[1] + rect.y, rect.w, rect.h);
+                    let inner = Rect::new(origin[0] + rect.x * scale, origin[1] + rect.y * scale, rect.w * scale, rect.h * scale);
                     let clip = [
                         inner.x.max(outer[0]),
                         inner.y.max(outer[1]),

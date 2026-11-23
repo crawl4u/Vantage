@@ -162,6 +162,8 @@ struct MonumentState {
 struct State {
     settings: Settings,
     panel: PanelState,
+    /// The Mods page on the Vantage GUI toolkit.
+    gui: crate::gui::GuiMenu,
     zoomer: Zoomer,
     /// The key the mouse wheel is claimed for (the zoom key), and when it was last sent.
     scroll_claim: Option<String>,
@@ -2845,6 +2847,32 @@ impl State {
                 continue;
             }
             effect = effect.merge(self.panel.event(&mut self.settings, &event.id, event.value));
+        }
+        // The Mods page is drawn by the toolkit: it reads the raw pointer, and its clicks are ordinary menu events.
+        if controls.panel_open && self.settings.new_menu && crate::menu_v2::GUI_MENU && self.panel.tab_number() == crate::menu_controls::MODS_PAGE {
+            if let Some(layout) = panel::read_layout().filter(|layout| layout.scale > 0.0) {
+                let pointer = controls
+                    .pointer
+                    .map(|(px, py)| vantage_gui::geom::Vec2::new((px - layout.offset.0) / layout.scale, (py - layout.offset.1) / layout.scale));
+                let frame = crate::gui::Input {
+                    pointer,
+                    pressed: left_down,
+                    held: left_held,
+                    wheel: controls.wheel,
+                    dt: controls.seconds.clamp(0.0, 0.25),
+                    viewport: [layout.width, layout.height],
+                };
+                let (scene, actions) = self.gui.frame(&self.settings, &self.panel, frame);
+                vantage_gui::bridge::publish(scene);
+                for action in actions {
+                    match action {
+                        crate::gui::Action::Event(id) => effect = effect.merge(self.panel.event(&mut self.settings, &id, 1.0)),
+                        crate::gui::Action::Close => {
+                            let _ = panel::close();
+                        }
+                    }
+                }
+            }
         }
         // Texts typed in the Config page's fields and the hex editor's (before the keys, so Enter applies what was just typed).
         if controls.panel_open && (self.panel.on_config() || self.panel.on_mods() || self.panel.on_waypoints() || self.panel.hex_open() || (self.settings.new_menu && crate::menu_v2::handles(self.panel.tab_number()))) {

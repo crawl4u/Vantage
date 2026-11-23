@@ -2,6 +2,7 @@
 //! here depends on the game engine, so every page is testable as data. See `docs/vantage-gui.md`.
 
 pub mod anim;
+pub mod bridge;
 pub mod geom;
 pub mod layout;
 pub mod scene;

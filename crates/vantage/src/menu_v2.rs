@@ -182,6 +182,55 @@ fn sort_of(number: usize) -> Sort {
     }
 }
 
+/// The sidebar for the open page: each group's heading and entries as `(button id, title, icon, active)`.
+#[must_use]
+pub fn sidebar(active: usize) -> Vec<(&'static str, Vec<(&'static str, &'static str, &'static str, bool)>)> {
+    entries(active)
+        .into_iter()
+        .enumerate()
+        .map(|(i, list)| (SIDEBAR.get(i).map_or("", |group| group.0), list.into_iter().map(|e| (e.id, e.title, e.icon, e.active)).collect()))
+        .collect()
+}
+
+/// What the Mods grid shows now: every card, the indices of those shown in order, the filter chips as
+/// `(label, number)` with the active one's number, and the sort in use.
+#[must_use]
+pub fn grid<'a>(settings: &'a Settings, panel_state: &'a PanelState) -> (Vec<Card<'a>>, Vec<usize>, Vec<(&'static str, usize)>, usize, usize) {
+    let cards = cards(settings, panel_state);
+    let custom = crate::panel::custom_ranks(settings);
+    let filter: Filter<'static> = filter_of(panel_state.grid_filter());
+    let state = State { filter, sort: sort_of(panel_state.grid_sort()), query: panel_state.search_text(), custom: &custom };
+    let order = mods::visible(&cards, &state);
+    let chips: Vec<(&'static str, usize)> = mods::chips(&cards, &CATEGORIES, filter).iter().map(|c| (c.label, chip_number(c.filter))).collect();
+    (cards, order, chips, panel_state.grid_filter(), panel_state.grid_sort())
+}
+
+/// Whether the Mods page is drawn by the Vantage GUI toolkit (`gui.rs`) rather than as a JSON document.
+pub const GUI_MENU: bool = true;
+
+/// The panel the toolkit's pages draw in: one node the host paints the published scene into, sized to fit the
+/// screen like the JSON pages are.
+#[must_use]
+pub fn scene_panel(settings: &Settings) -> String {
+    serde_json::json!({
+        "reference_size": vantage_ui::shell::reference_size(),
+        "fill": true,
+        "controls": [],
+        "surface": {
+            "screen": "vantage.scene",
+            "document": serde_json::json!({
+                "namespace": "vantage",
+                "scene": {"type": "panel", "size": ["100%", "100%"], "controls": [
+                    {"draw": {"type": "custom", "renderer": "vantage_scene", "size": ["100%", "100%"]}}
+                ]},
+            }).to_string(),
+            "bindings": backdrop(settings).bindings(),
+            "transitions": vantage_ui::shell::Backdrop::transitions(),
+        },
+    })
+    .to_string()
+}
+
 /// The Mods page for the current settings and grid state, as the panel JSON the host takes. Its
 /// controls carry the ids the old menu's handlers use: a mod's own id for its switch, `fav_<id>`,
 /// `flt_<n>`, `sort` and `module_search`.
@@ -432,7 +481,7 @@ pub fn handles(tab: usize) -> bool {
 pub fn page(settings: &Settings, state: &PanelState) -> Option<String> {
     let tab = state.tab_number();
     if tab == MODS_PAGE {
-        return Some(mods_panel(settings, state));
+        return Some(if GUI_MENU { scene_panel(settings) } else { mods_panel(settings, state) });
     }
     if tab == CREDITS_PAGE {
         return Some(credits_panel(settings, state));

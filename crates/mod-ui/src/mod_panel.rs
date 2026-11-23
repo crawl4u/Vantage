@@ -534,8 +534,13 @@ impl ModUi {
                 icons: &panel.icons,
                 id_aux: &[],
             };
+            let bridged = panel
+                .panel
+                .scene
+                .clone()
+                .or_else(vantage_gui::bridge::latest);
             let mut scene = scene_paint::SceneRenderer {
-                scene: panel.panel.scene.as_deref(),
+                scene: bridged.as_deref(),
             };
             let mut field_slot: [&mut dyn CustomRenderer; 3] = [&mut field, &mut items, &mut scene];
             let mut host = RendererChain {

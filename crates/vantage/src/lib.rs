@@ -29,6 +29,7 @@ pub mod outline;
 pub mod json;
 pub mod monument;
 pub mod menu;
+pub mod gui;
 pub mod menu_v2;
 pub mod menu_link;
 pub mod mods_core;
