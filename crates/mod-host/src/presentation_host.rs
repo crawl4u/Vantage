@@ -124,6 +124,7 @@ fn rgba(color: Rgba) -> [f32; 4] {
 fn spans(
     spans: Vec<wit::TextSpan>,
     position: wit::AnnotationPosition,
+    trusted: bool,
 ) -> Result<Option<Arc<Spans>>, String> {
     if spans.is_empty() {
         return Ok(None);
@@ -143,7 +144,7 @@ fn spans(
             wit::AnnotationPosition::Below => SpanPosition::Below,
         },
     };
-    spans.validate()?;
+    spans.validate_for(trusted)?;
     Ok(Some(Arc::new(spans)))
 }
 
@@ -167,15 +168,15 @@ fn keyed<T>(rows: Vec<(u64, T)>, limit: usize) -> Result<BTreeMap<u64, T>, Strin
 }
 
 /// Converts and validates every annotation, dropping those with no spans on either surface.
-fn annotations(annotations: Vec<wit::Annotation>, limit: usize) -> Result<BTreeMap<u64, Annotation>, String> {
+fn annotations(annotations: Vec<wit::Annotation>, limit: usize, trusted: bool) -> Result<BTreeMap<u64, Annotation>, String> {
     let rows = annotations
         .into_iter()
         .map(|annotation| {
             Ok((
                 annotation.runtime_id,
                 Annotation {
-                    nametag: spans(annotation.nametag, annotation.nametag_position)?,
-                    roster: spans(annotation.roster, annotation.roster_position)?,
+                    nametag: spans(annotation.nametag, annotation.nametag_position, trusted)?,
+                    roster: spans(annotation.roster, annotation.roster_position, trusted)?,
                 },
             ))
         })
@@ -288,7 +289,7 @@ impl wit::Host for State {
         if let Err(error) = admit(self, !rows.is_empty())? {
             return Ok(Err(error));
         }
-        match annotations(rows, bound(self.grants.trusted, MAX_ANNOTATIONS)) {
+        match annotations(rows, bound(self.grants.trusted, MAX_ANNOTATIONS), self.grants.trusted) {
             Ok(rows) => {
                 self.presentation
                     .replace(|output| &mut output.annotations, rows);
@@ -342,9 +343,10 @@ impl wit::Host for State {
                 metadata: line.metadata,
                 text: line.text,
                 color: rgba(line.color),
+                uncapped: self.grants.trusted,
             })
             .collect();
-        if let Err(error) = lines.iter().try_for_each(TooltipLine::validate) {
+        if let Err(error) = lines.iter().try_for_each(|line| line.validate_for(self.grants.trusted)) {
             return Ok(Err(error));
         }
         self.presentation
@@ -366,7 +368,7 @@ impl wit::Host for State {
                 action: action.action,
             })
             .collect();
-        if let Err(error) = actions.iter().try_for_each(ChatAction::validate) {
+        if let Err(error) = actions.iter().try_for_each(|action| action.validate_for(self.grants.trusted)) {
             return Ok(Err(error));
         }
         self.presentation

@@ -50,6 +50,10 @@ pub fn validate_color(color: Rgba) -> Result<(), String> {
     Ok(())
 }
 
+/// The longest text a trusted mod may set in an annotation span, tooltip line or chat action: far past the sandbox
+/// limits, but still a line the game can carry.
+pub const TRUSTED_TEXT_BYTES: usize = 64 * 1024;
+
 /// Accepts nonempty single-line text within `max` bytes, without style codes.
 fn plain_text(text: &str, max: usize) -> bool {
     !text.is_empty() && text.len() <= max && !text.chars().any(|c| c.is_control() || c == '§')
@@ -143,11 +147,18 @@ pub struct Spans {
 impl Spans {
     /// Requires 1 through [`MAX_ANNOTATION_SPANS`] bounded plain-text spans with valid colours.
     pub fn validate(&self) -> Result<(), String> {
-        if self.spans.is_empty() || self.spans.len() > MAX_ANNOTATION_SPANS {
+        self.validate_for(false)
+    }
+
+    /// The same checks for a mod whose limits are lifted: any number of spans of any plain text up to
+    /// [`TRUSTED_TEXT_BYTES`] bytes. Style codes and control characters stay refused.
+    pub fn validate_for(&self, trusted: bool) -> Result<(), String> {
+        if self.spans.is_empty() || (!trusted && self.spans.len() > MAX_ANNOTATION_SPANS) {
             return Err("annotation span count is out of bounds".into());
         }
+        let max = if trusted { TRUSTED_TEXT_BYTES } else { MAX_ANNOTATION_SPAN_BYTES };
         for span in &self.spans {
-            if !plain_text(&span.text, MAX_ANNOTATION_SPAN_BYTES) {
+            if !plain_text(&span.text, max) {
                 return Err("annotation spans must be short plain text".into());
             }
             validate_color(span.color)?;
@@ -177,15 +188,23 @@ pub struct TooltipLine {
     pub metadata: Option<u32>,
     pub text: String,
     pub color: Rgba,
+    /// The line belongs to a mod whose limits are lifted, so it is never cut by [`MAX_ITEM_TOOLTIP_LINES`].
+    pub uncapped: bool,
 }
 
 impl TooltipLine {
     /// Requires a bounded identifier and bounded plain text with a valid colour.
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_for(false)
+    }
+
+    /// The same checks with the text and identifier bounds raised to [`TRUSTED_TEXT_BYTES`] for a trusted mod.
+    pub fn validate_for(&self, trusted: bool) -> Result<(), String> {
+        let (identifier_max, text_max) = if trusted { (TRUSTED_TEXT_BYTES, TRUSTED_TEXT_BYTES) } else { (MAX_TOOLTIP_IDENTIFIER_BYTES, MAX_TOOLTIP_LINE_BYTES) };
         if self.identifier.is_empty()
-            || self.identifier.len() > MAX_TOOLTIP_IDENTIFIER_BYTES
+            || self.identifier.len() > identifier_max
             || self.identifier.chars().any(char::is_control)
-            || !plain_text(&self.text, MAX_TOOLTIP_LINE_BYTES)
+            || !plain_text(&self.text, text_max)
         {
             return Err("invalid tooltip line".into());
         }
@@ -208,8 +227,13 @@ pub struct ChatAction {
 impl ChatAction {
     /// Requires bounded single-line text and a short `[A-Za-z0-9_.-]` action id.
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_for(false)
+    }
+
+    /// The same checks with the matched text allowed up to [`TRUSTED_TEXT_BYTES`] for a trusted mod.
+    pub fn validate_for(&self, trusted: bool) -> Result<(), String> {
         if self.text.is_empty()
-            || self.text.len() > MAX_CHAT_ACTION_TEXT_BYTES
+            || self.text.len() > if trusted { TRUSTED_TEXT_BYTES } else { MAX_CHAT_ACTION_TEXT_BYTES }
             || self.text.chars().any(char::is_control)
             || self.action.is_empty()
             || self.action.len() > crate::mod_panel::MAX_PANEL_ID_BYTES
@@ -388,10 +412,15 @@ impl Presentation {
         identifier: &str,
         metadata: u32,
     ) -> impl Iterator<Item = &TooltipLine> {
-        self.tooltip_lines
-            .iter()
-            .filter(move |line| line.matches(identifier, metadata))
-            .take(MAX_ITEM_TOOLTIP_LINES)
+        // A trusted mod's lines are all kept; the rest are cut to the layout bound, in load order.
+        let mut capped = 0;
+        self.tooltip_lines.iter().filter(move |line| line.matches(identifier, metadata)).filter(move |line| {
+            if line.uncapped {
+                return true;
+            }
+            capped += 1;
+            capped <= MAX_ITEM_TOOLTIP_LINES
+        })
     }
 }
 
@@ -466,6 +495,7 @@ mod tests {
                 metadata: None,
                 text: "first".into(),
                 color: [1.; 4],
+                uncapped: false,
             }],
             ..Default::default()
         };
@@ -496,6 +526,7 @@ mod tests {
                 metadata: Some(1),
                 text: "second".into(),
                 color: [1.; 4],
+                uncapped: false,
             }],
             chat_actions: vec![ChatAction {
                 text: "Help".into(),
@@ -627,6 +658,7 @@ mod tests {
             metadata: None,
             text: "line".into(),
             color: [1.; 4],
+            uncapped: false,
         };
         let output = ModPresentation {
             tooltip_lines: vec![line; MAX_ITEM_TOOLTIP_LINES + 3],
@@ -702,9 +734,32 @@ mod tests {
             metadata: None,
             text: text.into(),
             color: [1.; 4],
+            uncapped: false,
         };
         assert!(line("minecraft:apple", "Food").validate().is_ok());
         assert!(line("", "Food").validate().is_err());
         assert!(line("minecraft:apple", "a\nb").validate().is_err());
+    }
+
+    #[test]
+    fn a_trusted_mods_lines_are_all_kept_and_its_text_may_be_long() {
+        let line = |uncapped: bool, text: &str| TooltipLine {
+            identifier: "minecraft:bread".into(),
+            metadata: None,
+            text: text.into(),
+            color: [1.; 4],
+            uncapped,
+        };
+        let mut lines: Vec<TooltipLine> = (0..MAX_ITEM_TOOLTIP_LINES + 5).map(|_| line(false, "sandboxed")).collect();
+        lines.extend((0..20).map(|_| line(true, "trusted")));
+        let output = ModPresentation { tooltip_lines: lines, ..Default::default() };
+        let merged = Presentation::merge([(PLAYERS, &output)]);
+        let shown: Vec<_> = merged.tooltip_lines("minecraft:bread", 0).map(|l| l.text.as_str()).collect();
+        assert_eq!(shown.iter().filter(|t| **t == "sandboxed").count(), MAX_ITEM_TOOLTIP_LINES);
+        assert_eq!(shown.iter().filter(|t| **t == "trusted").count(), 20, "a trusted mod's lines are never cut");
+        let long = "x".repeat(MAX_TOOLTIP_LINE_BYTES * 10);
+        assert!(line(false, &long).validate().is_err());
+        assert!(line(true, &long).validate_for(true).is_ok());
+        assert!(line(true, "§c").validate_for(true).is_err(), "style codes stay refused");
     }
 }
