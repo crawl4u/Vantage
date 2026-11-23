@@ -1971,7 +1971,7 @@ fn flags<'a>(settings: &'a Settings, state: &'a PanelState) -> menu::Flags<'a> {
 
 /// The place of each card (by `MODS` index) in the Mods grid's Custom order: the saved order first, then
 /// any card it does not name, in the built-in order.
-fn custom_ranks(settings: &Settings) -> Vec<usize> {
+pub(crate) fn custom_ranks(settings: &Settings) -> Vec<usize> {
     let mods = &crate::menu_controls::MODS;
     let mut rank = vec![usize::MAX; mods.len()];
     let mut next = 0;

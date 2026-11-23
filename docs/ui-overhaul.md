@@ -120,7 +120,7 @@ built and checked in the live client; "preview" means rendered offline only.
 Not built, in the order they should be taken:
 
 1. (done) Hide and sort.
-2. Drag a card to reorder (Custom order), with the grid re-laying out under the pointer. Needs a new generic drag-to-reorder primitive in the panel engine (crates/ui, crates/mod-ui) and a saved order; Custom order is the given order until then.
+2. (done, seen live in the debug client) Drag a card by its handle to reorder; the order is saved. The lifted card has no floating copy under the pointer yet.
 3. Group headers on the Mods grid that collapse by type.
 4. Colour picker (Custom colours), rows that show only while their parent option is on, grouped sections
    on the converted pages, the Crosshair preview.

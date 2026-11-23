@@ -101,8 +101,8 @@ impl Sort {
     #[must_use]
     pub fn short(self) -> &'static str {
         match self {
-            Self::Default => "Custom order",
-            Self::Name => "A to Z",
+            Self::Default => "Custom",
+            Self::Name => "A-Z",
             Self::EnabledFirst => "On first",
         }
     }
@@ -135,6 +135,8 @@ pub struct State<'a> {
     pub sort: Sort,
     /// The search text; a card matches when its name contains every word, ignoring case.
     pub query: &'a str,
+    /// The Custom order: each card's place, by card index; empty keeps the given order.
+    pub custom: &'a [usize],
 }
 
 /// Whether `card` belongs to `filter`. Hidden cards belong only to [`Filter::Hidden`].
@@ -164,6 +166,7 @@ pub fn visible(cards: &[Card<'_>], state: &State<'_>) -> Vec<usize> {
         .filter(|&i| selected(&cards[i], state.filter) && matches(&cards[i], state.query))
         .collect();
     match state.sort {
+        Sort::Default if state.custom.len() == cards.len() => shown.sort_by_key(|&i| state.custom[i]),
         Sort::Default => {}
         Sort::Name => shown.sort_by_key(|&i| cards[i].name.to_lowercase()),
         Sort::EnabledFirst => shown.sort_by_key(|&i| !cards[i].on),
@@ -233,6 +236,8 @@ const CELL_HEIGHT: f32 = 132.0;
 const GAP: f32 = space::M;
 /// The bottom bar's height, in design units.
 const BAR: f32 = 26.0;
+/// The side of a card's corner and handle controls, in design units: a little larger than their glyphs.
+const TARGET: f32 = 24.0;
 /// The icon font's scale factors: a card's icon and its favourite star.
 const CARD_ICON: f32 = 3.0;
 const STAR_ICON: f32 = 1.3;
@@ -295,7 +300,8 @@ pub fn template(p: &Palette, icons: bool) -> Value {
             node::rounded("hover", [0.0, 0.0], [w, h], px(RADII.md), [1.0, 1.0, 1.0, 0.07]),
             alpha("#item_open_hover"),
         ),
-        press("open", "open", [0.0, 0.0], [w, h - bar]),
+        // Below the strip that holds the hide, drag and favourite controls, so a press there is theirs alone.
+        press("open", "open", [0.0, px(TARGET + space::S * 2.0)], [w, h - bar - px(TARGET + space::S * 2.0)]),
         node::rounded(
             "tile",
             [(w - tile) / 2.0, (h - bar - tile) / 2.0 - px(space::XS)],
@@ -367,15 +373,15 @@ pub fn template(p: &Palette, icons: bool) -> Value {
         ),
         // The hide control: an eye in the opposite corner.
         node::icon("eye", crate::icons::EYE, [px(space::S), px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
-        press("hide", "hide", [px(space::S), px(space::S)], [px(space::XL), px(space::XL)]),
+        press("hide", "hide", [px(space::S + 4.0), px(space::S)], [px(TARGET), px(TARGET)]),
         // The drag handle, top centre: press it and drag the card to another place in the grid.
         node::icon("grip", crate::icons::LIST, [(w - px(20.0)) / 2.0, px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
-        press("handle", "reorder", [(w - px(space::XL)) / 2.0, px(space::S)], [px(space::XL), px(space::XL)]),
+        press("handle", "reorder", [(w - px(TARGET)) / 2.0 + px(8.0), px(space::S)], [px(TARGET), px(TARGET)]),
         press(
             "star",
             "favorite",
-            [w - px(space::XL + space::M), px(space::S)],
-            [px(space::XL), px(space::XL)],
+            [w - px(TARGET), px(space::S)],
+            [px(TARGET), px(TARGET)],
         ),
     ];
     json!({
@@ -434,7 +440,7 @@ pub fn page_controls(
     }
     // The sort segments: one joined bar, the active mode in the accent.
     let [_, _, iw, _] = inner();
-    let widths: Vec<f32> = Sort::ALL.iter().map(|mode| chip_width(mode.short())).collect();
+    let widths: Vec<f32> = Sort::ALL.iter().map(|mode| chip_width(mode.short()) - px(space::XL)).collect();
     let mut sx = px0 + iw - widths.iter().sum::<f32>();
     for (n, mode) in Sort::ALL.iter().enumerate() {
         let width = widths[n];
@@ -595,7 +601,7 @@ mod tests {
     }
 
     fn state<'a>(filter: Filter<'a>, sort: Sort, query: &'a str) -> State<'a> {
-        State { filter, sort, query }
+        State { filter, sort, query, custom: &[] }
     }
 
     #[test]
@@ -619,6 +625,15 @@ mod tests {
         assert_eq!(visible(&c, &state(Filter::All, Sort::Default, "SKY lay")), [4]);
         assert_eq!(visible(&c, &state(Filter::All, Sort::Default, "ps")), [0, 2]);
         assert!(visible(&c, &state(Filter::All, Sort::Default, "nope")).is_empty());
+    }
+
+    #[test]
+    fn the_custom_order_arranges_the_cards_only_under_the_custom_sort() {
+        let c = cards();
+        let custom = [4, 3, 2, 1, 0];
+        let with = |sort| visible(&c, &State { filter: Filter::All, sort, query: "", custom: &custom });
+        assert_eq!(with(Sort::Default), [4, 2, 1, 0]);
+        assert_eq!(with(Sort::Name), [2, 0, 4, 1]);
     }
 
     #[test]

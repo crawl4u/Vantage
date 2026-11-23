@@ -203,10 +203,12 @@ pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
         account_note: "",
         backdrop: backdrop(settings),
     };
+    let custom = crate::panel::custom_ranks(settings);
     let state = State {
         filter: filter_of(panel_state.grid_filter()),
         sort: sort_of(panel_state.grid_sort()),
         query,
+        custom: &custom,
     };
     let chip = |filter: Filter<'_>| format!("flt_{}", chip_number(filter));
     let toggle = |id: &str| id.to_owned();

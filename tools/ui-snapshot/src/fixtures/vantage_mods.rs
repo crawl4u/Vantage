@@ -58,7 +58,7 @@ pub(super) fn fixture(filter: Filter<'static>, query: &'static str) -> Fixture {
         account_note: "Online",
         backdrop: Backdrop::NONE,
     };
-    let state = State { filter, sort: Sort::Default, query };
+    let state = State { filter, sort: Sort::Default, query, custom: &[] };
     let panel = mods::panel(&shell, &cards, &["HUD", "Visual", "Mechanic"], &state, &Ids::plain());
     let panel: Panel = serde_json::from_value(panel).expect("the page is a valid panel");
     Fixture::ModPanel(Box::new(panel), None, None)
