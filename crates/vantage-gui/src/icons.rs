@@ -213,13 +213,20 @@ impl Icon {
         Icon::Dash,
     ];
 
-    /// How wide the icon's strokes are, in grid units: a little finer for the icons with small, close parts.
+    /// The icon's solid shapes on the same grid, each as an outline followed by the holes cut out of it. Only the
+    /// brush has any: it is converted from supplied artwork rather than drawn from strokes.
+    #[must_use]
+    pub fn solid(self) -> Vec<Vec<Contour>> {
+        match self {
+            Icon::Brush => crate::brush_art::BRUSH.iter().map(|group| group.iter().map(|c| c.to_vec()).collect()).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// How wide the icon's strokes are, in grid units.
     #[must_use]
     pub fn weight(self) -> f32 {
-        match self {
-            Icon::Brush => 1.5,
-            _ => 1.9,
-        }
+        1.9
     }
 
     /// The icon's strokes as polylines on the 24 by 24 grid; a stroke that returns to its first point is closed.
@@ -254,47 +261,7 @@ impl Icon {
                 vec![[8.0, 7.0], [9.6, 4.2], [14.4, 4.2], [16.0, 7.0]],
                 circle(12.0, 13.5, 3.6),
             ],
-            Icon::Brush => {
-                // OneClient's paintbrush on the diagonal, outlined: a capsule handle with a hanging ring, a ferrule
-                // block and a bristle tuft that sweeps to a point. Everything is placed along the handle's axis.
-                let o = [15.57_f32, 11.45];
-                let (ax, ay) = (0.7071_f32, -0.7071_f32);
-                let (px, py) = (0.7071_f32, 0.7071_f32);
-                let at = |s: f32, w: f32| [o[0] + ax * s + px * w, o[1] + ay * s + py * w];
-                let curve = |a: [f32; 2], c: [f32; 2], b: [f32; 2]| -> Contour {
-                    (0..=24)
-                        .map(|i| {
-                            let t = i as f32 / 24.0;
-                            let u = 1.0 - t;
-                            [u * u * a[0] + 2.0 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2.0 * u * t * c[1] + t * t * b[1]]
-                        })
-                        .collect()
-                };
-                let end = 9.05_f32;
-                let mut handle = vec![at(0.0, 2.85), at(end, 2.85)];
-                handle.extend((0..=24).map(|i| {
-                    let t = (90.0 - 180.0 * i as f32 / 24.0) * PI / 180.0;
-                    let c = at(end, 0.0);
-                    [c[0] + 2.85 * (ax * t.cos() + px * t.sin()), c[1] + 2.85 * (ay * t.cos() + py * t.sin())]
-                }));
-                handle.extend([at(end, -2.85), at(0.0, -2.85)]);
-                let ring = at(end, 0.0);
-                let (s_hi, s_lo, w_hi, r) = (-2.0_f32, -5.4_f32, 4.1_f32, 1.4_f32);
-                let mut ferrule: Contour = Vec::new();
-                for (cs, cw, from) in [(s_hi - r, w_hi - r, 0.0_f32), (s_lo + r, w_hi - r, 90.0), (s_lo + r, -w_hi + r, 180.0), (s_hi - r, -w_hi + r, 270.0)] {
-                    let c = at(cs, cw);
-                    for i in 0..=10 {
-                        let t = (from + 90.0 * i as f32 / 10.0) * PI / 180.0;
-                        ferrule.push([c[0] + r * (ax * t.cos() + px * t.sin()), c[1] + r * (ay * t.cos() + py * t.sin())]);
-                    }
-                }
-                let (p1, p2, tip) = (at(-7.1, -4.4), at(-7.1, 4.4), [2.4_f32, 19.9]);
-                let mut tuft = vec![p1, p2];
-                tuft.extend(curve(p2, [10.0, 24.0], tip));
-                tuft.extend(curve(tip, [5.2, 16.4], p1));
-                let squeeze = |c: Contour| -> Contour { c.into_iter().map(|q| [12.0 + (q[0] - 12.0) * 0.92, 12.0 + (q[1] - 12.0) * 0.92]).collect() };
-                vec![squeeze(closed(handle)), squeeze(circle(ring[0], ring[1], 1.0)), squeeze(closed(ferrule)), squeeze(closed(tuft))]
-            }
+            Icon::Brush => Vec::new(),
             Icon::Sparkles => vec![sparkle(10.0, 13.0, 8.0), sparkle(19.0, 5.0, 3.2)],
             Icon::Gear => {
                 let mut teeth = Vec::new();
@@ -508,8 +475,8 @@ mod tests {
     fn every_icon_has_strokes_inside_the_grid() {
         for icon in Icon::ALL {
             let contours = icon.contours();
-            assert!(!contours.is_empty(), "{icon:?} draws nothing");
-            for contour in contours {
+            assert!(!contours.is_empty() || !icon.solid().is_empty(), "{icon:?} draws nothing");
+            for contour in contours.into_iter().chain(icon.solid().into_iter().flatten()) {
                 assert!(contour.len() >= 2, "{icon:?} has a stroke of one point");
                 for p in contour {
                     assert!((0.0..=GRID).contains(&p[0]) && (0.0..=GRID).contains(&p[1]), "{icon:?} leaves the grid at {p:?}");

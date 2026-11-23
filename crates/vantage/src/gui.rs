@@ -267,7 +267,16 @@ impl Painter {
     /// A line icon centred in `r`, `size` across, in colour `c`.
     fn glyph(&mut self, r: Rect, icon: Icon, size: f32, c: Rgba) {
         let box_ = self.at(Rect::new(r.x + (r.w - size) / 2.0, r.y + (r.h - size) / 2.0, size, size));
-        self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: icon.contours(), color: color(c), width: icon.weight() });
+        let strokes = icon.contours();
+        if !strokes.is_empty() {
+            self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: icon.contours(), color: color(c), width: icon.weight() });
+        }
+        // Solid shapes keep a hairline round their edge so it is as soft as every other line.
+        for shape in icon.solid() {
+            let edge: Vec<Vec<[f32; 2]>> = shape.iter().map(|ring| ring.iter().copied().chain(ring.first().copied()).collect()).collect();
+            self.scene.push(Primitive::Path { rect: box_, view: [GRID, GRID], contours: shape, color: color(c), stroke: None });
+            self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: edge, color: color(c), width: 0.5 });
+        }
     }
 
     fn rect(&mut self, r: Rect, fill: Rgba, radii: Radii) {

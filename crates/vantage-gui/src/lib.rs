@@ -3,6 +3,7 @@
 
 pub mod anim;
 pub mod bridge;
+mod brush_art;
 pub mod geom;
 pub mod icons;
 pub mod layout;
