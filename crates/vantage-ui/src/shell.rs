@@ -11,9 +11,9 @@ use crate::node::{self, Align};
 use crate::tokens::{Palette, RADII, space, text, px};
 
 /// The window, in design units.
-pub const WINDOW: [f32; 2] = [1080.0, 560.0];
+pub const WINDOW: [f32; 2] = [1080.0, 545.0];
 /// The sidebar's width, in design units.
-pub const SIDEBAR_WIDTH: f32 = 232.0;
+pub const SIDEBAR_WIDTH: f32 = 210.0;
 /// The header's height, in design units.
 pub const HEADER_HEIGHT: f32 = 64.0;
 /// One sidebar entry's height and the gap below it, in design units.
