@@ -922,14 +922,16 @@ impl GuiMenu {
             }
             let glow = self.glow.get(index).map_or(0.0, Spring::value);
             let bar_h = r.h * 0.26;
-            let top = color(p.raised).mix(Color::rgba(1.0, 1.0, 1.0, 0.10), 0.45 + glow * 0.4);
-            let bottom = color(p.raised).mix(Color::rgba(1.0, 1.0, 1.0, 0.03), glow * 0.5);
+            // The card is see-through: the blurred world shows through its body, which only brightens under the pointer.
+            let lift = |c: Rgba, t: f32, alpha: f32| Color::rgba(c[0] + (1.0 - c[0]) * t, c[1] + (1.0 - c[1]) * t, c[2] + (1.0 - c[2]) * t, alpha);
+            let top = lift(p.raised, 0.05 + glow * 0.08, 0.40 + glow * 0.08);
+            let bottom = lift(p.raised, 0.02 + glow * 0.06, 0.32 + glow * 0.08);
             let body_rect = d.at(r);
             d.scene.push(Primitive::Rect {
                 rect: body_rect,
                 fill: Fill::Gradient { from: top, to: bottom, angle: 0.0 },
                 radii: Radii::all(px(CARD_RADIUS)),
-                border: Some(Border { width: 0.3, color: Color::rgba(1.0, 1.0, 1.0, 0.10 + glow * 0.08) }),
+                border: Some(Border { width: 0.35, color: Color::rgba(1.0, 1.0, 1.0, 0.13 + glow * 0.08) }),
                 shadow: None,
             });
             let bar = Rect::new(r.x, r.bottom() - bar_h, r.w, bar_h);
@@ -945,15 +947,15 @@ impl GuiMenu {
             // A soft shadow under the icon lifts it off the card, and an enabled card's dot glows.
             let icon_area = Rect::new(r.x, r.y + px(8.0), r.w, r.h - bar_h - px(8.0));
             let centre = icon_area.centre();
-            let halo = d.at(Rect::new(centre.x - px(15.0), centre.y - px(11.0), px(30.0), px(30.0)));
+            let halo = d.at(Rect::new(centre.x - px(7.0), centre.y - px(7.0), px(14.0), px(14.0)));
             d.scene.push(Primitive::Rect {
                 rect: halo,
                 fill: Fill::Solid(Color::rgba(0.0, 0.0, 0.0, 0.0)),
-                radii: Radii::all(px(15.0)),
+                radii: Radii::all(px(7.0)),
                 border: None,
-                shadow: Some(vantage_gui::style::Shadow { offset: [0.0, px(3.0)], blur: px(18.0), color: Color::rgba(0.0, 0.0, 0.0, 0.30) }),
+                shadow: Some(vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(34.0), color: Color::rgba(0.0, 0.0, 0.0, 0.16) }),
             });
-            d.icon(icon_area, card.icon, px(54.0), p.text);
+            d.icon(icon_area, card.icon, px(54.0), [0.74, 0.75, 0.88, 1.0]);
             let dot = px(7.0);
             let dot_rect = d.at(Rect::new(r.right() - px(space::L) - dot, r.y + px(space::L), dot, dot));
             d.scene.push(Primitive::Rect {
@@ -961,7 +963,7 @@ impl GuiMenu {
                 fill: Fill::Solid(color(if card.on { p.accent } else { p.dim })),
                 radii: Radii::all(dot / 2.0),
                 border: None,
-                shadow: card.on.then(|| vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(9.0), color: Color::rgba(p.accent[0], p.accent[1], p.accent[2], 0.6) }),
+                shadow: card.on.then(|| vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(7.0), color: Color::rgba(p.accent[0], p.accent[1], p.accent[2], 0.5) }),
             });
             if glow > 0.02 {
                 let fade = |c: Rgba| [c[0], c[1], c[2], c[3] * glow];
