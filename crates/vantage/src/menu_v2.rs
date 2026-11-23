@@ -103,7 +103,7 @@ const SIDEBAR: [(&str, &[(usize, &str)]); 2] = [
 
 use vantage_gui::{
     icon_art::Art,
-    icons::{Glyph, Icon},
+    icons::Glyph,
 };
 
 /// The first number of the sidebar entries that no tab backs: the toolkit draws those pages itself.
@@ -117,74 +117,29 @@ const WARDROBE: usize = 104;
 const PREFERENCES: usize = 105;
 const CHANGELOG: usize = 106;
 
-/// The icon of mod `id`: a converted OneClient-style icon where the set has one for the mod, else a line icon
-/// drawn for it, so every card's icon has the same size and weight.
+/// The converted icon of mod `id`, where the converted set has one for it. The other mods keep their icon from the
+/// icon font.
 #[must_use]
-pub fn mod_icon(id: &str) -> Glyph {
-    let line = |icon: Icon| Glyph::Line(icon);
-    let art = |icon: Art| Glyph::Art(icon);
-    match id {
-        "hud_keystrokes" => art(Art::Keyboard),
-        "hud_cps" => line(Icon::Mouse),
-        "hud_fps" => line(Icon::Gauge),
-        "zoom_on" => line(Icon::ZoomIn),
-        "hud_armor" => line(Icon::Shield),
-        "hud_coords" | "gp_wp_on" => line(Icon::MapPin),
-        "hud_potion" | "hud_potioncount" => line(Icon::Flask),
-        "hud_ping" => line(Icon::Signal),
-        "ch_on" => line(Icon::Crosshair),
-        "fullbright" => art(Art::Sun),
-        "hud_facing" => line(Icon::Compass),
-        "gp_time_on" => art(Art::Moon),
-        "hud_clock" => line(Icon::Clock),
-        "gp_weather_on" => art(Art::Cloud),
-        "hud_food" => line(Icon::Heart),
-        "hud_speed" => line(Icon::Speed),
-        "hud_stopwatch" => line(Icon::Timer),
-        "hud_playtime" => line(Icon::Hourglass),
-        "hud_day" => line(Icon::Calendar),
-        "hud_viewangles" => line(Icon::Angle),
-        "hud_reach" => line(Icon::Ruler),
-        "hud_combo" => line(Icon::Flame),
-        "hud_totems" => line(Icon::Totem),
-        "hud_itemcounter" => line(Icon::Hash),
-        "hud_inventory" => line(Icon::Backpack),
-        "hud_arraylist" => art(Art::Text),
-        "hud_chunk" => line(Icon::Chunk),
-        "hud_slime" | "slime_chunks" | "gp_hit_on" => line(Icon::Droplet),
-        "hud_monument" | "guardians" => line(Icon::Diamond),
-        "hud_scoreboard" => art(Art::Clipboard),
-        "hud_target" => line(Icon::Target),
-        "hud_waila" => art(Art::Eye),
-        "hud_height" => line(Icon::ArrowTop),
-        "hud_subtitles" => line(Icon::Captions),
-        "hud_pvp" => art(Art::Combat),
-        "borders" => line(Icon::Brackets),
-        "subchunks" => art(Art::Layers),
-        "lights" => line(Icon::Bulb),
-        "blaze" => line(Icon::Flame),
-        "hitboxes" => art(Art::SelectAll),
-        "gp_nametags" => line(Icon::Tag),
-        "gp_blur_on" => line(Icon::Rings),
-        "gp_dmg_on" => art(Art::Lightning01),
-        "gp_no_hurt_cam" => line(Icon::Camera),
-        "gp_toggle_sprint" => line(Icon::Sprint),
-        "gp_always_sprint" => line(Icon::Dash),
-        "gp_toggle_sneak" => line(Icon::Crouch),
-        "gp_cursor_center" => line(Icon::Pointer),
-        "item_delay_fix" => art(Art::Qol),
-        "gp_nocam_on" => art(Art::Refresh),
-        "gp_noswing_on" => line(Icon::Mute),
-        "gp_cpslim_on" => line(Icon::Funnel),
-        "gp_bo_on" => line(Icon::Cube),
-        "gp_mk_on" => line(Icon::Flag),
-        "gp_tnt_on" => line(Icon::Bomb),
-        "gp_th_on" => line(Icon::TextT),
-        "gp_hive_on" => art(Art::Honeycomb),
-        "gp_persp_on" => line(Icon::Perspective),
-        "gp_glass_on" => line(Icon::Glass),
-        _ => line(Icon::Sparkles),
-    }
+pub fn mod_icon(id: &str) -> Option<Art> {
+    Some(match id {
+        "hud_keystrokes" => Art::Keyboard,
+        "fullbright" => Art::Sun,
+        "gp_time_on" => Art::Moon,
+        "gp_weather_on" => Art::Cloud,
+        "hud_arraylist" => Art::Text,
+        "hud_scoreboard" => Art::Clipboard,
+        "hud_waila" => Art::Eye,
+        "hud_pvp" => Art::Combat,
+        "subchunks" => Art::Layers,
+        "borders" => Art::Maximise,
+        "hitboxes" => Art::SelectAll,
+        "gp_dmg_on" => Art::Lightning01,
+        "gp_nocam_on" => Art::Refresh,
+        "item_delay_fix" => Art::Qol,
+        "gp_th_on" => Art::TextInput,
+        "gp_hive_on" => Art::Honeycomb,
+        _ => return None,
+    })
 }
 
 /// A sidebar entry as `(target, title, icon, active)`: a tab number, or a number from `VIRTUAL_BASE` up.
@@ -204,14 +159,14 @@ pub fn gui_sidebar(tab: usize, virt: Option<usize>) -> Vec<(&'static str, Vec<Gu
                 entry(0, "Mods", Art::Settings.into()),
                 entry(7, "Profiles", Art::Profiles.into()),
                 entry(KEYBINDS, "Keybinds", Art::Keyboard.into()),
-                entry(SCREENSHOTS, "Screenshots", Icon::Camera.into()),
-                entry(17, "Waypoints", Icon::MapPin.into()),
+                entry(SCREENSHOTS, "Screenshots", Glyph::Font(vantage_ui::icons::CAMERA)),
+                entry(17, "Waypoints", Glyph::Font(vantage_ui::icons::MAP_PIN)),
                 entry(26, "Sharing", Art::Cloud.into()),
             ],
         ),
         (
             "Personalization",
-            vec![entry(THEMES, "Themes", Art::Paintbrush.into()), entry(WARDROBE, "Wardrobe", Icon::Sparkles.into()), entry(PREFERENCES, "Preferences", Art::Cog.into())],
+            vec![entry(THEMES, "Themes", Art::Paintbrush.into()), entry(WARDROBE, "Wardrobe", Glyph::Font(vantage_ui::icons::SPARKLE)), entry(PREFERENCES, "Preferences", Art::Cog.into())],
         ),
         ("Vantage", vec![entry(CHANGELOG, "Changelog", Art::Refresh.into()), entry(8, "Credits", Art::Star.into())]),
     ]
@@ -1154,9 +1109,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_mod_has_an_icon_of_its_own() {
+    fn converted_mod_icons_are_for_real_mods() {
         for (id, name, _) in crate::menu_controls::MODS {
-            assert_ne!(mod_icon(id), Glyph::Line(Icon::Sparkles), "{name} has no icon of its own");
+            let _ = (name, mod_icon(id));
+        }
+        for id in ["hud_keystrokes", "gp_hive_on", "fullbright"] {
+            assert!(crate::menu_controls::MODS.iter().any(|m| m.0 == id), "{id} is not a mod");
+            assert!(mod_icon(id).is_some());
         }
     }
 

@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use vantage_gui::icon_art::Art;
-use vantage_gui::icons::{GRID, Glyph, Icon};
+use vantage_gui::icons::{GRID, Glyph};
 use vantage_gui::{
     anim::Spring,
     geom::{Rect, Vec2},
@@ -269,9 +269,7 @@ impl Painter {
     fn glyph(&mut self, r: Rect, icon: impl Into<Glyph>, size: f32, c: Rgba) {
         let box_ = self.at(Rect::new(r.x + (r.w - size) / 2.0, r.y + (r.h - size) / 2.0, size, size));
         match icon.into() {
-            Glyph::Line(icon) => {
-                self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: icon.contours(), color: color(c), width: icon.weight() });
-            }
+            Glyph::Font(glyph) => self.icon(r, glyph, size * 1.25, c),
             Glyph::Pixel(art) => {
                 // Each lit run is a one-pixel-high rectangle; all of them go in one hard-edged fill so the
                 // pixels stay square and no seams show between neighbours.
@@ -985,7 +983,10 @@ impl GuiMenu {
                 border: None,
                 shadow: Some(vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(64.0), color: Color::rgba(0.0, 0.0, 0.0, 0.26) }),
             });
-            d.glyph(icon_area, menu_v2::mod_icon(card.id), px(44.0), [0.74, 0.75, 0.88, 1.0]);
+            match menu_v2::mod_icon(card.id) {
+                Some(art) => d.glyph(icon_area, art, px(44.0), [0.74, 0.75, 0.88, 1.0]),
+                None => d.icon(icon_area, card.icon, px(54.0), [0.74, 0.75, 0.88, 1.0]),
+            }
             let dot = px(7.0);
             let dot_rect = d.at(Rect::new(r.right() - px(space::L) - dot, r.y + px(space::L), dot, dot));
             d.scene.push(Primitive::Rect {
