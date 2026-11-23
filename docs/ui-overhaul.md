@@ -110,7 +110,7 @@ built and checked in the live client; "preview" means rendered offline only.
 | --- | --- |
 | Design tokens, dark and light palettes, contrast rule | done (light theme not selectable yet) |
 | Shell: sidebar with icons and sections, header, search, close, account row | done |
-| Mods grid: icon cards, on/off bar, favourite star, hide with a Hidden chip, chips, search, sort segments (Custom order, A to Z, On first), empty states | done (preview and tests; hide and sort not yet seen live) |
+| Mods grid: icon cards, on/off bar, favourite star, hide with a Hidden chip, chips, search, sort segments (Custom order, A to Z, On first), empty states | done (star, hide with the Hidden chip, the switch, sort and drag reorder seen live) |
 | Mod page: Enabled switch plus options, back, per-page search | done |
 | Option rows: switch, slider (drag and typed value), choice list, keybind, action, info | done |
 | Reset per option, collapsible groups | done (groups used only in the options preview) |

@@ -103,7 +103,7 @@ impl Sort {
         match self {
             Self::Default => "Custom",
             Self::Name => "A-Z",
-            Self::EnabledFirst => "On first",
+            Self::EnabledFirst => "On",
         }
     }
 
@@ -266,7 +266,7 @@ pub fn cell() -> [f32; 2] {
 
 /// Approximate width of a chip with `label`, in GUI pixels.
 fn chip_width(label: &str) -> f32 {
-    label.chars().count() as f32 * px(text::LABEL.size) * 0.56 + px(space::XL * 2.0)
+    label.chars().count() as f32 * px(text::LABEL.size) * 0.56 + px(space::XL * 1.25)
 }
 
 fn scale(style: crate::tokens::TextStyle) -> f32 {
@@ -436,11 +436,11 @@ pub fn page_controls(
                 ),
             ],
         ));
-        x += width + px(space::S);
+        x += width + px(space::XS);
     }
     // The sort segments: one joined bar, the active mode in the accent.
     let [_, _, iw, _] = inner();
-    let widths: Vec<f32> = Sort::ALL.iter().map(|mode| chip_width(mode.short()) - px(space::XL)).collect();
+    let widths: Vec<f32> = Sort::ALL.iter().map(|mode| chip_width(mode.short()) - px(space::S)).collect();
     let mut sx = px0 + iw - widths.iter().sum::<f32>();
     for (n, mode) in Sort::ALL.iter().enumerate() {
         let width = widths[n];
