@@ -8,6 +8,8 @@ pub struct Capability {
     pub label: &'static str,
     /// Whether this capability can change combat, movement or gameplay input.
     pub sensitive: bool,
+    /// What the player must be told before allowing it, for the capabilities that reach their account or system.
+    pub warning: Option<&'static str>,
     /// Whether this permission belongs exclusively to packet runtimes.
     pub packet_only: bool,
     pub enabled: fn(&ModGrants) -> bool,
@@ -79,6 +81,9 @@ impl GrantValue for Vec<String> {
 }
 
 macro_rules! grants {
+    (@warning account) => { Some(ACCOUNT_WARNING) };
+    (@warning trusted) => { Some(TRUSTED_WARNING) };
+    (@warning $other:ident) => { None };
     (@packet) => { false };
     (@packet $value:literal) => { $value };
     ($(#[doc = $doc:literal] #[permission($label:literal, $sensitive:literal $(, $packet_only:literal)?)] pub $field:ident: $ty:ty,)* ) => {
@@ -105,6 +110,7 @@ macro_rules! grants {
             /// Every optional capability, generated from the same fields as serialization.
             pub const CAPABILITIES: &'static [Capability] = &[$(Capability {
                 name: stringify!($field), description: $doc, label: $label, sensitive: $sensitive,
+                warning: grants!(@warning $field),
                 packet_only: grants!(@packet $($packet_only)?),
                 enabled: |grants| GrantValue::enabled(&grants.$field),
                 requested_allowed: |grants, requested| GrantValue::covers(&grants.$field, &requested.$field),
@@ -223,6 +229,9 @@ grants! {
 }
 
 /// What a mod that asks for the account is told before the player allows it.
+/// What a mod that asks for full system access is told before the player allows it.
+pub const TRUSTED_WARNING: &str = "This mod is not sandboxed: it can read and change your files and use your network connection like any program you run. Only allow it if you trust where it came from.";
+
 pub const ACCOUNT_WARNING: &str = "This mod can read your account name and your sign-in data. Only allow it if you trust where it came from: a mod with this access can sign in as you.";
 
 impl ModGrants {

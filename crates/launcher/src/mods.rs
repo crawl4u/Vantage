@@ -69,6 +69,8 @@ pub struct Permission {
     /// Includes every declared value, such as all requested command names.
     pub requested_allowed: bool,
     pub sensitive: bool,
+    /// A warning the player must read before this permission is allowed, such as reaching their sign-in data.
+    pub warning: Option<String>,
 }
 
 impl Permission {
@@ -122,6 +124,19 @@ impl InstalledMod {
                     && !permission.requested_allowed
             })
             .map(|(index, _)| index)
+    }
+    /// The warnings of the permissions this mod asks for or holds, without repeats, in the order they appear.
+    pub fn warnings(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for permission in &self.permissions {
+            let wanted = permission.enabled || permission.requested == Some(true);
+            if let (true, Some(warning)) = (wanted, permission.warning.as_deref()) {
+                if !out.contains(&warning) {
+                    out.push(warning);
+                }
+            }
+        }
+        out
     }
     /// Names requests awaiting approval that `previous`, an earlier revision of the same
     /// registration, did not leave waiting: capabilities or values a replacement newly requests.
@@ -434,6 +449,27 @@ mod tests {
     }
 
     #[test]
+    fn a_warning_shows_once_for_a_permission_asked_for_or_held() {
+        let mut item = installed(1);
+        item.permissions = ["a", "b", "c"]
+            .iter()
+            .map(|name| Permission {
+                applicable: true,
+                name: (*name).into(),
+                description: String::new(),
+                enabled: *name == "a",
+                requested: Some(*name == "b"),
+                requested_allowed: false,
+                sensitive: true,
+                warning: Some(if *name == "c" { "other".into() } else { "careful".into() }),
+            })
+            .collect();
+        assert_eq!(item.warnings(), vec!["careful"], "a and b share one warning, c is neither asked for nor held");
+        item.permissions[2].enabled = true;
+        assert_eq!(item.warnings(), vec!["careful", "other"]);
+    }
+
+    #[test]
     fn permission_order_and_summary_keep_the_host_indices() {
         let mut item = installed(1);
         item.permissions = [false, true, false, true]
@@ -446,6 +482,7 @@ mod tests {
                 enabled: index < 2,
                 requested: Some(requested),
                 requested_allowed: index < 2,
+                warning: None,
                 sensitive: index == 1,
             })
             .collect();
@@ -471,6 +508,7 @@ mod tests {
                 enabled: allowed,
                 requested: Some(requested),
                 requested_allowed: requested && allowed,
+                warning: None,
                 sensitive: false,
             }
         }
@@ -518,6 +556,7 @@ mod tests {
             enabled: false,
             requested: Some(false),
             requested_allowed: true,
+            warning: None,
             sensitive: false,
         });
         let mut snapshot = Snapshot::default();

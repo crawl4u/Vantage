@@ -156,6 +156,7 @@ fn installed(id: u64, name: &str) -> InstalledMod {
             enabled: false,
             requested: Some(true),
             requested_allowed: false,
+            warning: None,
             sensitive: true,
         }],
         metadata: Default::default(),

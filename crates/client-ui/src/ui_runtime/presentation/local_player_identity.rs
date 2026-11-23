@@ -14,6 +14,8 @@ use super::UiPresentationRuntime;
 pub(super) struct LocalPlayerIdentity {
     source: Option<Source>,
     portrait: Option<UiTexturePage>,
+    /// The name and Xbox user ID last told to the mod host, so it is told again only when they change.
+    reported: Option<(Arc<str>, Arc<str>)>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -64,6 +66,17 @@ impl UiPresentationRuntime {
         local: Option<client_world::ui_read::LocalPlayerUi<'_>>,
         session: u64,
     ) {
+        // Mods granted account access read who is signed in; the host is told when it changes.
+        let account = local.as_ref().and_then(|local| local.profile()).filter(|p| !p.username.trim().is_empty()).map(|p| (Arc::clone(&p.username), Arc::clone(&p.xuid)));
+        if account != self.local_player_identity.reported {
+            mod_host::set_account(account.as_ref().map(|(name, xuid)| mod_host::AccountData {
+                display_name: name.to_string(),
+                xuid: xuid.to_string(),
+                uuid: String::new(),
+                access_token: None,
+            }));
+            self.local_player_identity.reported = account;
+        }
         let source = local.and_then(|local| {
             let actor = local.runtime_id();
             let profile = local.profile()?;

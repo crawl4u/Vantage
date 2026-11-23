@@ -82,6 +82,10 @@ fn consent(
     } else {
         caption(content, "This mod doesn't declare its permissions")?;
     }
+    // A permission that reaches the player's account or sign-in data is spelled out before it can be allowed.
+    for warning in item.warnings() {
+        caption(content, &format!("⚠ {warning}"))?;
+    }
     let mut buttons = Vec::new();
     if item.declares_permissions() {
         buttons.push((

@@ -37,6 +37,7 @@ render-api = { path = "../render-api" }
 render-model = { path = "../render-model" }
 player-state = { path = "../player-state" }
 launcher = { path = "../launcher" }
+mod-host = { path = "../mod-host" }
 inventory = { path = "../inventory" }
 json-ui = { path = "../json-ui" }
 oreui = { path = "../oreui" }
@@ -89,7 +90,6 @@ test-time = { path = "../test-time" }
 tempfile = "3"
 protocol = { path = "../protocol", features = ["test-support"] }
 resource-pack = { path = "../resource-pack", features = ["test-support"] }
-mod-host = { path = "../mod-host" }
 pack-compiler = { path = "../pack-compiler" }
 pack-entity-compiler = { path = "../pack-compiler/entity" }
 zip = { version = "7", default-features = false, features = ["deflate-flate2-zlib-rs"] }
