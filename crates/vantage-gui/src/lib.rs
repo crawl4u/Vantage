@@ -6,3 +6,4 @@ pub mod geom;
 pub mod layout;
 pub mod scene;
 pub mod style;
+pub mod tess;
