@@ -1403,6 +1403,12 @@ impl PanelState {
                 return Effect { republish: true, ..Effect::default() };
             }
         }
+        if let Some(n) = id.strip_prefix("sort_").and_then(|n| n.parse::<usize>().ok()) {
+            if n < menu::SORTS.len() {
+                self.sort = n;
+                return Effect { republish: true, ..Effect::default() };
+            }
+        }
         if id == "sort" {
             self.sort = (self.sort + 1) % menu::SORTS.len();
             return Effect { republish: true, ..Effect::default() };
@@ -3041,7 +3047,8 @@ mod tests {
         assert_eq!(on.len(), state.grid_enabled(&settings));
         // Sort: A to Z orders by name; On first lists the mods that are on before the others.
         state.event(&mut settings, "flt_0", 1.0);
-        state.event(&mut settings, "sort", 1.0);
+        state.event(&mut settings, "sort_1", 1.0);
+        assert_eq!(state.grid_sort(), 1);
         let names: Vec<&str> = state.grid_order(&settings).iter().map(|n| crate::menu_controls::MODS[*n].1).collect();
         assert!(names.windows(2).all(|w| w[0] <= w[1]));
         // The page sends the grid and its order, and patches change only the order.

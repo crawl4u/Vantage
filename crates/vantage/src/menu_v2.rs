@@ -433,7 +433,7 @@ mod tests {
         let items = value["surface"]["collections"]["mods"]["definition"]["items"].as_array().unwrap();
         assert_eq!(items.len(), MODS.len());
         let ids: Vec<&str> = value["controls"].as_array().unwrap().iter().filter_map(|c| c["id"].as_str()).collect();
-        for id in ["module_search", "sort", "flt_0", "flt_1", MODS[0].0, "fav_hud_keystrokes"] {
+        for id in ["module_search", "sort_0", "flt_0", "flt_1", MODS[0].0, "fav_hud_keystrokes"] {
             assert!(ids.contains(&id), "{id} is not declared");
         }
     }

@@ -28,7 +28,7 @@ pub struct Card<'a> {
 
 /// The ids the page declares its controls with, so a caller can reuse the ids its own handlers know.
 pub struct Ids<'a> {
-    /// The sort button and the search field.
+    /// The prefix of the sort segments' ids (`<sort>_<n>`, `n` indexing [`Sort::ALL`]) and the search field.
     pub sort: &'a str,
     pub search: &'a str,
     /// A filter chip's id.
@@ -89,6 +89,19 @@ pub enum Sort {
 }
 
 impl Sort {
+    /// Every mode, in the order the segment control lists them.
+    pub const ALL: [Sort; 3] = [Sort::Default, Sort::Name, Sort::EnabledFirst];
+
+    /// The segment's text.
+    #[must_use]
+    pub fn short(self) -> &'static str {
+        match self {
+            Self::Default => "Custom order",
+            Self::Name => "A to Z",
+            Self::EnabledFirst => "On first",
+        }
+    }
+
     /// The next mode when the sort button is pressed.
     #[must_use]
     pub fn next(self) -> Self {
@@ -411,27 +424,34 @@ pub fn page_controls(
         ));
         x += width + px(space::S);
     }
-    let sort = state.sort.label();
-    let sort_w = chip_width(sort);
+    // The sort segments: one joined bar, the active mode in the accent.
     let [_, _, iw, _] = inner();
-    out.push(node::button(
-        "sort",
-        [px0 + iw - sort_w, py0],
-        [sort_w, px(CHIP_HEIGHT)],
-        &format!("mod.control:{}", first_control + chips.len()),
-        vec![
-            node::outline("edge", [0.0, 0.0], [sort_w, px(CHIP_HEIGHT)], px(RADII.xs), 1.0, p.border),
-            node::label(
-                "text",
-                sort,
-                [0.0, (px(CHIP_HEIGHT) - px(text::LABEL.size) * 1.6) / 2.0],
-                [sort_w, px(text::LABEL.size) * 1.6],
-                p.muted,
-                scale(text::LABEL),
-                Align::Center,
-            ),
-        ],
-    ));
+    let widths: Vec<f32> = Sort::ALL.iter().map(|mode| chip_width(mode.short())).collect();
+    let mut sx = px0 + iw - widths.iter().sum::<f32>();
+    for (n, mode) in Sort::ALL.iter().enumerate() {
+        let width = widths[n];
+        let active = *mode == state.sort;
+        let (fill, ink) = if active { (p.accent, p.on_accent) } else { (p.raised, p.muted) };
+        out.push(node::button(
+            &format!("sort_{n}"),
+            [sx, py0],
+            [width, px(CHIP_HEIGHT)],
+            &format!("mod.control:{}", first_control + chips.len() + n),
+            vec![
+                node::rounded("fill", [0.0, 0.0], [width, px(CHIP_HEIGHT)], px(RADII.xs), fill),
+                node::label(
+                    "text",
+                    mode.short(),
+                    [0.0, (px(CHIP_HEIGHT) - px(text::LABEL.size) * 1.6) / 2.0],
+                    [width, px(text::LABEL.size) * 1.6],
+                    ink,
+                    scale(text::LABEL),
+                    Align::Center,
+                ),
+            ],
+        ));
+        sx += width;
+    }
     let grid_y = py0 + px(CHIP_HEIGHT + ROW_GAP);
     if shown == 0 {
         let (title, line) = empty_message(state);
@@ -471,7 +491,9 @@ pub fn declared_controls(cards: &[Card<'_>], chips: &[Chip<'_>], ids: &Ids<'_>) 
         .iter()
         .map(|chip| json!({"kind": "button", "id": (ids.chip)(chip.filter), "label": chip.label}))
         .collect();
-    declared.push(json!({"kind": "button", "id": ids.sort, "label": "Sort"}));
+    for (n, mode) in Sort::ALL.iter().enumerate() {
+        declared.push(json!({"kind": "button", "id": format!("{}_{n}", ids.sort), "label": mode.short()}));
+    }
     for card in cards {
         declared.push(json!({"kind": "toggle", "id": (ids.toggle)(card.id), "label": card.name, "value": card.on}));
         declared.push(json!({"kind": "toggle", "id": (ids.favorite)(card.id), "label": card.name, "value": card.favorite}));
@@ -526,7 +548,7 @@ pub fn panel(
     if !order.is_empty() {
         collections.insert(
             "mods".into(),
-            collection(&p, cards, &order, first_page + chips.len() + 1),
+            collection(&p, cards, &order, first_page + chips.len() + Sort::ALL.len()),
         );
     }
     json!({
@@ -664,8 +686,8 @@ mod tests {
         let state = state(Filter::All, Sort::Default, "");
         let panel = panel(&shell, &c, &["HUD", "Visual", "Mechanic"], &state, &Ids::plain());
         let declared = panel["controls"].as_array().unwrap().len();
-        // The shell's back, forward and search, 7 chips, the sort button, and 3 per card.
-        assert_eq!(declared, 3 + 7 + 1 + c.len() * PER_CARD);
+        // The shell's back, forward and search, 7 chips, the sort segments, and the cards' own.
+        assert_eq!(declared, 3 + 7 + Sort::ALL.len() + c.len() * PER_CARD);
         let template: Value = serde_json::from_str(
             panel["surface"]["collections"]["mods"]["definition"]["template"]["document"]
                 .as_str()
