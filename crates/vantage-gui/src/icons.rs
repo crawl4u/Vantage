@@ -86,6 +86,7 @@ pub enum Icon {
 pub enum Glyph {
     Line(Icon),
     Art(crate::icon_art::Art),
+    Pixel(&'static crate::pixel_art::PixelArt),
 }
 
 impl From<Icon> for Glyph {
@@ -501,6 +502,17 @@ mod tests {
                     })
                     .sum();
                 assert!((filled - expected).abs() <= expected * 0.03 + 0.02, "{art:?} fills {filled} of {expected}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_pixel_run_sits_inside_its_grid() {
+        use crate::pixel_art::HONEYCOMB;
+        for art in [&HONEYCOMB] {
+            assert!(!art.runs.is_empty());
+            for [x, y, w] in art.runs {
+                assert!(*w > 0 && u16::from(*x) + u16::from(*w) <= u16::from(art.size) && *y < art.size, "run {x},{y},{w} leaves the {} grid", art.size);
             }
         }
     }

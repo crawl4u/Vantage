@@ -6,6 +6,7 @@ pub mod bridge;
 pub mod geom;
 pub mod icon_art;
 pub mod icons;
+pub mod pixel_art;
 pub mod layout;
 pub mod scene;
 pub mod style;

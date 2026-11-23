@@ -272,6 +272,20 @@ impl Painter {
             Glyph::Line(icon) => {
                 self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: icon.contours(), color: color(c), width: icon.weight() });
             }
+            Glyph::Pixel(art) => {
+                // Each lit run is a one-pixel-high rectangle; all of them go in one hard-edged fill so the
+                // pixels stay square and no seams show between neighbours.
+                let rects: Vec<Vec<[f32; 2]>> = art
+                    .runs
+                    .iter()
+                    .map(|[x, y, w]| {
+                        let (x0, y0, x1, y1) = (f32::from(*x), f32::from(*y), f32::from(*x) + f32::from(*w), f32::from(*y) + 1.0);
+                        vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+                    })
+                    .collect();
+                let side = f32::from(art.size);
+                self.scene.push(Primitive::Path { rect: box_, view: [side, side], contours: rects, color: color(c), stroke: None });
+            }
             Glyph::Art(art) => {
                 for shape in art.shapes() {
                     let rings: Vec<Vec<[f32; 2]>> = shape.iter().map(|ring| ring.to_vec()).collect();
