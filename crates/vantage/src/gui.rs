@@ -301,8 +301,19 @@ pub struct GuiMenu {
     hover: Option<Hit>,
     /// Hover easing for every region the pointer has lately been over.
     hot: Vec<(Hit, Spring)>,
-    /// The page's fade in after a tab change.
+    /// How far the page change has run (0 just changed, 1 settled), for the cross-fade.
     page: Spring,
+    /// The previous frame scene and where its page content starts, kept for the cross-fade.
+    last: Option<(Scene, usize)>,
+    /// The scene the old page is fading out from, and where its page content starts.
+    outgoing: Option<(Scene, usize)>,
+    /// Where the page content starts in the scene being built (after the window and sidebar).
+    chrome: usize,
+    /// Seconds the pointer has stayed over the same region, for tooltips.
+    hover_clock: f32,
+    hover_seen: Option<Hit>,
+    /// The sort switch highlight position (0 custom order, 1 A to Z).
+    sort_slide: Spring,
     pressed: Option<Hit>,
     /// How lit each card is (0 to 1), easing with the pointer.
     glow: Vec<Spring>,
@@ -361,7 +372,13 @@ impl Default for GuiMenu {
             scroll_target: 0.0,
             hover: None,
             hot: Vec::new(),
-            page: Spring::new(1.0, 20.0),
+            page: Spring::new(1.0, 14.0),
+            last: None,
+            outgoing: None,
+            chrome: 0,
+            hover_clock: 0.0,
+            hover_seen: None,
+            sort_slide: Spring::new(0.0, 22.0),
             pressed: None,
             glow: Vec::new(),
             content: 0.0,
@@ -417,12 +434,44 @@ impl GuiMenu {
         self.card_drag = None;
         self.drag = None;
         self.field = None;
+        self.last = None;
+        self.outgoing = None;
     }
 
     /// The window's place now: centred, a little low while it fades in.
     fn window_place(&self, viewport: [f32; 2]) -> Vec2 {
         let o = window_origin(viewport);
         Vec2::new(o.x, o.y + (1.0 - self.open.value()) * px(14.0))
+    }
+
+    /// Cross-fades from the page that was open to the one now built: the window and sidebar stay, everything
+    /// else of the old page fades out as the new one fades in.
+    fn finish(&mut self, scene: Scene) -> Scene {
+        let t = self.page.value().clamp(0.0, 1.0);
+        let chrome = self.chrome.min(scene.primitives.len());
+        self.last = Some((scene.clone(), chrome));
+        if t >= 0.99 {
+            self.outgoing = None;
+        }
+        let Some((old, old_chrome)) = self.outgoing.as_ref().filter(|_| t < 0.99) else {
+            return scene;
+        };
+        let old_end = old.primitives.len().saturating_sub(1);
+        let new_end = scene.primitives.len().saturating_sub(1);
+        if *old_chrome > old_end || chrome > new_end {
+            return scene;
+        }
+        let mut out = scene.clone();
+        let mut prims: Vec<Primitive> = scene.primitives[..chrome].to_vec();
+        prims.push(Primitive::PushOpacity(1.0 - t));
+        prims.extend_from_slice(&old.primitives[*old_chrome..old_end]);
+        prims.push(Primitive::PopOpacity);
+        prims.push(Primitive::PushOpacity(t));
+        prims.extend_from_slice(&scene.primitives[chrome..new_end]);
+        prims.push(Primitive::PopOpacity);
+        prims.extend_from_slice(&scene.primitives[new_end..]);
+        out.primitives = prims;
+        out
     }
 
     fn lit_amounts(&self) -> Vec<(Hit, f32)> {
@@ -435,6 +484,12 @@ impl GuiMenu {
         self.clock += input.dt;
         self.page.set_target(1.0);
         self.page.step(input.dt);
+        if self.hover != self.hover_seen {
+            self.hover_seen = self.hover;
+            self.hover_clock = 0.0;
+        } else {
+            self.hover_clock += input.dt;
+        }
         if let Some(h) = self.hover {
             if !self.hot.iter().any(|(k, _)| *k == h) {
                 self.hot.push((h, Spring::new(0.0, 26.0)));
@@ -449,6 +504,7 @@ impl GuiMenu {
         if self.tab != tab {
             if self.tab != usize::MAX {
                 self.page.snap(0.0);
+                self.outgoing = self.last.take();
             }
             self.tab = tab;
             self.scroll.snap(0.0);
@@ -525,6 +581,7 @@ impl GuiMenu {
             None => order.clone(),
         };
         let scene = self.build_mods(state, &cards, &show, &chips, active_chip, active_sort, input);
+        let scene = self.finish(scene);
         let click = self.pointer(&scene, &input);
         // A press that became a drag is not a click.
         if let Some(up) = click.filter(|_| !self.dragged) {
@@ -640,6 +697,7 @@ impl GuiMenu {
         d.line(Rect::new(foot.x + px(42.0), foot.y - px(4.0), foot.w, px(20.0)), "Player", px(text::LABEL.size), p.text, Align::Start);
         d.line(Rect::new(foot.x + px(42.0), foot.y + px(12.0), foot.w, px(16.0)), "Vantage", px(text::CAPTION.size), p.muted, Align::Start);
 
+        self.chrome = d.scene.primitives.len();
         // Header: arrow, title, search pill, close.
         let pane = vantage_ui::shell::content_rect();
         let back = Rect::new(pane[0] - px(space::S), px(space::XL), px(24.0), px(28.0));
@@ -677,7 +735,7 @@ impl GuiMenu {
     ) -> Scene {
         let p = Palette::dark();
         let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts() };
-        d.scene.push(Primitive::PushOpacity(self.open.value() * self.page.value()));
+        d.scene.push(Primitive::PushOpacity(self.open.value()));
         let pane = self.shell(&mut d, "Mods", crate::menu_controls::MODS_PAGE, "Search mods...", state.search_text());
 
         // Chips and the sort segments.
@@ -710,17 +768,30 @@ impl GuiMenu {
             d.region(hit, r);
             x += cw + px(space::XS);
         }
-        let sorts = ["Custom", "A-Z", "On"];
-        let widths: Vec<f32> = sorts.iter().map(|s| s.len() as f32 * char_w + px(18.0)).collect();
-        let mut sx = pane[0] + pane[2] - widths.iter().sum::<f32>();
-        for (n, name) in sorts.iter().enumerate() {
-            let r = Rect::new(sx, chip_y, widths[n], chip_h);
+        // The sort switch: the grid own order, or A to Z, as a two-part box the highlight slides along.
+        let seg_w = px(34.0);
+        let switch = Rect::new(pane[0] + pane[2] - seg_w * 2.0 - px(4.0), chip_y, seg_w * 2.0 + px(4.0), chip_h);
+        self.sort_slide.set_target(if active_sort == 1 { 1.0 } else { 0.0 });
+        self.sort_slide.step(input.dt);
+        d.rect(switch, p.field, Radii::all(px(RADII.xs)));
+        d.ring(switch, Radii::all(px(RADII.xs)), 0.3, [1.0, 1.0, 1.0, 0.10]);
+        let slide = self.sort_slide.value();
+        d.rect(Rect::new(switch.x + px(2.0) + seg_w * slide, switch.y + px(2.0), seg_w, switch.h - px(4.0)), p.dim, Radii::all(px(RADII.xs - 2.0)));
+        let mut tip: Option<(Rect, &str)> = None;
+        for (n, tip_text) in ["Custom order", "A to Z"].iter().enumerate() {
+            let r = Rect::new(switch.x + px(2.0) + seg_w * n as f32, switch.y, seg_w, switch.h);
             let hit = Hit::Sort(n);
-            let on = n == active_sort;
-            d.rect(r, if on { p.accent } else { d.hot(hit, p.raised, p.dim) }, Radii::all(px(RADII.xs)));
-            d.line(r, name, px(text::LABEL.size), if on { p.on_accent } else { p.muted }, Align::Centre);
+            let on = (n == 1) == (active_sort == 1);
+            let ink = if on { p.text } else { p.muted };
+            if n == 0 {
+                d.icon(r, icons::GRID_3X3, px(20.0), ink);
+            } else {
+                d.line(r, "Aa", px(text::LABEL.size), ink, Align::Centre);
+            }
             d.region(hit, r);
-            sx += widths[n];
+            if self.hover == Some(hit) {
+                tip = Some((r, tip_text));
+            }
         }
 
         // The grid, scrolled and clipped.
@@ -761,7 +832,11 @@ impl GuiMenu {
                 ghost = Some((n, index));
                 continue;
             }
-            let r = Rect::new(sx.value(), sy.value() - scroll, cell.w, cell.h);
+            let mut r = Rect::new(sx.value(), sy.value() - scroll, cell.w, cell.h);
+            // A card being pressed sinks a little under the pointer.
+            if self.pressed == Some(Hit::Card(n)) && input.held && !self.dragged {
+                r = Rect::new(r.x + r.w * 0.012, r.y + r.h * 0.012, r.w * 0.976, r.h * 0.976);
+            }
             if r.bottom() < view.y || r.y > view.bottom() {
                 continue;
             }
@@ -825,6 +900,18 @@ impl GuiMenu {
             }
         }
         d.scene.push(Primitive::PopClip);
+        if let Some((anchor, text_shown)) = tip {
+            let t = ((self.hover_clock - 0.35) / 0.15).clamp(0.0, 1.0);
+            if t > 0.0 {
+                let w = text_shown.chars().count() as f32 * char_w * 0.9 + px(26.0);
+                let r = Rect::new(anchor.right() - w + px(10.0), anchor.bottom() + px(8.0), w, px(28.0));
+                d.scene.push(Primitive::PushOpacity(t));
+                d.rect(r, [0.05, 0.05, 0.08, 0.96], Radii::all(px(RADII.xs)));
+                d.ring(r, Radii::all(px(RADII.xs)), 0.3, [1.0, 1.0, 1.0, 0.14]);
+                d.line(r, text_shown, px(text::SMALL.size), p.text, Align::Centre);
+                d.scene.push(Primitive::PopOpacity);
+            }
+        }
         d.scene.push(Primitive::PopOpacity);
         d.scene
     }
@@ -871,6 +958,7 @@ impl GuiMenu {
             }
         }
         let scene = menu_v2::with_page(settings, state, tab, &mut |page| self.build_page(settings, state, tab, page, input));
+        let scene = self.finish(scene);
         let was_pressed = self.pressed;
         let click = self.pointer(&scene, &input);
         // A press anywhere but the field ends typing in it, and a press on a field starts it.
@@ -928,7 +1016,7 @@ impl GuiMenu {
     fn build_page(&mut self, settings: &Settings, state: &PanelState, tab: usize, page: &menu_v2::PageView<'_>, input: Input) -> Scene {
         let p = Palette::dark();
         let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts() };
-        d.scene.push(Primitive::PushOpacity(self.open.value() * self.page.value()));
+        d.scene.push(Primitive::PushOpacity(self.open.value()));
         let pane = self.shell(&mut d, page.title, tab, "Search options...", state.option_query());
         self.acts.clear();
 
