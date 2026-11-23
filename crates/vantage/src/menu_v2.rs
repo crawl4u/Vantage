@@ -219,13 +219,63 @@ pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
     mods::panel(&shell, &cards, &CATEGORIES, &state, &ids).to_string()
 }
 
+/// The Credits page.
+const CREDITS_PAGE: usize = 8;
+
+/// The credits, as sections of lines. The licence notices and attributions are kept as the project states them.
+/// The longest line a credit row holds before the row clips it.
+const CREDIT_LINE: usize = 44;
+const CREDITS: [(&str, &[&str]); 5] = [
+    ("Vantage", &["Made by Crawl.", "HUD elements and world tools, each placed", "and styled on its own."]),
+    (
+        "Based on",
+        &[
+            "Technic Tweaks and Keystrokes by Emil Chill",
+            "(MIT licence), and Zoomify by isXander,",
+            "ported by Emil Chill (LGPL-3.0-or-later).",
+            "Many thanks to Emil Chill for the original",
+            "mods and menu kit.",
+        ],
+    ),
+    ("Built with", &["Claude AI, with Emil Chill's original work,", "for Cinnabar."]),
+    ("Inspired by", &["Lunar Client's HUD look and Crosshair.", "Vantage is not affiliated with Lunar Client."]),
+    ("Platform", &["Cinnabar, with Mods Core for its mod list", "and menu hand-over."]),
+];
+
+/// The Credits page: each section's lines as text rows in the menu shell.
+fn credits_panel(settings: &Settings, state: &PanelState) -> String {
+    let opts: Vec<Vec<Opt<'_>>> = CREDITS
+        .iter()
+        .map(|(_, lines)| lines.iter().map(|line| Opt { id: "credit", label: line, help: None, kind: options::Kind::Info, changed: false }).collect())
+        .collect();
+    let groups: Vec<Group<'_>> = CREDITS.iter().zip(&opts).map(|((title, _), opts)| Group { title, collapsed: false, options: opts }).collect();
+    let matched = options::search(&groups, state.option_query());
+    let shown = options::groups_of(&matched);
+    let entries = entries(CREDITS_PAGE);
+    let sections = sections_of(&entries, "");
+    let shell = Shell {
+        palette: Palette::dark(),
+        brand: "Vantage",
+        sections: &sections,
+        title: "Credits",
+        search_hint: "Search credits...",
+        search: state.option_query(),
+        search_id: "opt_search",
+        back_id: "back",
+        account: "Player",
+        account_note: "",
+        backdrop: backdrop(settings),
+    };
+    options::panel(&shell, &shown, None, None).to_string()
+}
+
 /// The settings pages the redesign has rebuilt, by tab. The others keep their old design until they are.
 const CONVERTED: [usize; 23] = [1, 2, 7, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26];
 
 /// Whether the redesign draws this tab (the Mods grid and the rebuilt settings pages).
 #[must_use]
 pub fn handles(tab: usize) -> bool {
-    tab == MODS_PAGE || CONVERTED.contains(&tab)
+    tab == MODS_PAGE || tab == CREDITS_PAGE || CONVERTED.contains(&tab)
 }
 
 /// The page for the open tab, when the redesign draws it.
@@ -234,6 +284,9 @@ pub fn page(settings: &Settings, state: &PanelState) -> Option<String> {
     let tab = state.tab_number();
     if tab == MODS_PAGE {
         return Some(mods_panel(settings, state));
+    }
+    if tab == CREDITS_PAGE {
+        return Some(credits_panel(settings, state));
     }
     CONVERTED.contains(&tab).then(|| settings_panel(settings, state, tab))
 }
@@ -714,6 +767,15 @@ mod tests {
         for &tab in &CONVERTED {
             for row in rows(&settings, &state, &defaults, tab) {
                 assert!(!is_furniture(tab, row.id), "{} is furniture", row.id);
+            }
+        }
+    }
+
+    #[test]
+    fn every_credit_line_fits_its_row() {
+        for (title, lines) in CREDITS {
+            for line in lines {
+                assert!(line.chars().count() <= CREDIT_LINE, "{title}: {line:?} is too long");
             }
         }
     }
