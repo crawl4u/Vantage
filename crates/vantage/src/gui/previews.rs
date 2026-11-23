@@ -146,7 +146,8 @@ fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
     let block = row * sample.lines.len() as f32;
     let top = r.y + (r.h - block) / 2.0;
     for (i, line) in sample.lines.iter().enumerate() {
-        let y = top + i as f32 * row + (row - size * 1.5) / 2.0;
+        // The game's glyphs sit high in their line box, so the line drops a little to be centred in its row.
+        let y = top + i as f32 * row + (row - size * 1.5) / 2.0 + size * 0.16;
         let cell = |x: f32, w: f32| Rect::new(x, y, w, size * 1.5);
         let mut put = |d: &mut Painter, rect: Rect, text: &str, color: Rgba, align: Align| {
             if sample.shadow {
@@ -184,6 +185,11 @@ fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
             continue;
         }
         let pieces = line_text(line);
+        if let [(text, color)] = pieces.as_slice() {
+            // A single piece is centred in the whole box by the text itself, so the font's own widths decide the middle.
+            put(d, Rect::new(r.x, y, r.w, size * 1.5), text, *color, Align::Centre);
+            continue;
+        }
         let widths: Vec<f32> = pieces.iter().map(|(t, _)| hud::text_width(t) * s * k * fit).collect();
         let total = widths.iter().sum::<f32>() + gap * fit * pieces.len().saturating_sub(1) as f32;
         let mut x = r.x + (r.w - total) / 2.0;
@@ -310,14 +316,18 @@ pub(super) fn paint(d: &mut Painter, id: &str, area: Rect, ink: Rgba) -> bool {
             }
         }
         Look::Effect => {
-            let w = px(94.0);
-            let h = px(30.0);
+            // As the game draws a potion effect: a dark rounded box, the effect's icon at its left and the name over the
+            // time in the game's font.
+            let h = px(34.0);
+            let w = px(88.0);
             let r = Rect::new(c.x - w / 2.0, c.y - h / 2.0, w, h);
-            d.rect(r, BOX, Radii::all(px(8.0)));
-            let swatch = Rect::new(r.x + px(6.0), r.y + px(6.0), h - px(12.0), h - px(12.0));
-            d.rect(swatch, [0.45, 0.8, 0.95, 0.85], Radii::all(px(4.0)));
-            d.line(Rect::new(swatch.right() + px(6.0), r.y + px(3.0), r.w - h, px(14.0)), "Speed II", px(11.0), ink, Align::Start);
-            d.line(Rect::new(swatch.right() + px(6.0), r.y + px(15.0), r.w - h, px(12.0)), "0:30", px(10.0), [ink[0], ink[1], ink[2], 0.7], Align::Start);
+            d.rect(r, [0.1, 0.12, 0.1, 0.85], Radii::all(px(5.0)));
+            let icon = Rect::new(r.x + px(5.0), r.y + (h - px(18.0)) / 2.0, px(18.0), px(18.0));
+            d.rect(icon, [0.78, 0.2, 0.2, 0.95], Radii::all(px(4.0)));
+            let size = px(11.0);
+            let text_x = icon.right() + px(5.0);
+            d.text_in(Rect::new(text_x, r.y + px(3.0), r.right() - text_x, size * 1.5), "Speed", size, [1.0, 1.0, 1.0, 1.0], Align::Start, GAME_FONT);
+            d.text_in(Rect::new(text_x, r.y + px(16.0), r.right() - text_x, size * 1.5), "02:22", size, [1.0, 1.0, 1.0, 1.0], Align::Start, GAME_FONT);
         }
     }
     true

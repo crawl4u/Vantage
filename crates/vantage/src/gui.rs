@@ -279,6 +279,20 @@ impl Painter {
         self.hover == Some(h)
     }
 
+    /// A thin scroll bar down the right of a scrolling area, shown only when there is more than fits: the thumb's size is
+    /// the share of the content in view and its place is how far the content has scrolled.
+    fn scrollbar(&mut self, view: Rect, content: f32, scroll: f32) {
+        if content <= view.h + 1.0 {
+            return;
+        }
+        let track = Rect::new(view.right() + px(7.0), view.y, px(3.0), view.h);
+        self.rect(track, self.veil(0.07), Radii::all(track.w / 2.0));
+        let thumb_h = (view.h * view.h / content).max(px(24.0)).min(view.h);
+        let t = (scroll / (content - view.h)).clamp(0.0, 1.0);
+        let thumb = Rect::new(track.x, track.y + (view.h - thumb_h) * t, track.w, thumb_h);
+        self.rect(thumb, self.veil(0.35), Radii::all(track.w / 2.0));
+    }
+
     /// The crosshair's shapes, laid out in design units from `(x, y)` and drawn `k` times their size.
     fn preview_shapes(&mut self, x: f32, y: f32, k: f32, shapes: &[crate::menu_v2::PreviewShape]) {
         for shape in shapes {
@@ -1109,6 +1123,7 @@ impl GuiMenu {
             }
         }
         d.scene.push(Primitive::PopClip);
+        d.scrollbar(view, self.content, scroll);
         if let Some((anchor, text_shown)) = tip {
             let t = ((self.hover_clock - 0.35) / 0.15).clamp(0.0, 1.0);
             if t > 0.0 {
@@ -1304,6 +1319,7 @@ impl GuiMenu {
         self.content = y + scroll - view.y;
         self.view = view.h;
         d.scene.push(Primitive::PopClip);
+        d.scrollbar(view, self.content, scroll);
 
         // The open choice's list over everything.
         if let Some(popup) = page.popup {

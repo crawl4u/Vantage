@@ -91,6 +91,12 @@ impl CustomRenderer for SceneRenderer<'_> {
         canvas.group(base_clip)?;
         for primitive in &scene.primitives {
             let fade = *fades.last().unwrap_or(&1.0);
+            // Inside a clip that nothing shows through (a card scrolled out of view) there is nothing to draw, and
+            // a text or shape given an inverted clip would fail the whole panel.
+            let hidden = clips.last().is_some_and(|c| c[0] >= c[2] || c[1] >= c[3]);
+            if hidden && !matches!(primitive, Primitive::PushClip { .. } | Primitive::PopClip | Primitive::PushOpacity(_) | Primitive::PopOpacity) {
+                continue;
+            }
             match primitive {
                 Primitive::Rect { .. } | Primitive::Path { .. } | Primitive::Pixels { .. } | Primitive::Line { .. } => {
                     if let Some(mesh) = tess::primitive(primitive)
