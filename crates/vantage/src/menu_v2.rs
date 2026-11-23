@@ -313,6 +313,59 @@ fn rows<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Setting
         .collect()
 }
 
+/// Whether the switch `row` depends on is off, so the row is left out.
+fn switched_off(settings: &Settings, state: &PanelState, id: &str) -> bool {
+    DEPENDS
+        .iter()
+        .find(|(option, _)| *option == id)
+        .is_some_and(|(_, switch)| matches!(crate::panel::value(settings, state, switch), Value::Toggle(false)))
+}
+
+/// Options that matter only while a switch above them is on: `(option, its switch)`. The page leaves them
+/// out while the switch is off, as the reference menu does.
+const DEPENDS: [(&str, &str); 17] = [
+    ("chroma_speed", "chroma_on"),
+    ("chroma_type", "chroma_on"),
+    ("border_width", "box_border"),
+    ("border_opacity", "box_border"),
+    ("border_color", "box_border"),
+    ("zoom_steps", "zoom_steps_on"),
+    ("zoom_per_step", "zoom_steps_on"),
+    ("ch_dot_round", "ch_dot"),
+    ("ch_target_scale", "ch_target"),
+    ("ch_target_opacity", "ch_target"),
+    ("ch_player_color", "ch_players"),
+    ("ch_mob_color", "ch_mobs"),
+    ("ch_weapon_shape", "ch_weapon"),
+    ("ch_weapon_size", "ch_weapon"),
+    ("ch_outline_color", "ch_outline"),
+    ("ch_outline_width", "ch_outline"),
+    ("ch_outline_round", "ch_outline"),
+];
+
+/// Titled sections of the busier pages: `(tab, [(the option a section starts at, its title)])`. A page not
+/// listed is one section.
+const SECTIONS: [(usize, &[(&str, &str)]); 4] = [
+    (1, &[("pos_x", "Position"), ("scale", "Size"), ("armor_horizontal", "Armor"), ("show_chunk", "Chunk info")]),
+    (2, &[("bg_color", "Box"), ("text_color", "Text"), ("labels", "Display"), ("chroma_on", "Chroma"), ("background", "Extras"), ("box_border", "Border")]),
+    (4, &[("zoom_initial", "Zoom"), ("zoom_step_in", "Scroll steps"), ("zoom_smooth", "Smoothing"), ("zoom_sens", "Controls"), ("zoom_p_default", "Presets")]),
+    (5, &[("ch_shape", "Shape"), ("ch_dot", "Dot"), ("ch_target", "Targets"), ("ch_weapon", "Weapon"), ("ch_color", "Colour"), ("ch_outline", "Outline")]),
+];
+
+/// The section title of every row of `rows`, in order: the last section start at or before it.
+fn section_titles<'a>(tab: usize, rows: &[Row<'_>]) -> Vec<&'a str> {
+    let starts: &[(&str, &str)] = SECTIONS.iter().find(|s| s.0 == tab).map_or(&[], |s| s.1);
+    let mut current = "";
+    rows.iter()
+        .map(|row| {
+            if let Some((_, title)) = starts.iter().find(|(id, _)| *id == row.id) {
+                current = title;
+            }
+            current
+        })
+        .collect()
+}
+
 /// The options a page's old document pressed.
 fn rows_of<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Settings, tab: usize) -> impl Iterator<Item = Row<'a>> {
     referenced(crate::menu::document_index(tab, state.element().index()))
@@ -332,7 +385,10 @@ fn rows_of<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Sett
 #[must_use]
 pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> String {
     let defaults = Settings::default();
-    let rows = rows(settings, state, &defaults, tab);
+    let all = rows(settings, state, &defaults, tab);
+    let titles = section_titles(tab, &all);
+    let (rows, titles): (Vec<Row<'_>>, Vec<&str>) =
+        all.into_iter().zip(titles).filter(|(row, _)| !switched_off(settings, state, row.id)).unzip();
     // A choice opens its list of values on press, so its control is declared under its own id.
     let ids: Vec<String> = rows
         .iter()
@@ -361,7 +417,19 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
     let element = state.element().label();
     let page = TABS.get(tab).copied().unwrap_or("Settings");
     let title = if matches!(tab, 1 | 2) { format!("{page}: {element}") } else { page.to_owned() };
-    let group = [Group { title: &title, collapsed: false, options: &opts }];
+    // Consecutive rows of one section make a group; a page with no sections is one group named for the page.
+    let mut group: Vec<Group<'_>> = Vec::new();
+    let mut start = 0;
+    for end in 1..=opts.len() {
+        if end == opts.len() || titles[end] != titles[start] {
+            let heading = if titles[start].is_empty() { title.as_str() } else { titles[start] };
+            group.push(Group { title: heading, collapsed: false, options: &opts[start..end] });
+            start = end;
+        }
+    }
+    if group.is_empty() {
+        group.push(Group { title: &title, collapsed: false, options: &opts });
+    }
     let matched = options::search(&group, state.option_query());
     let shown = options::groups_of(&matched);
     let entries = entries(tab);
@@ -537,5 +605,44 @@ mod tests {
                 assert!(!is_chrome(row.id), "{} is furniture", row.id);
             }
         }
+    }
+
+    #[test]
+    fn dependent_options_and_section_starts_name_real_options_and_switches() {
+        let settings = Settings::default();
+        let state = PanelState::default();
+        for (option, switch) in DEPENDS {
+            let control = |id: &str| CONTROLS.iter().find(|c| c.1 == id);
+            assert!(control(option).is_some(), "{option} is not a control");
+            assert!(matches!(control(switch), Some((Kind::Toggle, ..))), "{switch} is not a switch");
+            assert!(matches!(crate::panel::value(&settings, &state, switch), Value::Toggle(_)));
+        }
+        for (tab, starts) in SECTIONS {
+            let listed: Vec<&str> = rows_of(&settings, &state, &Settings::default(), tab).map(|row| row.id).collect();
+            for (id, _) in starts {
+                assert!(listed.contains(id), "{id} is not an option of page {tab}");
+            }
+        }
+    }
+
+    #[test]
+    fn an_option_hides_while_its_switch_is_off_and_returns_when_it_is_on() {
+        let mut settings = Settings::default();
+        settings.crosshair.dot = false;
+        let state = PanelState::default();
+        assert!(switched_off(&settings, &state, "ch_dot_round"));
+        settings.crosshair.dot = true;
+        assert!(!switched_off(&settings, &state, "ch_dot_round"));
+        assert!(!switched_off(&settings, &state, "ch_dot"));
+    }
+
+    #[test]
+    fn a_sectioned_page_declares_exactly_the_rows_it_shows() {
+        let settings = Settings::default();
+        let state = PanelState::default();
+        let page: serde_json::Value = serde_json::from_str(&settings_panel(&settings, &state, 5)).unwrap();
+        let ids: Vec<&str> = page["controls"].as_array().unwrap().iter().filter_map(|c| c["id"].as_str()).collect();
+        assert!(!ids.contains(&"ch_dot_round") && !ids.contains(&"ch_outline_color"));
+        assert!(ids.contains(&"ch_dot") && ids.contains(&"ch_outline"));
     }
 }
