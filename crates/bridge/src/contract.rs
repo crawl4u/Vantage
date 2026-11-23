@@ -200,6 +200,9 @@ pub const METHOD_HOME: &str = "home.v1";
 /// Control method for server trust answer.
 pub const METHOD_SERVER_TRUST_ANSWER: &str = "server_trust_answer.v1";
 
+/// Control method that returns the account's sign-in token to a mod holding the account grant, one read at a time.
+pub const METHOD_SESSION_TOKEN: &str = "session_token.v1";
+
 /// Control method for message event.
 pub const METHOD_MESSAGE_EVENT: &str = "message_event.v1";
 

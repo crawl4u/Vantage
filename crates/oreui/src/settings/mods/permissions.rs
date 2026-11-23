@@ -49,7 +49,7 @@ pub(super) fn draw(
             || allowed < requested
             || !item.declares_permissions())
     {
-        consent(content, item, available)
+        consent(content, item, available, snapshot.warned == Some(item.id))
     } else {
         actions(
             content,
@@ -69,6 +69,7 @@ fn consent(
     content: &mut Content<'_, '_>,
     item: &InstalledMod,
     available: bool,
+    confirming: bool,
 ) -> Result<(), PaintError> {
     // After earlier consent, name only what is still waiting, such as an update's new request.
     let waiting = item.permissions.iter().any(|permission| permission.enabled)
@@ -89,7 +90,7 @@ fn consent(
     let mut buttons = Vec::new();
     if item.declares_permissions() {
         buttons.push((
-            "Allow requested",
+            if confirming { "I understand, allow" } else { "Allow requested" },
             Variant::Primary,
             available.then_some(command(Action::AllowRequested(item.id))),
         ));

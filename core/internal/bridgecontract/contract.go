@@ -135,6 +135,8 @@ const (
 	MethodHome = "home.v1"
 	// MethodServerTrustAnswer: Control method for server trust answer.
 	MethodServerTrustAnswer = "server_trust_answer.v1"
+	// MethodSessionToken: Control method that returns the account's sign-in token to a mod holding the account grant, one read at a time.
+	MethodSessionToken = "session_token.v1"
 	// MethodMessageEvent: Control method for message event.
 	MethodMessageEvent = "message_event.v1"
 	// MethodProfile: Control method for profile.

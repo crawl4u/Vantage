@@ -267,6 +267,8 @@ pub struct Snapshot {
     pub customizing: Option<u64>,
     pub show_all_permissions: bool,
     pub consent: Option<u64>,
+    /// The mod whose warned permissions the player has seen and must confirm with a second press.
+    pub warned: Option<u64>,
 }
 impl Default for Snapshot {
     fn default() -> Self {
@@ -278,6 +280,7 @@ impl Default for Snapshot {
             customizing: None,
             show_all_permissions: false,
             consent: None,
+            warned: None,
         }
     }
 }
@@ -325,9 +328,31 @@ impl Snapshot {
                 {
                     return None;
                 }
+                // Permissions that reach the player's account or system need a second, deliberate press.
+                let warned = self.library.installed.iter().find(|item| item.id == id).is_some_and(|item| !item.warnings().is_empty());
+                if warned && self.warned != Some(id) {
+                    self.warned = Some(id);
+                    return None;
+                }
+                self.warned = None;
                 if self.consent == Some(id) {
                     self.consent = None;
                 }
+                Some(action)
+            }
+            Action::Permission(id, index, true) if !self.library.busy => {
+                let warns = self
+                    .library
+                    .installed
+                    .iter()
+                    .find(|item| item.id == id)
+                    .and_then(|item| item.permissions.get(index))
+                    .is_some_and(|permission| permission.warning.is_some());
+                if warns && self.warned != Some(id) {
+                    self.warned = Some(id);
+                    return None;
+                }
+                self.warned = None;
                 Some(action)
             }
             Action::ReadMore(id) => {
@@ -467,6 +492,30 @@ mod tests {
         assert_eq!(item.warnings(), vec!["careful"], "a and b share one warning, c is neither asked for nor held");
         item.permissions[2].enabled = true;
         assert_eq!(item.warnings(), vec!["careful", "other"]);
+    }
+
+    #[test]
+    fn a_warned_permission_needs_a_second_press_before_it_is_allowed() {
+        let mut item = installed(7);
+        item.permissions = vec![Permission {
+            applicable: true,
+            name: "Full system access".into(),
+            description: String::new(),
+            enabled: false,
+            requested: Some(true),
+            requested_allowed: false,
+            sensitive: true,
+            warning: Some("not sandboxed".into()),
+        }];
+        let mut snapshot = Snapshot::default();
+        snapshot.library.installed.push(item);
+        assert_eq!(snapshot.apply(Action::AllowRequested(7)), None, "the first press only shows the warning");
+        assert_eq!(snapshot.warned, Some(7));
+        assert_eq!(snapshot.apply(Action::AllowRequested(7)), Some(Action::AllowRequested(7)));
+        assert_eq!(snapshot.warned, None);
+        assert_eq!(snapshot.apply(Action::Permission(7, 0, true)), None);
+        assert_eq!(snapshot.apply(Action::Permission(7, 0, true)), Some(Action::Permission(7, 0, true)));
+        assert_eq!(snapshot.apply(Action::Permission(7, 0, false)), Some(Action::Permission(7, 0, false)), "turning one off never asks");
     }
 
     #[test]

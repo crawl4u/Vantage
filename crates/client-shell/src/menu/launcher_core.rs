@@ -120,6 +120,7 @@ impl LauncherCoreSlot {
             let job = menu.account_operation_job();
             if let Some(mut old) = self.core.take() {
                 commands.remove_resource::<LauncherAccount>();
+            bridge::set_core_socket(None);
                 menu.close_realm_membership();
                 if let Some(worlds) = worlds.as_deref_mut() {
                     worlds.detach();
@@ -200,6 +201,7 @@ impl LauncherCoreSlot {
             && bridge_endpoint_exists(&core.socket_dir)
         {
             core.attached = true;
+            bridge::set_core_socket(Some(core.socket_dir.clone()));
             commands.insert_resource(LauncherAccount(
                 launcher_host::launcher_account::LauncherAccount::new(
                     core.socket_dir.clone(),

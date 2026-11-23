@@ -19,6 +19,7 @@ const (
 	methodSignOut        = bridgecontract.MethodSignOut
 	methodEvents         = bridgecontract.MethodEvents
 	methodServerTrust    = bridgecontract.MethodServerTrustAnswer
+	methodSessionToken   = bridgecontract.MethodSessionToken
 	codeSignedOut        = bridgecontract.RPCSignedOut
 	codeServiceFailed    = bridgecontract.RPCServiceFailed
 	codeInvalidTarget    = bridgecontract.RPCInvalidTarget
@@ -155,7 +156,7 @@ type emptyResultV1 struct {
 
 func isServiceMethod(method string) bool {
 	switch method {
-	case methodRealmMembership, methodRealmLeave, methodRealmsList, methodFriendsList, methodFriendsPeople, methodConnect, methodAccountStatus, methodSignOut, methodEvents, methodServerTrust:
+	case methodRealmMembership, methodRealmLeave, methodRealmsList, methodFriendsList, methodFriendsPeople, methodConnect, methodAccountStatus, methodSignOut, methodEvents, methodServerTrust, methodSessionToken:
 		return true
 	}
 	return isScreenMethod(method)
@@ -230,6 +231,18 @@ func (store *Store) SetServerTrustAnswer(answer func(id uint64, trusted bool) bo
 	store.mu.Unlock()
 }
 
+// SessionTokens is implemented by a launcher backend that can hand out the account's sign-in token.
+// It is separate from Services so a backend without an account, and every status reply, stays free of secrets.
+type SessionTokens interface {
+	// SessionToken returns the current sign-in token, or ErrSignedOut when there is no account.
+	SessionToken(ctx context.Context) (string, error)
+}
+
+type sessionTokenResultV1 struct {
+	SchemaVersion uint32 `json:"schema_version"`
+	AccessToken   string `json:"access_token"`
+}
+
 type serverTrustResultV1 struct {
 	SchemaVersion uint32 `json:"schema_version"`
 	Answered      bool   `json:"answered"` // false once the prompt is no longer pending
@@ -285,6 +298,21 @@ func (server *Server) serveService(conn net.Conn, id uint64, method string, raw 
 		return reply.fail(codeServiceFailed, "Service unavailable")
 	}
 	switch method {
+	case methodSessionToken:
+		// The token leaves the core only for this call, never in a status or event reply, and each read is logged.
+		if len(raw) != 0 {
+			return reply.invalid()
+		}
+		source, ok := services.(SessionTokens)
+		if !ok {
+			return reply.fail(codeServicesDisabled, "Sign-in data unavailable")
+		}
+		token, err := source.SessionToken(ctx)
+		if err != nil {
+			return failService(err)
+		}
+		server.logSessionTokenRead()
+		return reply.ok(sessionTokenResultV1{SchemaVersion: bridgecontract.ControlSchemaVersion, AccessToken: token})
 	case methodRealmMembership:
 		result, err := server.serveRealmMembership(conn, raw, services)
 		if errors.Is(err, errInvalidParams) {

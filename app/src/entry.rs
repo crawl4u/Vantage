@@ -12,6 +12,8 @@ use std::io::Write;
     reason = "--query-build and --help answer on stdout; argument errors precede logging setup"
 )]
 pub(crate) fn dispatch() {
+    // A mod the player allowed to read the sign-in token gets it from the core at the moment it asks.
+    mod_host::set_token_provider(Some(Box::new(bridge::session_token_blocking)));
     let mode = std::env::args_os().nth(1);
     if mode
         .as_ref()

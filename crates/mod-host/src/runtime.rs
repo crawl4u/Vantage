@@ -312,6 +312,22 @@ pub fn set_account(account: Option<AccountData>) {
     *ACCOUNT.write().unwrap_or_else(std::sync::PoisonError::into_inner) = account;
 }
 
+/// Asks for the sign-in token when a mod with the account grant reads it. The app supplies it; the token is never
+/// held here between reads.
+pub type TokenProvider = Box<dyn Fn() -> Option<String> + Send + Sync>;
+
+static TOKEN_PROVIDER: std::sync::RwLock<Option<TokenProvider>> = std::sync::RwLock::new(None);
+
+/// Installs where sign-in tokens come from; `None` removes it.
+pub fn set_token_provider(provider: Option<TokenProvider>) {
+    *TOKEN_PROVIDER.write().unwrap_or_else(std::sync::PoisonError::into_inner) = provider;
+}
+
+fn read_token() -> Option<String> {
+    let provider = TOKEN_PROVIDER.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+    provider.as_ref().and_then(|provide| provide()).or_else(|| current_account().and_then(|a| a.access_token))
+}
+
 fn current_account() -> Option<AccountData> {
     ACCOUNT.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
 }
@@ -357,8 +373,7 @@ impl cinnabar::extension::account::Host for State {
         if !self.grants.account {
             return Ok(Err("account capability denied".into()));
         }
-        Ok(current_account()
-            .and_then(|a| a.access_token)
+        Ok(read_token()
             .map(|access_token| cinnabar::extension::account::SignIn { access_token })
             .ok_or_else(|| "no sign-in data".to_owned()))
     }

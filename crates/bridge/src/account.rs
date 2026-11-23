@@ -466,6 +466,32 @@ pub async fn account_status(socket_dir: &Path) -> Result<Account, BridgeError> {
     Ok(body.account)
 }
 
+#[derive(Deserialize)]
+struct SessionTokenBody {
+    access_token: String,
+}
+
+/// Reads the account's sign-in token. Only a mod the player allowed to read it asks; the core logs each read.
+pub async fn session_token(socket_dir: &Path) -> Result<String, BridgeError> {
+    let body: SessionTokenBody =
+        call::<_, ()>(socket_dir, crate::contract::METHOD_SESSION_TOKEN, None).await?;
+    Ok(body.access_token)
+}
+
+static CORE_SOCKET: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+
+/// Remembers where the running core listens, or forgets it when the core goes away.
+pub fn set_core_socket(socket_dir: Option<std::path::PathBuf>) {
+    *CORE_SOCKET.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = socket_dir;
+}
+
+/// Reads the sign-in token from the running core, waiting for the answer; none without a core or an account.
+pub fn session_token_blocking() -> Option<String> {
+    let socket = CORE_SOCKET.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()?;
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+    runtime.block_on(session_token(&socket)).ok()
+}
+
 /// Deletes the cached Microsoft tokens and returns the resulting state.
 pub async fn sign_out(socket_dir: &Path) -> Result<Account, BridgeError> {
     let body: AccountBody =

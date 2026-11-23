@@ -167,6 +167,16 @@ func (server *Server) logServiceFailure(method string, err error) {
 	}
 }
 
+// logSessionTokenRead records that the sign-in token was read, without recording it.
+func (server *Server) logSessionTokenRead() {
+	server.mu.Lock()
+	logger := server.logger
+	server.mu.Unlock()
+	if logger != nil {
+		logger.Info("sign-in token read by the client")
+	}
+}
+
 func (server *Server) SetServices(services Services) {
 	server.mu.Lock()
 	server.services = services

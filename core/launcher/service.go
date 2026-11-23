@@ -348,6 +348,18 @@ func gatheringTarget(address *gatherings.Address) (string, error) {
 	}
 }
 
+// SessionToken returns the account's current Minecraft services authorization for a mod the player allowed to read it.
+func (s *Service) SessionToken(ctx context.Context) (string, error) {
+	if s.cfg.Account == nil || s.signedOut.Load() || s.cfg.Account.Closed() {
+		return "", control.ErrSignedOut
+	}
+	token, err := s.cfg.Account.ServiceToken(ctx)
+	if err != nil {
+		return "", err
+	}
+	return token.AuthorizationHeader, nil
+}
+
 // SignOut deletes the cached Microsoft tokens and reports the signed-out state. The running
 // process stops using the account; a new sign-in needs the device-code flow and a core restart.
 func (s *Service) SignOut() error {

@@ -15,7 +15,7 @@ pub mod helper;
 pub use grants::{Capability, ModGrants};
 mod action_filter;
 mod handlers;
-pub use runtime::{AccountData, set_account};
+pub use runtime::{AccountData, TokenProvider, set_account, set_token_provider};
 pub use runtime::cinnabar::extension::sound_handling::{Position as SoundPosition, SoundContext};
 pub use runtime::cinnabar::extension::teleport_handling::{
     Rotation as TeleportRotation, TeleportContext, TeleportMode,

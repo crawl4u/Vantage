@@ -67,6 +67,7 @@
     {"rust_name": "METHOD_PING", "go_name": "MethodPing", "value": "ping.v1", "rust_type": "str", "doc": "Control method for ping."},
     {"rust_name": "METHOD_HOME", "go_name": "MethodHome", "value": "home.v1", "rust_type": "str", "doc": "Control method for home."},
     {"rust_name": "METHOD_SERVER_TRUST_ANSWER", "go_name": "MethodServerTrustAnswer", "value": "server_trust_answer.v1", "rust_type": "str", "doc": "Control method for server trust answer."},
+    {"rust_name": "METHOD_SESSION_TOKEN", "go_name": "MethodSessionToken", "value": "session_token.v1", "rust_type": "str", "doc": "Control method that returns the account's sign-in token to a mod holding the account grant, one read at a time."},
     {"rust_name": "METHOD_MESSAGE_EVENT", "go_name": "MethodMessageEvent", "value": "message_event.v1", "rust_type": "str", "doc": "Control method for message event."},
     {"rust_name": "METHOD_PROFILE", "go_name": "MethodProfile", "value": "profile.v1", "rust_type": "str", "doc": "Control method for profile."},
     {"rust_name": "METHOD_REALM_MEMBERSHIP", "go_name": "MethodRealmMembership", "value": "realm_membership.v1", "rust_type": "str", "doc": "Control method for realm membership."},

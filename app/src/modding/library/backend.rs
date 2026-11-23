@@ -94,6 +94,7 @@ impl Backend for AppBackend {
                     grants.is_some_and(|grants| (capability.requested_allowed)(grants, requested))
                 }),
                 sensitive: capability.sensitive,
+                warning: capability.warning.map(str::to_owned),
             })
             .collect();
     }
