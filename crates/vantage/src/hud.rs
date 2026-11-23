@@ -177,6 +177,8 @@ pub struct Sample {
     pub background: [f32; 4],
     pub rounded: bool,
     pub shadow: bool,
+    /// The element's size setting, which scales its text and its rows.
+    pub scale: f32,
     pub lines: Vec<Line>,
     /// CPS's separator bar between the two counts as `[x, y, width, height]` in the box's pixels.
     pub bar: Option<[f32; 4]>,
@@ -203,6 +205,7 @@ pub fn sample(element: Element) -> Option<Sample> {
         background: rgba(style.bg_color, if style.background { style.opacity / 100.0 } else { 0.0 }),
         rounded: style.rounded,
         shadow: style.shadow,
+        scale: k,
         bar: cps_bar(&settings, element).then(|| {
             let at = cps_bar_offset(&lines[0].text, &settings);
             [at[0], at[1], k, CPS_BAR_HEIGHT * k]

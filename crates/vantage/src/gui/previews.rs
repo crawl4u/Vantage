@@ -3,7 +3,7 @@
 
 use std::sync::OnceLock;
 
-use super::{Align, Painter, Radii, Rect, Rgba, px};
+use super::{Align, Painter, Primitive, Radii, Rect, Rgba, px};
 use crate::config::Element;
 use crate::hud;
 
@@ -23,6 +23,10 @@ fn sample(element: Element) -> Option<&'static hud::Sample> {
 
 /// How far the HUD is enlarged in a card: every element shares it, as in the game, and only one too wide to fit shrinks.
 const PREVIEW_SCALE: f32 = 1.15;
+
+/// A row of text in the game, in unscaled GUI pixels, and the room the text keeps from a box's sides.
+const ROW: f32 = 10.0;
+const PAD: f32 = 5.0;
 
 /// The game font's size for the HUD's text, in unscaled GUI pixels.
 const HUD_TEXT: f32 = 9.0;
@@ -94,40 +98,70 @@ const PART: Rgba = [1.0, 1.0, 1.0, 0.16];
 /// Draws the element at its defaults as it looks in the game: its own box, colours and text, in the game's font.
 fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
     let [bw, bh] = sample.size;
-    let k = (area.w * 0.72 / bw.max(1.0)).min(area.h * 0.8 / bh.max(1.0)).min(PREVIEW_SCALE);
+    // One scale for every element, so they keep their sizes relative to each other as in the game; only one too big for
+    // its card shrinks to fit.
+    let k = (area.w * 0.78 / bw.max(1.0)).min(area.h * 0.8 / bh.max(1.0)).min(PREVIEW_SCALE);
     let r = Rect::new(area.centre().x - bw * k / 2.0, area.centre().y - bh * k / 2.0, bw * k, bh * k);
+    let clip = d.at(r);
+    d.scene.push(Primitive::PushClip { rect: clip, radii: Radii::default() });
     if sample.background[3] > 0.0 {
         d.rect(r, sample.background, Radii::all(if sample.rounded { 3.0 * k } else { 0.0 }));
     }
-    if let Some([bx, by, bw, bh]) = sample.bar {
-        let ink = sample.lines.first().map_or([1.0; 4], |l| l.color);
-        d.rect(Rect::new(r.x + bx * k, r.y + by * k, (bw * k).max(1.0), bh * k), ink, Radii::default());
-    }
-    let slot = r.h / sample.lines.len().max(1) as f32;
-    let size = HUD_TEXT * k;
-    for (i, line) in sample.lines.iter().enumerate() {
-        let mut pieces: Vec<(&str, Rgba)> = Vec::new();
+    let s = sample.scale.max(0.1);
+    let row = ROW * s * k;
+    // The rows are centred in the box, and the whole block of them shrinks if its widest line would not fit.
+    let line_text = |line: &hud::Line| -> Vec<(String, Rgba)> {
+        let mut pieces = Vec::new();
         if let Some((head, color)) = &line.head {
-            pieces.push((head.as_str(), *color));
+            pieces.push((head.clone(), *color));
         }
-        pieces.push((line.text.as_str(), line.color));
+        pieces.push((line.text.clone(), line.color));
         if let Some((tail, color)) = &line.tail {
-            pieces.push((tail.as_str(), *color));
+            pieces.push((tail.clone(), *color));
         }
-        let gap = 3.0 * k;
-        let widths: Vec<f32> = pieces.iter().map(|(text, _)| hud::text_width(text) * k).collect();
-        let total = widths.iter().sum::<f32>() + gap * (pieces.len() - 1) as f32;
-        let mut x = r.x + (r.w - total) / 2.0;
-        let y = r.y + i as f32 * slot + (slot - size * 1.5) / 2.0;
-        for ((text, color), width) in pieces.iter().zip(widths) {
-            let cell = Rect::new(x, y, width + 4.0 * k, size * 1.5);
+        pieces
+    };
+    let gap = 3.0 * s * k;
+    let line_width = |pieces: &[(String, Rgba)]| pieces.iter().map(|(t, _)| hud::text_width(t) * s * k).sum::<f32>() + gap * pieces.len().saturating_sub(1) as f32;
+    let widest = sample.lines.iter().map(|l| line_width(&line_text(l))).fold(0.0_f32, f32::max);
+    let fit = if widest > 0.0 { ((r.w - 2.0 * PAD * s * k) / widest).min(1.0) } else { 1.0 };
+    let size = HUD_TEXT * s * k * fit;
+    let block = row * sample.lines.len() as f32;
+    let top = r.y + (r.h - block) / 2.0;
+    for (i, line) in sample.lines.iter().enumerate() {
+        let y = top + i as f32 * row + (row - size * 1.5) / 2.0;
+        let cell = |x: f32, w: f32| Rect::new(x, y, w, size * 1.5);
+        let mut put = |d: &mut Painter, rect: Rect, text: &str, color: Rgba, align: Align| {
             if sample.shadow {
-                d.text_in(Rect::new(cell.x + 0.6 * k, cell.y + 0.6 * k, cell.w, cell.h), text, size, [0.0, 0.0, 0.0, 0.55], Align::Start, GAME_FONT);
+                d.text_in(Rect::new(rect.x + 0.6 * s * k, rect.y + 0.6 * s * k, rect.w, rect.h), text, size, [0.0, 0.0, 0.0, 0.55], align, GAME_FONT);
             }
-            d.text_in(cell, text, size, *color, Align::Start, GAME_FONT);
-            x += width + gap;
+            d.text_in(rect, text, size, color, align, GAME_FONT);
+        };
+        if let (Some([bx, by, bw, bh]), 0) = (sample.bar, i) {
+            // CPS: the separator sits in the middle of the gap, and each count is set against it, so the bar stays
+            // between them whatever the font's widths are.
+            let (left, right) = line.text.split_once("  ").unwrap_or((line.text.as_str(), ""));
+            let lw = hud::text_width(left) * s * k * fit;
+            let rw = hud::text_width(right) * s * k * fit;
+            let space = 4.0 * s * k * fit;
+            let total = lw + space + rw;
+            let bar_x = r.x + (r.w - total) / 2.0 + lw + space / 2.0;
+            let _ = bx;
+            d.rect(Rect::new(bar_x - (bw * k).max(1.0) / 2.0, r.y + by * k * fit.max(0.5), (bw * k).max(1.0), bh * k * fit), line.color, Radii::default());
+            put(d, cell(bar_x - space / 2.0 - lw - 2.0, lw + 2.0), left, line.color, Align::End);
+            put(d, cell(bar_x + space / 2.0, rw + 4.0 * s * k), right, line.color, Align::Start);
+            continue;
+        }
+        let pieces = line_text(line);
+        let widths: Vec<f32> = pieces.iter().map(|(t, _)| hud::text_width(t) * s * k * fit).collect();
+        let total = widths.iter().sum::<f32>() + gap * fit * pieces.len().saturating_sub(1) as f32;
+        let mut x = r.x + (r.w - total) / 2.0;
+        for ((text, color), width) in pieces.iter().zip(widths) {
+            put(d, cell(x, width + 4.0 * s * k), text, *color, Align::Start);
+            x += width + gap * fit;
         }
     }
+    d.scene.push(Primitive::PopClip);
 }
 
 /// Draws the Keystrokes element at its defaults: its keys at their real places.
