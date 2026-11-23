@@ -32,7 +32,7 @@ pub(super) fn settings(tab: usize) -> Fixture {
     let mut settings = Settings::default();
     let mut state = PanelState::default();
     state.event(&mut settings, &format!("tab_{tab}"), 1.0);
-    let page = menu_v2::page(&settings, &state).expect("a rebuilt page");
+    let page = menu_v2::page_json(&settings, &state).expect("a rebuilt page");
     let panel: Panel = serde_json::from_str(&page).expect("the page is a valid panel");
     Fixture::ModPanel(Box::new(panel), None, None)
 }
@@ -43,7 +43,7 @@ pub(super) fn choice(tab: usize, id: &str) -> Fixture {
     let mut state = PanelState::default();
     state.event(&mut settings, &format!("tab_{tab}"), 1.0);
     state.event(&mut settings, &format!("choose_{id}"), 1.0);
-    let page = menu_v2::page(&settings, &state).expect("a rebuilt page");
+    let page = menu_v2::page_json(&settings, &state).expect("a rebuilt page");
     let panel: Panel = serde_json::from_str(&page).expect("the page is a valid panel");
     Fixture::ModPanel(Box::new(panel), None, None)
 }
@@ -68,7 +68,7 @@ mod tests {
             let mut settings = Settings { menu_light: light, ..Settings::default() };
             let mut state = PanelState::default();
             state.event(&mut settings, &format!("tab_{tab}"), 1.0);
-            let page = menu_v2::page(&settings, &state).expect("a handled page");
+            let page = menu_v2::page_json(&settings, &state).expect("a handled page");
             assert_valid(&page, &format!("page {tab} (light: {light})"));
         }
     }
@@ -79,9 +79,9 @@ mod tests {
         let mut state = PanelState::default();
         state.event(&mut settings, "tab_10", 1.0);
         state.event(&mut settings, "choose_hit_color", 1.0);
-        assert_valid(&menu_v2::page(&settings, &state).unwrap(), "a choice list");
+        assert_valid(&menu_v2::page_json(&settings, &state).unwrap(), "a choice list");
         state.event(&mut settings, &format!("pick_{}", vantage::config::CUSTOM_ROW), 1.0);
-        assert_valid(&menu_v2::page(&settings, &state).unwrap(), "the colour picker");
+        assert_valid(&menu_v2::page_json(&settings, &state).unwrap(), "the colour picker");
     }
 
     #[test]
@@ -97,7 +97,7 @@ mod tests {
                 settings.crosshair.outline_round = round;
                 let mut state = PanelState::default();
                 state.event(&mut settings, "tab_5", 1.0);
-                assert_valid(&menu_v2::page(&settings, &state).unwrap(), &format!("the Crosshair page, shape {shape}"));
+                assert_valid(&menu_v2::page_json(&settings, &state).unwrap(), &format!("the Crosshair page, shape {shape}"));
             }
         }
     }
@@ -108,7 +108,7 @@ mod tests {
         let mut state = PanelState::default();
         state.event(&mut settings, "tab_17", 1.0);
         state.wp.sync(&settings, "world", 0, [0, 64, 0], true);
-        assert_valid(&menu_v2::page(&settings, &state).unwrap(), "the empty Waypoints page");
+        assert_valid(&menu_v2::page_json(&settings, &state).unwrap(), "the empty Waypoints page");
         for n in 0..vantage::waypoints::MAX_WAYPOINTS {
             let name = format!("A waypoint with a fairly long name {n}");
             settings.gameplay.waypoints.push(vantage::waypoints::Waypoint {
@@ -122,7 +122,7 @@ mod tests {
             });
         }
         state.wp.sync(&settings, "world", 0, [0, 64, 0], true);
-        assert_valid(&menu_v2::page(&settings, &state).unwrap(), "the full Waypoints page");
+        assert_valid(&menu_v2::page_json(&settings, &state).unwrap(), "the full Waypoints page");
     }
 
     #[test]
@@ -138,7 +138,7 @@ mod tests {
         let mut settings = Settings::default();
         let mut state = PanelState::default();
         state.event(&mut settings, "tab_6", 1.0);
-        let page: serde_json::Value = serde_json::from_str(&menu_v2::page(&settings, &state).unwrap()).unwrap();
+        let page: serde_json::Value = serde_json::from_str(&menu_v2::page_json(&settings, &state).unwrap()).unwrap();
         let headings: Vec<String> = page["controls"]
             .as_array()
             .unwrap()
@@ -153,7 +153,7 @@ mod tests {
             let mut state = PanelState::default();
             state.event(&mut settings, "tab_6", 1.0);
             state.event(&mut settings, &heading, 1.0);
-            assert_valid(&menu_v2::page(&settings, &state).unwrap(), &format!("General with {heading} open"));
+            assert_valid(&menu_v2::page_json(&settings, &state).unwrap(), &format!("General with {heading} open"));
         }
     }
 }

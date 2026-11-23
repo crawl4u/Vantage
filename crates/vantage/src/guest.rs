@@ -2849,7 +2849,7 @@ impl State {
             effect = effect.merge(self.panel.event(&mut self.settings, &event.id, event.value));
         }
         // The Mods page is drawn by the toolkit: it reads the raw pointer, and its clicks are ordinary menu events.
-        if controls.panel_open && self.settings.new_menu && crate::menu_v2::GUI_MENU && self.panel.tab_number() == crate::menu_controls::MODS_PAGE {
+        if controls.panel_open && crate::menu_v2::uses_scene(&self.settings, &self.panel, self.panel.tab_number()) {
             if let Some(layout) = panel::read_layout().filter(|layout| layout.scale > 0.0) {
                 let pointer = controls
                     .pointer
@@ -2863,11 +2863,17 @@ impl State {
                     viewport: [layout.width, layout.height],
                     dismiss: controls.keys_pressed.iter().any(|k| matches!(k.as_str(), "Enter" | "NumpadEnter" | "Escape")),
                 };
-                let (scene, actions) = self.gui.frame(&self.settings, &self.panel, frame);
+                let tab = self.panel.tab_number();
+                let (scene, actions) = if tab == crate::menu_controls::MODS_PAGE {
+                    self.gui.frame(&self.settings, &self.panel, frame)
+                } else {
+                    self.gui.page_frame(&self.settings, &self.panel, tab, frame)
+                };
                 vantage_gui::bridge::publish(scene);
                 for action in actions {
                     match action {
                         crate::gui::Action::Event(id) => effect = effect.merge(self.panel.event(&mut self.settings, &id, 1.0)),
+                        crate::gui::Action::EventValue(id, value) => effect = effect.merge(self.panel.event(&mut self.settings, &id, value)),
                         crate::gui::Action::Close => {
                             let _ = panel::close();
                         }

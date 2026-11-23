@@ -208,10 +208,25 @@ pub fn grid<'a>(settings: &'a Settings, panel_state: &'a PanelState) -> (Vec<Car
 /// Whether the Mods page is drawn by the Vantage GUI toolkit (`gui.rs`) rather than as a JSON document.
 pub const GUI_MENU: bool = true;
 
+/// Whether `tab` is drawn by the toolkit right now: the Mods page, and the settings pages that have no text
+/// fields, while no colour picker is open (those two still use the JSON menu).
+#[must_use]
+pub fn uses_scene(settings: &Settings, state: &PanelState, tab: usize) -> bool {
+    if !GUI_MENU || !settings.new_menu {
+        return false;
+    }
+    if tab == MODS_PAGE {
+        return true;
+    }
+    // The Crosshair page keeps its live preview card, which the toolkit does not draw yet.
+    CONVERTED.contains(&tab) && tab != 5 && state.picker_view().is_none() && !with_page(settings, state, tab, &mut |page| page.has_text)
+}
+
 /// The panel the toolkit's pages draw in: one node the host paints the published scene into, sized to fit the
 /// screen like the JSON pages are.
 #[must_use]
-pub fn scene_panel(settings: &Settings, state: &PanelState) -> String {
+pub fn scene_panel(settings: &Settings, state: &PanelState, tab: usize) -> String {
+    let (search_id, search_value) = if tab == MODS_PAGE { ("module_search", state.search_text()) } else { ("opt_search", state.option_query()) };
     // The search pill is a transparent button over the painted one that opens the host's text editor.
     let [ww, wh] = vantage_ui::shell::window_px();
     let pill = crate::gui::search_rect();
@@ -219,7 +234,7 @@ pub fn scene_panel(settings: &Settings, state: &PanelState) -> String {
     serde_json::json!({
         "reference_size": vantage_ui::shell::reference_size(),
         "fill": true,
-        "controls": [{"kind": "text", "id": "module_search", "label": "Search", "value": state.search_text(), "max_chars": 48, "live": true}],
+        "controls": [{"kind": "text", "id": search_id, "label": "Search", "value": search_value, "max_chars": 48, "live": true}],
         "surface": {
             "screen": "vantage.scene",
             "document": serde_json::json!({
@@ -487,8 +502,19 @@ pub fn handles(tab: usize) -> bool {
 #[must_use]
 pub fn page(settings: &Settings, state: &PanelState) -> Option<String> {
     let tab = state.tab_number();
+    if uses_scene(settings, state, tab) {
+        return Some(scene_panel(settings, state, tab));
+    }
+    page_json(settings, state)
+}
+
+/// The page for the open tab as a JSON document, whether or not the toolkit draws it: the pages the toolkit
+/// does not draw use it, and it is what the offline previews and checks of the documents build.
+#[must_use]
+pub fn page_json(settings: &Settings, state: &PanelState) -> Option<String> {
+    let tab = state.tab_number();
     if tab == MODS_PAGE {
-        return Some(if GUI_MENU { scene_panel(settings, state) } else { mods_panel(settings, state) });
+        return Some(mods_panel(settings, state));
     }
     if tab == CREDITS_PAGE {
         return Some(credits_panel(settings, state));
@@ -741,9 +767,20 @@ fn rows_of<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Sett
         })
 }
 
-/// A redesigned settings page: the page's options as rows in the menu shell.
-#[must_use]
-pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> String {
+/// What a settings page shows: its title, its groups of options, the open choice's list, the open colour
+/// picker and the element being edited.
+pub struct PageView<'a> {
+    pub title: &'a str,
+    pub groups: &'a [Group<'a>],
+    pub popup: Option<&'a options::Popup<'a>>,
+    pub picker: Option<&'a vantage_ui::picker::Picker<'a>>,
+    pub element: &'a str,
+    /// Whether any option is a text field, which only the JSON menu can edit.
+    pub has_text: bool,
+}
+
+/// Builds the page for `tab` and hands it to `f`.
+pub fn with_page<R>(settings: &Settings, state: &PanelState, tab: usize, f: &mut dyn FnMut(&PageView<'_>) -> R) -> R {
     let defaults = Settings::default();
     let all = rows(settings, state, &defaults, tab);
     let titles = section_titles(tab, &all);
@@ -805,21 +842,8 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
     }
     let matched = options::search(&group, state.option_query());
     let shown = options::groups_of(&matched);
-    let entries = entries(tab);
-    let sections = sections_of(&entries, element);
-    let shell = Shell {
-        palette: palette(settings),
-        brand: "Vantage",
-        sections: &sections,
-        title: &title,
-        search_hint: "Search options...",
-        search: state.option_query(),
-        search_id: "opt_search",
-        back_id: "back",
-        account: "Player",
-        account_note: "",
-        backdrop: backdrop(settings),
-    };
+    let element_label = state.element().label();
+    let has_text = opts.iter().any(|o| matches!(o.kind, options::Kind::Text { .. }));
     // The open choice's list of values.
     let open = state.open_choice().and_then(|id| match crate::panel::value(settings, state, id) {
         Value::Choice(selected, names) => {
@@ -834,8 +858,32 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
         let rgb = u32::from_str_radix(hex, 16).unwrap_or(0);
         crate::menu_v2::picker_data(settings, title, hsv, opacity, hex, rgb)
     });
-    let preview = (tab == 5).then(|| crosshair_preview(settings));
-    options::panel(&shell, &shown, popup.as_ref(), picker.as_ref(), preview.as_ref()).to_string()
+    f(&PageView { title: &title, groups: &shown, popup: popup.as_ref(), picker: picker.as_ref(), element: element_label, has_text })
+}
+
+/// A redesigned settings page: the page's options as rows in the menu shell.
+#[must_use]
+pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> String {
+    with_page(settings, state, tab, &mut |page| {
+        let element = page.element;
+        let entries = entries(tab);
+        let sections = sections_of(&entries, element);
+        let shell = Shell {
+            palette: palette(settings),
+            brand: "Vantage",
+            sections: &sections,
+            title: page.title,
+            search_hint: "Search options...",
+            search: state.option_query(),
+            search_id: "opt_search",
+            back_id: "back",
+            account: "Player",
+            account_note: "",
+            backdrop: backdrop(settings),
+        };
+        let preview = (tab == 5).then(|| crosshair_preview(settings));
+        options::panel(&shell, page.groups, page.popup, page.picker, preview.as_ref()).to_string()
+    })
 }
 
 /// The crosshair as it looks at rest, drawn from the settings.
@@ -985,7 +1033,7 @@ mod tests {
             let mut state = PanelState::default();
             state.event(&mut settings, &format!("tab_{tab}"), 1.0);
             assert_eq!(state.tab_number(), tab);
-            let page: serde_json::Value = serde_json::from_str(&page(&settings, &state).expect("a rebuilt page")).unwrap();
+            let page: serde_json::Value = serde_json::from_str(&settings_panel(&settings, &state, tab)).unwrap();
             let mut seen = std::collections::HashSet::new();
             let controls = page["controls"].as_array().unwrap();
             for control in controls {
@@ -1213,7 +1261,7 @@ mod tests {
             let value: serde_json::Value = serde_json::from_str(page).unwrap();
             value["controls"].as_array().unwrap().iter().filter_map(|c| c["id"].as_str().map(str::to_owned)).collect()
         };
-        assert!(ids(&crate::panel::build(&settings, &state)).contains(&"move".to_owned()));
+        assert!(ids(&settings_panel(&settings, &state, 1)).contains(&"move".to_owned()));
         state.event(&mut settings, "move", 1.0);
         assert!(state.moving);
         // The original document, with its layout bar, is what is shown while moving.
@@ -1221,6 +1269,6 @@ mod tests {
         state.event(&mut settings, "move_done", 1.0);
         state.event(&mut settings, "move_done", 1.0);
         assert!(!state.moving);
-        assert!(ids(&crate::panel::build(&settings, &state)).contains(&"move".to_owned()));
+        assert!(ids(&settings_panel(&settings, &state, 1)).contains(&"move".to_owned()));
     }
 }
