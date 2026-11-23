@@ -32,6 +32,9 @@ pub use update::{
 /// tile within the collection and reports the drop as an event of its own id whose value is the new index.
 pub const REORDER_ROLE: &str = "reorder";
 
+/// The renderer of the node a first-party scene ([`Panel::scene`]) is painted in; without a scene it draws nothing.
+pub const SCENE_RENDERER: &str = "vantage_scene";
+
 pub const MAX_PANEL_BYTES: usize = 320 * 1024;
 pub const MAX_PANEL_CONTROLS: usize = 512;
 /// Input batches remain bounded independently of the retained control catalog.
@@ -78,6 +81,10 @@ pub struct Panel {
     /// only shrinking it to fit.
     #[serde(default)]
     pub fill: bool,
+    /// Drawing primitives the host paints directly where the surface has a `vantage_scene` node, set by the
+    /// first-party menu and never read from a document.
+    #[serde(skip)]
+    pub scene: Option<std::sync::Arc<vantage_gui::scene::Scene>>,
     /// Value-bearing input widgets the host routes surface actions to.
     #[serde(default)]
     pub controls: Vec<Control>,

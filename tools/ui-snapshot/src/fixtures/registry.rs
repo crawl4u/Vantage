@@ -7,7 +7,7 @@ use super::cosmetics;
 use super::{
     Fixture, GUI_SCALE, KEYBOARD_SIZE, SIZE, SMALL_SIZE, SettingId, SettingSection, State,
     TALL_SIZE, chat, collection_reveal, hud_surface, local_identity, minecraft_import, out_of_game,
-    roster, settings, settings_screens, shader_options, shader_pack, updates, vantage_live, vantage_mods, vantage_options, vantage_shell,
+    roster, settings, settings_screens, shader_options, shader_pack, updates, vantage_live, vantage_mods, vantage_scene, vantage_options, vantage_shell,
 };
 
 /// A capture at GUI scale 1 that needs no game assets.
@@ -113,6 +113,12 @@ pub(super) const STATES: &[State] = &[
         size: SIZE,
         gui_scale: GUI_SCALE,
         fixture: || vantage_live::light(),
+    },
+    State {
+        name: "vantage-gui-demo",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: vantage_scene::demo,
     },
     State {
         name: "vantage-page-general",

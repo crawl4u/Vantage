@@ -21,6 +21,7 @@ server-experience = { path = "../server-experience", default-features = false, f
 tracing.workspace = true
 ui = { path = "../ui" }
 ui-engine = { path = "../ui-engine" }
+vantage-gui = { path = "../vantage-gui" }
 
 [dev-dependencies]
 ui-engine = { path = "../ui-engine", features = ["test-support"] }

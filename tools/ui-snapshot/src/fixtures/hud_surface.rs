@@ -160,6 +160,7 @@ pub(super) fn panel() -> Fixture {
         surface,
         reference_size: Some([640., 360.]),
         fill: false,
+        scene: None,
         controls: vec![],
         widget_colors: None,
         capture_key: false,

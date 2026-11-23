@@ -9,6 +9,7 @@ mod motion;
 pub(crate) mod prepared;
 mod reorder;
 mod reveal;
+mod scene_paint;
 mod scrolling;
 pub(crate) mod surface;
 mod template;
@@ -533,7 +534,10 @@ impl ModUi {
                 icons: &panel.icons,
                 id_aux: &[],
             };
-            let mut field_slot: [&mut dyn CustomRenderer; 2] = [&mut field, &mut items];
+            let mut scene = scene_paint::SceneRenderer {
+                scene: panel.panel.scene.as_deref(),
+            };
+            let mut field_slot: [&mut dyn CustomRenderer; 3] = [&mut field, &mut items, &mut scene];
             let mut host = RendererChain {
                 first: &mut glass,
                 rest: &mut field_slot,

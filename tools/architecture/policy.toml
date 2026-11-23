@@ -578,7 +578,7 @@ forbidden_dependencies = ["bevy", "wgpu", "protocol", "world"]
 [[crates]]
 name = "ui"
 path = "crates/ui"
-allowed_dependencies = ["json-ui", "assets", "render-api", "semantic-input", "test-alloc"]
+allowed_dependencies = ["json-ui", "assets", "render-api", "semantic-input", "test-alloc", "vantage-gui"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 
 # The portable JSON-UI engine; hosts supply reads, the clock and worker threads through its sources.
@@ -612,7 +612,7 @@ test_support_features = ["test-support"]
 [[crates]]
 name = "mod-ui"
 path = "crates/mod-ui"
-allowed_dependencies = ["assets", "json-ui", "render-model", "server-experience", "test-alloc", "ui", "ui-engine"]
+allowed_dependencies = ["assets", "json-ui", "render-model", "server-experience", "test-alloc", "ui", "ui-engine", "vantage-gui"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu", "client-ui", "launcher-host", "oreui", "ui-screens"]
 forbidden_transitive_dependencies = ["app", "cinnabar", "client-ui", "launcher-host", "render", "oreui", "ui-screens", "bevy", "bevy_*", "wgpu*"]
 test_support_features = ["test-support"]
@@ -663,7 +663,7 @@ forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 [[crates]]
 name = "ui-snapshot"
 path = "tools/ui-snapshot"
-allowed_dependencies = ["update-manifest", "client-ui", "cosmetics", "assets", "bridge", "inventory", "json-ui", "jsonui-editor", "launcher", "mod-ui", "resource-pack", "oreui", "player-state", "protocol", "render-api", "render-model", "semantic-input", "shaderpack", "ui", "ui-engine", "ui-screens", "vantage", "vantage-ui"]
+allowed_dependencies = ["update-manifest", "client-ui", "cosmetics", "assets", "bridge", "inventory", "json-ui", "jsonui-editor", "launcher", "mod-ui", "resource-pack", "oreui", "player-state", "protocol", "render-api", "render-model", "semantic-input", "shaderpack", "ui", "ui-engine", "ui-screens", "vantage", "vantage-gui", "vantage-ui"]
 test_support_features = ["test-support"]
 forbidden_transitive_dependencies = ["app", "cinnabar", "bevy", "bevy_*", "wgpu*"]
 

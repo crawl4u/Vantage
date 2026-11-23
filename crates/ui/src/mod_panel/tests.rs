@@ -6,6 +6,7 @@ fn panel() -> Panel {
         surface: surface("mod.control:0"),
         reference_size: None,
         fill: false,
+        scene: None,
         controls: vec![Control::Slider {
             id: "distance".into(),
             label: "Distance".into(),

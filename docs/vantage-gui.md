@@ -37,8 +37,8 @@ input (pointer, wheel, keys, text)      time
 
 ## Stages
 
-1. Foundation (done in this change): geometry, style, scene, layout, animation, tests.
-2. Painter: scene to host nodes (trusted path), per-corner radii by composition, gradients, shadows.
+1. Foundation (done): geometry, style, scene, layout, animation, tessellation, tests.
+2. Painter (done, seen offline): the host paints a scene directly through a `vantage_scene` node, as vertex-coloured triangles with feathered edges, per-corner radii, gradients and shadows, plus text and icons. Vector paths, images and blur-behind are not painted yet.
 3. Widgets: button, toggle, slider with a value box, dropdown, chips, cards, text field, scroll view, grid,
    tooltip, colour picker, keybind capture, reorderable grid.
 4. Pages: Mods, Profiles, Keybinds, Themes, Preferences, Changelog, Credits, Waypoints, mod settings, HUD

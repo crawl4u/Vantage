@@ -9,6 +9,7 @@ publish = false
 test-support = ["dep:client-ui", "client-ui/test-support", "protocol/test-support", "render-model/test-support", "ui-screens/test-support"]
 
 [dependencies]
+vantage-gui = { path = "../../crates/vantage-gui" }
 update-manifest = { path = "../../crates/update-manifest" }
 client-ui = { path = "../../crates/client-ui", optional = true }
 cosmetics = { path = "../../crates/cosmetics" }

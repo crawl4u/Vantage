@@ -6058,6 +6058,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui-engine",
+ "vantage-gui",
 ]
 
 [[package]]
@@ -9397,6 +9398,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "test-alloc",
+ "vantage-gui",
  "xxhash-rust",
 ]
 
@@ -9474,6 +9476,7 @@ dependencies = [
  "ui-screens",
  "update-manifest",
  "vantage",
+ "vantage-gui",
  "vantage-ui",
 ]
 

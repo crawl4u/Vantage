@@ -587,6 +587,7 @@ fn node(
                         | backdrop::GLASS_RENDERER
                         | "cinnabar_vector_path"
                         | "gradient_renderer"
+                        | super::SCENE_RENDERER
                         | ITEM_RENDERER
                         | hud_control::RENDERER
                 )
