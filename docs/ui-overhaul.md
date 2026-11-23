@@ -110,7 +110,7 @@ built and checked in the live client; "preview" means rendered offline only.
 | --- | --- |
 | Design tokens, dark and light palettes, contrast rule | done (light theme not selectable yet) |
 | Shell: sidebar with icons and sections, header, search, close, account row | done |
-| Mods grid: icon cards, on/off bar, favourite star, chips, search, sort, empty states | done |
+| Mods grid: icon cards, on/off bar, favourite star, hide with a Hidden chip, chips, search, sort segments (Custom order, A to Z, On first), empty states | done (preview and tests; hide and sort not yet seen live) |
 | Mod page: Enabled switch plus options, back, per-page search | done |
 | Option rows: switch, slider (drag and typed value), choice list, keybind, action, info | done |
 | Reset per option, collapsible groups | done (groups used only in the options preview) |
@@ -119,8 +119,8 @@ built and checked in the live client; "preview" means rendered offline only.
 
 Not built, in the order they should be taken:
 
-1. Hide a mod from its card and a Hidden chip; sort as an icon segment control with Custom order and A to Z.
-2. Drag a card to reorder (Custom order), with the grid re-laying out under the pointer.
+1. (done) Hide and sort.
+2. Drag a card to reorder (Custom order), with the grid re-laying out under the pointer. Needs a new generic drag-to-reorder primitive in the panel engine (crates/ui, crates/mod-ui) and a saved order; Custom order is the given order until then.
 3. Group headers on the Mods grid that collapse by type.
 4. Colour picker (Custom colours), rows that show only while their parent option is on, grouped sections
    on the converted pages, the Crosshair preview.
