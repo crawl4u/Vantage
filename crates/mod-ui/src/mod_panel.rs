@@ -7,6 +7,7 @@ mod field_paint;
 mod input;
 mod motion;
 pub(crate) mod prepared;
+mod reorder;
 mod reveal;
 mod scrolling;
 pub(crate) mod surface;
@@ -78,6 +79,8 @@ pub(super) struct ModPanel {
     layout: Option<ui::mod_hud::PanelLayout>,
     /// The last pointer press on a declared control, for `panel.read-press`.
     press: Option<input::Press>,
+    /// A tile being dragged to a new place in its collection.
+    reorder: Option<reorder::Drag>,
 }
 
 impl ModUi {
@@ -252,6 +255,7 @@ impl ModUi {
                 projected: Default::default(),
                 layout: None,
                 press: None,
+                reorder: None,
             });
         }
         if (self.reduced_motion || !panel.motion)

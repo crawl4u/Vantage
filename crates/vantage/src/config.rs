@@ -1299,6 +1299,8 @@ pub struct Settings {
     pub favorites: Vec<String>,
     /// The Mods grid's hidden cards: the ids of their toggles.
     pub hidden_mods: Vec<String>,
+    /// The Mods grid's Custom order: card ids, first to last. Empty keeps the built-in order.
+    pub card_order: Vec<String>,
     /// The mods left out of the share codes made here (the Sharing page): their numbers in `share::MODS`.
     pub share_skip: Vec<u8>,
     /// The Keystrokes element's rows.
@@ -1389,7 +1391,7 @@ pub struct Settings {
 impl Settings {
     /// Every field written, as the derived `Serialize` wrote them before only changed fields were.
     pub fn whole_json(&self) -> serde_json::Value {
-        let Settings { borders, grid, subchunks, slime_chunks, guardians, lights, blaze, hitboxes, hitbox_color, hitbox_player_color, hit_mode, hit_color, hit_opacity, fullbright, item_delay_fix, hide_scoreboard, sb_scores, waila_id, waila_pos, waila_mod, waila_growth, waila_tool, waila_dist, waila_state, waila_entity, waila_mod_color, waila_info_color, waila_good_color, waila_bad_color, va_yaw, va_pitch, va_speed, va_altitude, va_first, va_third, va_elytra, va_reverse, va_target, va_decimals, va_align, va_label_color, va_value_color, co_x, co_y, co_z, co_dir, co_decimal, co_horizontal, co_x_label, co_y_label, co_z_label, co_dir_cardinal, co_dir_mod, co_x_lc, co_x_tc, co_y_lc, co_y_tc, co_z_lc, co_z_tc, co_dir_tc, co_dir_mx, co_dir_mz, pvp_hits_lc, pvp_acc_lc, pvp_kills_lc, pvp_deaths_lc, pvp_num_tc, pvp_pct_tc, inv_empty, inv_show_bg, inv_mc, inv_grid, inv_grid_color, inv_grid_opacity, facing_label_chroma, waila_details, line_width, menu_key, favorites, hidden_mods, share_skip, show_mouse, show_space, align, show_guides, new_menu, cps_mode, speed_unit, speed_decimals, speed_vertical, facing_text, clock_12h, clock_seconds, stopwatch_keep, playtime_format, playtime_world_only, counter_item, reach_hide_zero, reach_highlight, reach_highlight_color, sat_overlay, sat_hunger, sat_potential, sat_inverse, sat_color, sat_layout, potion_mode, potion_horizontal, potion_per_line, potion_name, potion_level, potion_duration, potion_formatted, potion_upper, potion_blink, potion_color_name, potion_color_info, potion_icons, potion_hide_vanilla, potion_split, potion_offsets, potion_scales, elements, keys, zoom, gameplay, crosshair, profiles, names } = self;
+        let Settings { borders, grid, subchunks, slime_chunks, guardians, lights, blaze, hitboxes, hitbox_color, hitbox_player_color, hit_mode, hit_color, hit_opacity, fullbright, item_delay_fix, hide_scoreboard, sb_scores, waila_id, waila_pos, waila_mod, waila_growth, waila_tool, waila_dist, waila_state, waila_entity, waila_mod_color, waila_info_color, waila_good_color, waila_bad_color, va_yaw, va_pitch, va_speed, va_altitude, va_first, va_third, va_elytra, va_reverse, va_target, va_decimals, va_align, va_label_color, va_value_color, co_x, co_y, co_z, co_dir, co_decimal, co_horizontal, co_x_label, co_y_label, co_z_label, co_dir_cardinal, co_dir_mod, co_x_lc, co_x_tc, co_y_lc, co_y_tc, co_z_lc, co_z_tc, co_dir_tc, co_dir_mx, co_dir_mz, pvp_hits_lc, pvp_acc_lc, pvp_kills_lc, pvp_deaths_lc, pvp_num_tc, pvp_pct_tc, inv_empty, inv_show_bg, inv_mc, inv_grid, inv_grid_color, inv_grid_opacity, facing_label_chroma, waila_details, line_width, menu_key, favorites, hidden_mods, card_order, share_skip, show_mouse, show_space, align, show_guides, new_menu, cps_mode, speed_unit, speed_decimals, speed_vertical, facing_text, clock_12h, clock_seconds, stopwatch_keep, playtime_format, playtime_world_only, counter_item, reach_hide_zero, reach_highlight, reach_highlight_color, sat_overlay, sat_hunger, sat_potential, sat_inverse, sat_color, sat_layout, potion_mode, potion_horizontal, potion_per_line, potion_name, potion_level, potion_duration, potion_formatted, potion_upper, potion_blink, potion_color_name, potion_color_info, potion_icons, potion_hide_vanilla, potion_split, potion_offsets, potion_scales, elements, keys, zoom, gameplay, crosshair, profiles, names } = self;
         let mut map = serde_json::Map::new();
         map.insert("borders".into(), serde_json::to_value(borders).unwrap());
         map.insert("grid".into(), serde_json::to_value(grid).unwrap());
@@ -1471,6 +1473,7 @@ impl Settings {
         map.insert("menu_key".into(), serde_json::to_value(menu_key).unwrap());
         map.insert("favorites".into(), serde_json::to_value(favorites).unwrap());
         map.insert("hidden_mods".into(), serde_json::to_value(hidden_mods).unwrap());
+        map.insert("card_order".into(), serde_json::to_value(card_order).unwrap());
         map.insert("share_skip".into(), serde_json::to_value(share_skip).unwrap());
         map.insert("show_mouse".into(), serde_json::to_value(show_mouse).unwrap());
         map.insert("show_space".into(), serde_json::to_value(show_space).unwrap());
@@ -1533,7 +1536,7 @@ impl serde::Serialize for Settings {
         use serde::ser::SerializeStruct;
         let defaults = Settings::default();
         // Every field, by name: a field added to `Settings` and not listed here does not compile.
-        let Settings { borders, grid, subchunks, slime_chunks, guardians, lights, blaze, hitboxes, hitbox_color, hitbox_player_color, hit_mode, hit_color, hit_opacity, fullbright, item_delay_fix, hide_scoreboard, sb_scores, waila_id, waila_pos, waila_mod, waila_growth, waila_tool, waila_dist, waila_state, waila_entity, waila_mod_color, waila_info_color, waila_good_color, waila_bad_color, va_yaw, va_pitch, va_speed, va_altitude, va_first, va_third, va_elytra, va_reverse, va_target, va_decimals, va_align, va_label_color, va_value_color, co_x, co_y, co_z, co_dir, co_decimal, co_horizontal, co_x_label, co_y_label, co_z_label, co_dir_cardinal, co_dir_mod, co_x_lc, co_x_tc, co_y_lc, co_y_tc, co_z_lc, co_z_tc, co_dir_tc, co_dir_mx, co_dir_mz, pvp_hits_lc, pvp_acc_lc, pvp_kills_lc, pvp_deaths_lc, pvp_num_tc, pvp_pct_tc, inv_empty, inv_show_bg, inv_mc, inv_grid, inv_grid_color, inv_grid_opacity, facing_label_chroma, waila_details, line_width, menu_key, favorites, hidden_mods, share_skip, show_mouse, show_space, align, show_guides, new_menu, cps_mode, speed_unit, speed_decimals, speed_vertical, facing_text, clock_12h, clock_seconds, stopwatch_keep, playtime_format, playtime_world_only, counter_item, reach_hide_zero, reach_highlight, reach_highlight_color, sat_overlay, sat_hunger, sat_potential, sat_inverse, sat_color, sat_layout, potion_mode, potion_horizontal, potion_per_line, potion_name, potion_level, potion_duration, potion_formatted, potion_upper, potion_blink, potion_color_name, potion_color_info, potion_icons, potion_hide_vanilla, potion_split, potion_offsets, potion_scales, elements, keys, zoom, gameplay, crosshair, profiles, names } = self;
+        let Settings { borders, grid, subchunks, slime_chunks, guardians, lights, blaze, hitboxes, hitbox_color, hitbox_player_color, hit_mode, hit_color, hit_opacity, fullbright, item_delay_fix, hide_scoreboard, sb_scores, waila_id, waila_pos, waila_mod, waila_growth, waila_tool, waila_dist, waila_state, waila_entity, waila_mod_color, waila_info_color, waila_good_color, waila_bad_color, va_yaw, va_pitch, va_speed, va_altitude, va_first, va_third, va_elytra, va_reverse, va_target, va_decimals, va_align, va_label_color, va_value_color, co_x, co_y, co_z, co_dir, co_decimal, co_horizontal, co_x_label, co_y_label, co_z_label, co_dir_cardinal, co_dir_mod, co_x_lc, co_x_tc, co_y_lc, co_y_tc, co_z_lc, co_z_tc, co_dir_tc, co_dir_mx, co_dir_mz, pvp_hits_lc, pvp_acc_lc, pvp_kills_lc, pvp_deaths_lc, pvp_num_tc, pvp_pct_tc, inv_empty, inv_show_bg, inv_mc, inv_grid, inv_grid_color, inv_grid_opacity, facing_label_chroma, waila_details, line_width, menu_key, favorites, hidden_mods, card_order, share_skip, show_mouse, show_space, align, show_guides, new_menu, cps_mode, speed_unit, speed_decimals, speed_vertical, facing_text, clock_12h, clock_seconds, stopwatch_keep, playtime_format, playtime_world_only, counter_item, reach_hide_zero, reach_highlight, reach_highlight_color, sat_overlay, sat_hunger, sat_potential, sat_inverse, sat_color, sat_layout, potion_mode, potion_horizontal, potion_per_line, potion_name, potion_level, potion_duration, potion_formatted, potion_upper, potion_blink, potion_color_name, potion_color_info, potion_icons, potion_hide_vanilla, potion_split, potion_offsets, potion_scales, elements, keys, zoom, gameplay, crosshair, profiles, names } = self;
         // serde_json writes a struct announced with no fields as `{}` at once, so the count is exact.
         let count = 0
             + usize::from(*borders != defaults.borders)
@@ -1616,6 +1619,7 @@ impl serde::Serialize for Settings {
             + usize::from(*menu_key != defaults.menu_key)
             + usize::from(*favorites != defaults.favorites)
             + usize::from(*hidden_mods != defaults.hidden_mods)
+            + usize::from(*card_order != defaults.card_order)
             + usize::from(*share_skip != defaults.share_skip)
             + usize::from(*show_mouse != defaults.show_mouse)
             + usize::from(*show_space != defaults.show_space)
@@ -1906,6 +1910,9 @@ impl serde::Serialize for Settings {
         if *hidden_mods != defaults.hidden_mods {
             out.serialize_field("hidden_mods", hidden_mods)?;
         }
+        if *card_order != defaults.card_order {
+            out.serialize_field("card_order", card_order)?;
+        }
         if *share_skip != defaults.share_skip {
             out.serialize_field("share_skip", share_skip)?;
         }
@@ -2142,6 +2149,7 @@ impl Default for Settings {
             menu_key: "ShiftRight".to_owned(),
             favorites: Vec::new(),
             hidden_mods: Vec::new(),
+            card_order: Vec::new(),
             share_skip: Vec::new(),
             show_mouse: true,
             show_space: true,
@@ -2337,6 +2345,13 @@ impl Settings {
             }
         }
         self.hidden_mods = hidden;
+        let mut order: Vec<String> = Vec::new();
+        for id in std::mem::take(&mut self.card_order) {
+            if crate::menu_controls::MODS.iter().any(|m| m.0 == id) && !order.contains(&id) {
+                order.push(id);
+            }
+        }
+        self.card_order = order;
         self.share_skip = crate::share::clean(&self.share_skip);
         self.hit_mode = self.hit_mode.min(HIT_MODES.len() - 1);
         self.speed_unit = self.speed_unit.min(SPEED_UNITS.len() - 1);

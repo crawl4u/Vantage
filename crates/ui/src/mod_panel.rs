@@ -28,6 +28,10 @@ pub use update::{
 };
 
 /// A whole panel's JSON: its surface document escaped once, bindings and controls.
+/// The item role of a collection tile's drag handle: a button control that, pressed and dragged, moves its
+/// tile within the collection and reports the drop as an event of its own id whose value is the new index.
+pub const REORDER_ROLE: &str = "reorder";
+
 pub const MAX_PANEL_BYTES: usize = 320 * 1024;
 pub const MAX_PANEL_CONTROLS: usize = 512;
 /// Input batches remain bounded independently of the retained control catalog.

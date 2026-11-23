@@ -25,6 +25,7 @@ impl ModPanel {
         if let Some(press) = &mut self.press {
             press.held = false;
         }
+        self.cancel_reorder();
         self.drag = None;
         self.vector_drag = None;
         self.scroll_drag = None;
@@ -86,6 +87,9 @@ impl ModPanel {
             f64::from((position[0] - frame.origin[0]) / frame.scale),
             f64::from((position[1] - frame.origin[1]) / frame.scale),
         ];
+        if self.reorder.is_some() && !pressed {
+            return self.reorder_pointer(position, point, held);
+        }
         if self.scroll_pointer(point, pressed, held) {
             self.drag = None;
             self.vector_drag = None;
@@ -188,6 +192,12 @@ impl ModPanel {
         let selected = action
             .and_then(|action| action.strip_prefix("mod.control:"))
             .and_then(|index| index.parse::<usize>().ok());
+        if pressed
+            && let Some(drag) = selected.and_then(|index| reorder::begin(&self.panel, index, position))
+        {
+            self.reorder = Some(drag);
+            return Vec::new();
+        }
         if let Some(index) = selected {
             self.drag = matches!(self.panel.controls.get(index), Some(Control::Slider { .. }))
                 .then_some(index);

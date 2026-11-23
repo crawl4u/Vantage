@@ -703,6 +703,7 @@ pub fn put_options(w: &mut Writer, s: &Settings) {
         menu_key: _,
         favorites: _,
         hidden_mods: _,
+        card_order: _,
         share_skip: _,
         show_mouse,
         show_space,

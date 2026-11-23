@@ -38,6 +38,8 @@ pub struct Ids<'a> {
     pub favorite: &'a dyn Fn(&str) -> String,
     /// A card's hide switch id.
     pub hide: &'a dyn Fn(&str) -> String,
+    /// A card's drag handle id; the handle's event value is the card's new place in the shown order.
+    pub reorder: &'a dyn Fn(&str) -> String,
 }
 
 impl Ids<'static> {
@@ -62,7 +64,10 @@ impl Ids<'static> {
         fn hide(id: &str) -> String {
             format!("{id}_hide")
         }
-        Self { sort: "sort", search: "search", chip: &chip, toggle: &toggle, favorite: &favorite, hide: &hide }
+        fn reorder(id: &str) -> String {
+            format!("{id}_move")
+        }
+        Self { sort: "sort", search: "search", chip: &chip, toggle: &toggle, favorite: &favorite, hide: &hide, reorder: &reorder }
     }
 }
 
@@ -363,6 +368,9 @@ pub fn template(p: &Palette, icons: bool) -> Value {
         // The hide control: an eye in the opposite corner.
         node::icon("eye", crate::icons::EYE, [px(space::S), px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
         press("hide", "hide", [px(space::S), px(space::S)], [px(space::XL), px(space::XL)]),
+        // The drag handle, top centre: press it and drag the card to another place in the grid.
+        node::icon("grip", crate::icons::LIST, [(w - px(20.0)) / 2.0, px(space::S)], [px(20.0), px(20.0)], p.muted, STAR_ICON),
+        press("handle", "reorder", [(w - px(space::XL)) / 2.0, px(space::S)], [px(space::XL), px(space::XL)]),
         press(
             "star",
             "favorite",
@@ -480,11 +488,11 @@ pub fn page_controls(
     out
 }
 
-/// The controls each card declares: switch, favourite, hide and open.
-pub const PER_CARD: usize = 4;
+/// The controls each card declares: switch, favourite, hide, drag handle and open.
+pub const PER_CARD: usize = 5;
 
 /// The control ids the page declares after the shell's: one chip button per chip, the sort button,
-/// then [`PER_CARD`] per card (switch, favourite, hide, open).
+/// then [`PER_CARD`] per card (switch, favourite, hide, drag handle, open).
 #[must_use]
 pub fn declared_controls(cards: &[Card<'_>], chips: &[Chip<'_>], ids: &Ids<'_>) -> Vec<Value> {
     let mut declared: Vec<Value> = chips
@@ -498,6 +506,7 @@ pub fn declared_controls(cards: &[Card<'_>], chips: &[Chip<'_>], ids: &Ids<'_>) 
         declared.push(json!({"kind": "toggle", "id": (ids.toggle)(card.id), "label": card.name, "value": card.on}));
         declared.push(json!({"kind": "toggle", "id": (ids.favorite)(card.id), "label": card.name, "value": card.favorite}));
         declared.push(json!({"kind": "toggle", "id": (ids.hide)(card.id), "label": card.name, "value": card.hidden}));
+        declared.push(json!({"kind": "button", "id": (ids.reorder)(card.id), "label": card.name}));
         declared.push(json!({"kind": "button", "id": card.open, "label": card.name}));
     }
     declared
@@ -514,7 +523,7 @@ pub fn collection(p: &Palette, cards: &[Card<'_>], order: &[usize], first_card_c
             let base = first_card_control + i * PER_CARD;
             json!({
                 "values": {"#item_name": card.name, "#item_initial": initial(card.name), "#item_icon": card.icon},
-                "controls": {"toggle": base, "favorite": base + 1, "hide": base + 2, "open": base + 3},
+                "controls": {"toggle": base, "favorite": base + 1, "hide": base + 2, "reorder": base + 3, "open": base + 4},
             })
         })
         .collect();
@@ -701,7 +710,7 @@ mod tests {
             }
         }
         roles.sort();
-        assert_eq!(roles, ["mod.item:favorite", "mod.item:hide", "mod.item:open", "mod.item:toggle"]);
+        assert_eq!(roles, ["mod.item:favorite", "mod.item:hide", "mod.item:open", "mod.item:reorder", "mod.item:toggle"]);
         for item in panel["surface"]["collections"]["mods"]["definition"]["items"].as_array().unwrap() {
             for index in item["controls"].as_object().unwrap().values() {
                 assert!((index.as_u64().unwrap() as usize) < declared);

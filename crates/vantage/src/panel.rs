@@ -543,6 +543,10 @@ impl PanelState {
             })
             .collect();
         match self.sort {
+            0 => {
+                let rank = custom_ranks(settings);
+                order.sort_by_key(|n| rank[*n]);
+            }
             1 => order.sort_by_key(|n| crate::menu_controls::MODS[*n].1),
             2 => order.sort_by_key(|n| (!on(crate::menu_controls::MODS[*n].0), *n)),
             _ => {}
@@ -1413,6 +1417,21 @@ impl PanelState {
             self.sort = (self.sort + 1) % menu::SORTS.len();
             return Effect { republish: true, ..Effect::default() };
         }
+        // A dragged card's drop: its new place among the cards shown now.
+        if let Some(card) = id.strip_prefix("move_") {
+            if let Some(from) = crate::menu_controls::MODS.iter().position(|m| m.0 == card) {
+                let mut shown = self.grid_order(settings);
+                if let Some(at) = shown.iter().position(|n| *n == from) {
+                    shown.remove(at);
+                    let to = (value.max(0.0) as usize).min(shown.len());
+                    shown.insert(to, from);
+                    place_in_custom_order(settings, &shown);
+                    // The drop is a custom arrangement, whichever sort showed the grid.
+                    self.sort = 0;
+                    return Effect { save: true, republish: true, ..Effect::default() };
+                }
+            }
+        }
         if let Some(card) = id.strip_prefix("hide_") {
             if let Some(m) = crate::menu_controls::MODS.iter().find(|m| m.0 == card) {
                 match settings.hidden_mods.iter().position(|h| h == m.0) {
@@ -1948,6 +1967,43 @@ fn flags<'a>(settings: &'a Settings, state: &'a PanelState) -> menu::Flags<'a> {
         slot: state.setups.slot,
         wp: Some(&state.wp),
     }
+}
+
+/// The place of each card (by `MODS` index) in the Mods grid's Custom order: the saved order first, then
+/// any card it does not name, in the built-in order.
+fn custom_ranks(settings: &Settings) -> Vec<usize> {
+    let mods = &crate::menu_controls::MODS;
+    let mut rank = vec![usize::MAX; mods.len()];
+    let mut next = 0;
+    for id in &settings.card_order {
+        if let Some(n) = mods.iter().position(|m| m.0 == id) {
+            if rank[n] == usize::MAX {
+                rank[n] = next;
+                next += 1;
+            }
+        }
+    }
+    for slot in rank.iter_mut().filter(|slot| **slot == usize::MAX) {
+        *slot = next;
+        next += 1;
+    }
+    rank
+}
+
+/// Rearranges the Custom order so the cards in `shown` (indices into `MODS`) take their places in that
+/// sequence, in the places the shown cards already hold; cards that were filtered out stay where they are.
+fn place_in_custom_order(settings: &mut Settings, shown: &[usize]) {
+    let mods = &crate::menu_controls::MODS;
+    let rank = custom_ranks(settings);
+    let mut full: Vec<usize> = (0..mods.len()).collect();
+    full.sort_by_key(|n| rank[*n]);
+    let slots: Vec<usize> = full.iter().enumerate().filter(|(_, n)| shown.contains(n)).map(|(at, _)| at).collect();
+    for (slot, card) in slots.into_iter().zip(shown) {
+        full[slot] = *card;
+    }
+    let ids: Vec<String> = full.iter().map(|n| mods[*n].0.to_owned()).collect();
+    let builtin: Vec<String> = mods.iter().map(|m| m.0.to_owned()).collect();
+    settings.card_order = if ids == builtin { Vec::new() } else { ids };
 }
 
 /// One control's value.
@@ -3015,6 +3071,46 @@ mod tests {
         assert!(settings.hidden_mods.is_empty());
         assert_eq!(state.grid_filter(), 0);
         assert_eq!(state.grid_order(&settings).len(), all);
+    }
+
+    #[test]
+    fn dropping_a_card_stores_a_custom_order_that_the_grid_follows_and_back_to_built_in_clears_it() {
+        let mut settings = Settings { new_menu: false, ..Settings::default() };
+        let mut state = PanelState::default();
+        let all = crate::menu_controls::MODS.len();
+        let first = crate::menu_controls::MODS[0].0;
+        let before: Vec<usize> = state.grid_order(&settings);
+        assert_eq!(before, (0..all).collect::<Vec<_>>());
+        // Card 0 dropped at the third place.
+        assert!(state.event(&mut settings, &format!("move_{first}"), 2.0).save);
+        let order = state.grid_order(&settings);
+        assert_eq!(order.len(), all);
+        assert_eq!(order[2], 0);
+        assert_eq!(&order[..2], &[1, 2]);
+        assert_eq!(settings.card_order.len(), all);
+        // Dropped back at the start, the order is the built-in one again and nothing is stored.
+        state.event(&mut settings, &format!("move_{first}"), 0.0);
+        assert!(settings.card_order.is_empty());
+        assert_eq!(state.grid_order(&settings), before);
+    }
+
+    #[test]
+    fn a_drop_in_a_filtered_grid_keeps_the_hidden_cards_in_their_places() {
+        let mut settings = Settings { new_menu: false, ..Settings::default() };
+        let mut state = PanelState::default();
+        state.event(&mut settings, "flt_2", 1.0);
+        let shown = state.grid_order(&settings);
+        assert!(shown.len() > 2);
+        let (a, b) = (shown[0], shown[1]);
+        state.event(&mut settings, &format!("move_{}", crate::menu_controls::MODS[a].0), 1.0);
+        let now = state.grid_order(&settings);
+        assert_eq!((now[0], now[1]), (b, a));
+        // Cards outside the filter did not move relative to each other.
+        state.event(&mut settings, "flt_0", 1.0);
+        let full = state.grid_order(&settings);
+        let outside: Vec<usize> = full.iter().copied().filter(|n| !shown.contains(n)).collect();
+        let builtin_outside: Vec<usize> = (0..full.len()).filter(|n| !shown.contains(n)).collect();
+        assert_eq!(outside, builtin_outside);
     }
 
     #[test]

@@ -212,7 +212,8 @@ pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
     let toggle = |id: &str| id.to_owned();
     let favorite = |id: &str| format!("fav_{id}");
     let hide = |id: &str| format!("hide_{id}");
-    let ids = Ids { sort: "sort", search: "module_search", chip: &chip, toggle: &toggle, favorite: &favorite, hide: &hide };
+    let reorder = |id: &str| format!("move_{id}");
+    let ids = Ids { sort: "sort", search: "module_search", chip: &chip, toggle: &toggle, favorite: &favorite, hide: &hide, reorder: &reorder };
     mods::panel(&shell, &cards, &CATEGORIES, &state, &ids).to_string()
 }
 
@@ -263,9 +264,9 @@ fn referenced(document: usize) -> Vec<usize> {
 
 /// Controls that are the menu's own furniture (tabs, setups, the HUD mover, popups), not options of a page.
 fn is_chrome(id: &str) -> bool {
-    const PREFIXES: [&str; 19] = [
+    const PREFIXES: [&str; 20] = [
         "tab_", "cfg_", "move", "reset_", "edit_", "ed_", "cf_", "dd_", "hex_", "cap_", "cp_", "toast_", "opt_", "lay_", "card_",
-        "flt_", "fav_", "hide_", "sort",
+        "flt_", "fav_", "hide_", "move_", "sort",
     ];
     PREFIXES.iter().any(|prefix| id.starts_with(prefix)) || id == "module_search"
 }
