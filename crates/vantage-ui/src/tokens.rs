@@ -63,7 +63,7 @@ impl Palette {
     #[must_use]
     pub const fn dark() -> Self {
         Self {
-            panel: rgb(0x08080C, 0.74),
+            panel: rgb(0x020203, 0.88),
             surface: rgb(0x0C0C12, 0.0),
             raised: rgb(0x2A2A36, 0.50),
             dim: rgb(0x3A3A4A, 0.60),

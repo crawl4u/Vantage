@@ -730,7 +730,7 @@ impl GuiMenu {
         let side = px(SIDEBAR_WIDTH);
         // The sidebar is a lighter pane than the pages beside it.
         let lg = px(WINDOW_RADIUS);
-        d.rect(Rect::new(0.0, 0.0, side, h), [1.0, 1.0, 1.0, 0.07], Radii { tl: lg, tr: 0.0, br: 0.0, bl: lg });
+        d.rect(Rect::new(0.0, 0.0, side, h), [0.09, 0.09, 0.11, 0.62], Radii { tl: lg, tr: 0.0, br: 0.0, bl: lg });
         d.rect(Rect::new(side, 0.0, 0.35, h), [1.0, 1.0, 1.0, 0.12], Radii::default());
         let logo_w = side - px(space::XXL * 2.0);
         let logo = Rect::new(px(space::XXL), px(space::XL), logo_w, logo_w * vantage_ui::brand::SIZE[1] / vantage_ui::brand::SIZE[0]);
