@@ -23,6 +23,8 @@ pub enum Primitive {
     Icon { rect: Rect, glyph: char, size: f32, color: Color },
     /// A filled or stroked polygon set, in the box `rect` (points are in `view` units).
     Path { rect: Rect, view: [f32; 2], contours: Vec<Vec<[f32; 2]>>, color: Color, stroke: Option<f32> },
+    /// Open polylines stroked `width` view units wide with round joins and ends, in the box `rect`.
+    Line { rect: Rect, view: [f32; 2], contours: Vec<Vec<[f32; 2]>>, color: Color, width: f32 },
     /// Everything until the matching [`Primitive::PopClip`] is cut to `rect`.
     PushClip { rect: Rect, radii: Radii },
     PopClip,

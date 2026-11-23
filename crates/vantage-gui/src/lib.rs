@@ -4,6 +4,7 @@
 pub mod anim;
 pub mod bridge;
 pub mod geom;
+pub mod icons;
 pub mod layout;
 pub mod scene;
 pub mod style;

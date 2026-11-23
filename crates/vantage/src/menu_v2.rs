@@ -101,6 +101,8 @@ const SIDEBAR: [(&str, &[(usize, &str)]); 2] = [
     ("Menu", &[(6, "General"), (8, "Credits")]),
 ];
 
+use vantage_gui::icons::Icon;
+
 /// The first number of the sidebar entries that no tab backs: the toolkit draws those pages itself.
 pub const VIRTUAL_BASE: usize = 100;
 /// The sidebar entry that opens the Mods page filtered to the HUD elements, where each is placed and styled.
@@ -113,32 +115,32 @@ const PREFERENCES: usize = 105;
 const CHANGELOG: usize = 106;
 
 /// A sidebar entry as `(target, title, icon, active)`: a tab number, or a number from `VIRTUAL_BASE` up.
-pub type GuiEntry = (usize, &'static str, &'static str, bool);
+pub type GuiEntry = (usize, &'static str, vantage_gui::icons::Icon, bool);
 
 /// The toolkit's sidebar: each group's heading (empty for none) and entries, with the page open for `tab` (or
 /// the toolkit's own page `virt`) lit.
 #[must_use]
 pub fn gui_sidebar(tab: usize, virt: Option<usize>) -> Vec<(&'static str, Vec<GuiEntry>)> {
     let on = |target: usize| virt.map_or(target == tab, |v| v == target);
-    let entry = |target: usize, title: &'static str, icon: &'static str| (target, title, icon, on(target));
+    let entry = |target: usize, title: &'static str, icon: Icon| (target, title, icon, on(target));
     vec![
-        ("", vec![entry(EDIT_HUD, "Edit HUD", icons::SQUARE_DASHED)]),
+        ("", vec![entry(EDIT_HUD, "Edit HUD", Icon::EditHud)]),
         (
             "Mods and options",
             vec![
-                entry(0, "Mods", icons::LAYERS),
-                entry(7, "Profiles", icons::PACKAGE),
-                entry(KEYBINDS, "Keybinds", icons::KEYBOARD),
-                entry(SCREENSHOTS, "Screenshots", icons::CAMERA),
-                entry(17, "Waypoints", icons::MAP_PIN),
-                entry(26, "Sharing", icons::CLOUD),
+                entry(0, "Mods", Icon::Sliders),
+                entry(7, "Profiles", Icon::User),
+                entry(KEYBINDS, "Keybinds", Icon::Keyboard),
+                entry(SCREENSHOTS, "Screenshots", Icon::Camera),
+                entry(17, "Waypoints", Icon::MapPin),
+                entry(26, "Sharing", Icon::Cloud),
             ],
         ),
         (
             "Personalization",
-            vec![entry(THEMES, "Themes", icons::PALETTE), entry(WARDROBE, "Wardrobe", icons::SPARKLE), entry(PREFERENCES, "Preferences", icons::SETTINGS)],
+            vec![entry(THEMES, "Themes", Icon::Brush), entry(WARDROBE, "Wardrobe", Icon::Sparkles), entry(PREFERENCES, "Preferences", Icon::Gear)],
         ),
-        ("Vantage", vec![entry(CHANGELOG, "Changelog", icons::REWIND), entry(8, "Credits", icons::HEART)]),
+        ("Vantage", vec![entry(CHANGELOG, "Changelog", Icon::Refresh), entry(8, "Credits", Icon::Star)]),
     ]
 }
 

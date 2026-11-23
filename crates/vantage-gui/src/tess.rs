@@ -358,6 +358,63 @@ pub fn path_stroke(contours: &[Vec<[f32; 2]>], width: f32, closed: bool, color: 
     mesh
 }
 
+/// A disc of `inner` radius that fades out to `outer`, appended to `mesh`.
+fn disc(mesh: &mut Mesh, centre: [f32; 2], inner: f32, outer: f32, color: [u8; 4]) {
+    const N: usize = 12;
+    let fade = [color[0], color[1], color[2], 0];
+    let mid = mesh.push(centre, color);
+    let ring = |mesh: &mut Mesh, r: f32, c: [u8; 4]| -> Vec<u32> {
+        (0..N)
+            .map(|k| {
+                let a = k as f32 / N as f32 * std::f32::consts::TAU;
+                mesh.push([centre[0] + r * a.cos(), centre[1] + r * a.sin()], c)
+            })
+            .collect()
+    };
+    let inside = ring(mesh, inner, color);
+    let outside = ring(mesh, outer, fade);
+    for k in 0..N {
+        let k2 = (k + 1) % N;
+        mesh.indices.extend([mid, inside[k], inside[k2], inside[k], outside[k], outside[k2], inside[k], outside[k2], inside[k2]]);
+    }
+}
+
+/// Open polylines `width` wide with round joins and ends, edges fading over a feather like every other shape.
+#[must_use]
+pub fn polyline_stroke(contours: &[Vec<[f32; 2]>], width: f32, color: Color) -> Mesh {
+    let mut mesh = Mesh::default();
+    let c = bytes(color);
+    let fade = [c[0], c[1], c[2], 0];
+    let f = feather();
+    let half = (width / 2.0).max(f / 2.0);
+    let (inner, outer) = ((half - f / 2.0).max(0.0), half + f / 2.0);
+    for contour in contours {
+        for pair in contour.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+            let len = (dx * dx + dy * dy).sqrt();
+            if len < 1e-5 {
+                continue;
+            }
+            let (nx, ny) = (-dy / len, dx / len);
+            let base = mesh.vertices.len() as u32;
+            for (offset, col) in [(-outer, fade), (-inner, c), (inner, c), (outer, fade)] {
+                for p in [a, b] {
+                    mesh.vertices.push(Vertex { pos: [p[0] + nx * offset, p[1] + ny * offset], color: col });
+                }
+            }
+            for row in 0..3 {
+                let i = base + 2 * row;
+                mesh.indices.extend([i, i + 1, i + 3, i, i + 3, i + 2]);
+            }
+        }
+        for p in contour {
+            disc(&mut mesh, *p, inner, outer, c);
+        }
+    }
+    mesh
+}
+
 /// The mesh of one drawable primitive (text, icons, clips and opacity are the painter's own business).
 #[must_use]
 pub fn primitive(p: &Primitive) -> Option<Mesh> {
@@ -380,6 +437,11 @@ pub fn primitive(p: &Primitive) -> Option<Mesh> {
                 Some(width) => path_stroke(&placed, width * sx.min(sy), true, *color),
                 None => path_fill(&placed, *color),
             })
+        }
+        Primitive::Line { rect, view, contours, color, width } => {
+            let (sx, sy) = (rect.w / view[0].max(1e-3), rect.h / view[1].max(1e-3));
+            let placed: Vec<Vec<[f32; 2]>> = contours.iter().map(|c| c.iter().map(|p| [rect.x + p[0] * sx, rect.y + p[1] * sy]).collect()).collect();
+            Some(polyline_stroke(&placed, width * sx.min(sy), *color))
         }
         _ => None,
     }
