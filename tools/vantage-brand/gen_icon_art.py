@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Converts a directory of icon SVGs into `crates/vantage-gui/src/icon_art.rs`.
+"""Converts a directory of icon SVGs (or PNGs with a transparent background) into `crates/vantage-gui/src/icon_art.rs`.
 
 Each SVG is rasterised at 512 by 512 over its own view box (so every icon lands on the 24 by 24 icon grid), its
 alpha mask is traced with marching squares at a fixed precision and the outlines are simplified. The result is
@@ -141,12 +141,13 @@ def camel(name):
 def main():
     src, out = sys.argv[1], sys.argv[2]
     skip = set(sys.argv[3].split(",")) if len(sys.argv) > 3 else set()
-    names = sorted(f[:-4] for f in os.listdir(src) if f.endswith(".svg") and not f.startswith("minecraft__"))
+    names = sorted(f.rsplit(".", 1)[0] for f in os.listdir(src) if f.endswith((".svg", ".png")) and not f.startswith("minecraft__"))
     names = [n for n in names if n not in skip]
     scale = 24.0 / SIZE
     body, variants, arms = [], [], []
     for name in names:
-        groups = groups_of(trace(render(os.path.join(src, name + ".svg"))))
+        path = os.path.join(src, name + (".svg" if os.path.exists(os.path.join(src, name + ".svg")) else ".png"))
+        groups = groups_of(trace(render(path)))
         ident = camel(name)
         variants.append(f"    {ident},")
         rows = []

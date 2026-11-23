@@ -335,6 +335,59 @@ pub fn path_fill(contours: &[Vec<[f32; 2]>], color: Color) -> Mesh {
     mesh
 }
 
+/// The offset of each point of `ring` by `distance` along the miter of its two edges, positive being away from the
+/// ring's inside, with the miter capped so a sharp corner cannot shoot far out.
+fn offset_ring(ring: &[[f32; 2]], distance: f32) -> Vec<[f32; 2]> {
+    let n = ring.len();
+    let outward = if area(ring) >= 0.0 { 1.0 } else { -1.0 };
+    let normal = |a: [f32; 2], b: [f32; 2]| -> [f32; 2] {
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let len = (dx * dx + dy * dy).sqrt().max(1e-9);
+        [outward * dy / len, -outward * dx / len]
+    };
+    (0..n)
+        .map(|i| {
+            let (prev, cur, next) = (ring[(i + n - 1) % n], ring[i], ring[(i + 1) % n]);
+            let (n1, n2) = (normal(prev, cur), normal(cur, next));
+            let dot = n1[0] * n2[0] + n1[1] * n2[1];
+            let mut v = [(n1[0] + n2[0]) / (1.0 + dot).max(0.35), (n1[1] + n2[1]) / (1.0 + dot).max(0.35)];
+            let len = (v[0] * v[0] + v[1] * v[1]).sqrt();
+            if len > 2.0 {
+                v = [v[0] / len * 2.0, v[1] / len * 2.0];
+            }
+            [cur[0] + v[0] * distance, cur[1] + v[1] * distance]
+        })
+        .collect()
+}
+
+/// An even-odd fill whose edges are anti-aliased: every outline is pulled in by half a feather and a fringe
+/// fading to nothing runs from there to half a feather past the true edge, so shapes keep their size and their
+/// edges have no stair-steps at any scale.
+#[must_use]
+pub fn path_fill_smooth(contours: &[Vec<[f32; 2]>], color: Color) -> Mesh {
+    let half = feather() / 2.0;
+    let depth: Vec<usize> = contours
+        .iter()
+        .enumerate()
+        .map(|(i, c)| contours.iter().enumerate().filter(|(j, o)| *j != i && o.len() > 2 && inside(o, c[0])).count())
+        .collect();
+    // Outlines at an even depth are edges of the fill with the fill inside; holes have it outside.
+    let side = |i: usize, d: f32| -> Vec<[f32; 2]> {
+        let sign = if depth[i] % 2 == 0 { 1.0 } else { -1.0 };
+        offset_ring(&contours[i], sign * d)
+    };
+    let usable = |i: usize| contours[i].len() > 2;
+    let inset: Vec<Vec<[f32; 2]>> = (0..contours.len()).map(|i| if usable(i) { side(i, -half) } else { contours[i].clone() }).collect();
+    let mut mesh = path_fill(&inset, color);
+    let solid = bytes(color);
+    let fade = [solid[0], solid[1], solid[2], 0];
+    for i in (0..contours.len()).filter(|i| usable(*i)) {
+        let outer = side(i, half);
+        ring(&mut mesh, &outer, fade, &inset[i], solid);
+    }
+    mesh
+}
+
 /// A stroke of `width` along each contour (closed contours join their ends).
 #[must_use]
 pub fn path_stroke(contours: &[Vec<[f32; 2]>], width: f32, closed: bool, color: Color) -> Mesh {
@@ -455,8 +508,13 @@ pub fn primitive(p: &Primitive) -> Option<Mesh> {
             let placed: Vec<Vec<[f32; 2]>> = contours.iter().map(|c| c.iter().map(|p| [rect.x + p[0] * sx, rect.y + p[1] * sy]).collect()).collect();
             Some(match stroke {
                 Some(width) => path_stroke(&placed, width * sx.min(sy), true, *color),
-                None => path_fill(&placed, *color),
+                None => path_fill_smooth(&placed, *color),
             })
+        }
+        Primitive::Pixels { rect, view, contours, color } => {
+            let (sx, sy) = (rect.w / view[0].max(1e-3), rect.h / view[1].max(1e-3));
+            let placed: Vec<Vec<[f32; 2]>> = contours.iter().map(|c| c.iter().map(|p| [rect.x + p[0] * sx, rect.y + p[1] * sy]).collect()).collect();
+            Some(path_fill(&placed, *color))
         }
         Primitive::Line { rect, view, contours, color, width } => {
             let (sx, sy) = (rect.w / view[0].max(1e-3), rect.h / view[1].max(1e-3));
@@ -493,6 +551,35 @@ mod tests {
         assert!(bounds.x >= rect.x - slack && bounds.y >= rect.y - slack);
         assert!(bounds.right() <= rect.right() + slack && bounds.bottom() <= rect.bottom() + slack);
         assert!(bounds.w >= rect.w - 1.0, "the fill covers the rectangle");
+    }
+
+    #[test]
+    fn a_smooth_fill_stays_within_half_a_feather_of_its_outline_and_fades_out() {
+        let square = vec![[10.0, 10.0], [30.0, 10.0], [30.0, 30.0], [10.0, 30.0]];
+        let mesh = path_fill_smooth(&[square], Color::hex(0xFFFFFF, 1.0));
+        let bounds = mesh.bounds().unwrap();
+        let slack = FEATHER / 2.0 + 1e-3;
+        assert!(bounds.x >= 10.0 - slack && bounds.y >= 10.0 - slack && bounds.right() <= 30.0 + slack && bounds.bottom() <= 30.0 + slack);
+        assert!(mesh.vertices.iter().any(|v| v.color[3] == 0), "the fringe fades to nothing");
+        assert!(mesh.vertices.iter().any(|v| v.color[3] == 255), "the body is solid");
+    }
+
+    #[test]
+    fn a_smooth_fill_leaves_a_hole_open() {
+        let outer = vec![[0.0, 0.0], [40.0, 0.0], [40.0, 40.0], [0.0, 40.0]];
+        let hole = vec![[10.0, 10.0], [30.0, 10.0], [30.0, 30.0], [10.0, 30.0]];
+        let mesh = path_fill_smooth(&[outer, hole], Color::hex(0xFFFFFF, 1.0));
+        let body: f32 = mesh
+            .indices
+            .chunks(3)
+            .filter(|t| t.iter().all(|i| mesh.vertices[*i as usize].color[3] == 255))
+            .map(|t| {
+                let (a, b, c) = (mesh.vertices[t[0] as usize].pos, mesh.vertices[t[1] as usize].pos, mesh.vertices[t[2] as usize].pos);
+                ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])).abs() / 2.0
+            })
+            .sum();
+        // 1600 - 400 for the ring, less a half feather off each of its edges.
+        assert!(body < 1200.0 && body > 1200.0 - 2.0 * (160.0 + 80.0) * FEATHER, "ring body {body}");
     }
 
     #[test]

@@ -117,6 +117,76 @@ const WARDROBE: usize = 104;
 const PREFERENCES: usize = 105;
 const CHANGELOG: usize = 106;
 
+/// The icon of mod `id`: a converted OneClient-style icon where the set has one for the mod, else a line icon
+/// drawn for it, so every card's icon has the same size and weight.
+#[must_use]
+pub fn mod_icon(id: &str) -> Glyph {
+    let line = |icon: Icon| Glyph::Line(icon);
+    let art = |icon: Art| Glyph::Art(icon);
+    match id {
+        "hud_keystrokes" => art(Art::Keyboard),
+        "hud_cps" => line(Icon::Mouse),
+        "hud_fps" => line(Icon::Gauge),
+        "zoom_on" => line(Icon::ZoomIn),
+        "hud_armor" => line(Icon::Shield),
+        "hud_coords" | "gp_wp_on" => line(Icon::MapPin),
+        "hud_potion" | "hud_potioncount" => line(Icon::Flask),
+        "hud_ping" => line(Icon::Signal),
+        "ch_on" => line(Icon::Crosshair),
+        "fullbright" => art(Art::Sun),
+        "hud_facing" => line(Icon::Compass),
+        "gp_time_on" => art(Art::Moon),
+        "hud_clock" => line(Icon::Clock),
+        "gp_weather_on" => art(Art::Cloud),
+        "hud_food" => line(Icon::Heart),
+        "hud_speed" => line(Icon::Speed),
+        "hud_stopwatch" => line(Icon::Timer),
+        "hud_playtime" => line(Icon::Hourglass),
+        "hud_day" => line(Icon::Calendar),
+        "hud_viewangles" => line(Icon::Angle),
+        "hud_reach" => line(Icon::Ruler),
+        "hud_combo" => line(Icon::Flame),
+        "hud_totems" => line(Icon::Totem),
+        "hud_itemcounter" => line(Icon::Hash),
+        "hud_inventory" => line(Icon::Backpack),
+        "hud_arraylist" => art(Art::Text),
+        "hud_chunk" => line(Icon::Chunk),
+        "hud_slime" | "slime_chunks" | "gp_hit_on" => line(Icon::Droplet),
+        "hud_monument" | "guardians" => line(Icon::Diamond),
+        "hud_scoreboard" => art(Art::Clipboard),
+        "hud_target" => line(Icon::Target),
+        "hud_waila" => art(Art::Eye),
+        "hud_height" => line(Icon::ArrowTop),
+        "hud_subtitles" => line(Icon::Captions),
+        "hud_pvp" => art(Art::Combat),
+        "borders" => line(Icon::Brackets),
+        "subchunks" => art(Art::Layers),
+        "lights" => line(Icon::Bulb),
+        "blaze" => line(Icon::Flame),
+        "hitboxes" => art(Art::SelectAll),
+        "gp_nametags" => line(Icon::Tag),
+        "gp_blur_on" => line(Icon::Rings),
+        "gp_dmg_on" => art(Art::Lightning01),
+        "gp_no_hurt_cam" => line(Icon::Camera),
+        "gp_toggle_sprint" => line(Icon::Sprint),
+        "gp_always_sprint" => line(Icon::Dash),
+        "gp_toggle_sneak" => line(Icon::Crouch),
+        "gp_cursor_center" => line(Icon::Pointer),
+        "item_delay_fix" => art(Art::Qol),
+        "gp_nocam_on" => art(Art::Refresh),
+        "gp_noswing_on" => line(Icon::Mute),
+        "gp_cpslim_on" => line(Icon::Funnel),
+        "gp_bo_on" => line(Icon::Cube),
+        "gp_mk_on" => line(Icon::Flag),
+        "gp_tnt_on" => line(Icon::Bomb),
+        "gp_th_on" => line(Icon::TextT),
+        "gp_hive_on" => art(Art::Honeycomb),
+        "gp_persp_on" => line(Icon::Perspective),
+        "gp_glass_on" => line(Icon::Glass),
+        _ => line(Icon::Sparkles),
+    }
+}
+
 /// A sidebar entry as `(target, title, icon, active)`: a tab number, or a number from `VIRTUAL_BASE` up.
 pub type GuiEntry = (usize, &'static str, Glyph, bool);
 
@@ -1082,6 +1152,13 @@ fn backdrop(settings: &Settings) -> Backdrop {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_mod_has_an_icon_of_its_own() {
+        for (id, name, _) in crate::menu_controls::MODS {
+            assert_ne!(mod_icon(id), Glyph::Line(Icon::Sparkles), "{name} has no icon of its own");
+        }
+    }
 
     #[test]
     fn every_mod_has_a_card_with_a_display_name_and_a_known_category() {

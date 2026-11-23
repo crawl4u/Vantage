@@ -284,15 +284,12 @@ impl Painter {
                     })
                     .collect();
                 let side = f32::from(art.size);
-                self.scene.push(Primitive::Path { rect: box_, view: [side, side], contours: rects, color: color(c), stroke: None });
+                self.scene.push(Primitive::Pixels { rect: box_, view: [side, side], contours: rects, color: color(c) });
             }
             Glyph::Art(art) => {
                 for shape in art.shapes() {
                     let rings: Vec<Vec<[f32; 2]>> = shape.iter().map(|ring| ring.to_vec()).collect();
-                    // A hairline round every edge keeps it as soft as the other lines.
-                    let edge: Vec<Vec<[f32; 2]>> = rings.iter().map(|ring| ring.iter().copied().chain(ring.first().copied()).collect()).collect();
                     self.scene.push(Primitive::Path { rect: box_, view: [GRID, GRID], contours: rings, color: color(c), stroke: None });
-                    self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: edge, color: color(c), width: 0.3 });
                 }
             }
         }
@@ -316,7 +313,8 @@ impl Painter {
     /// A line of text vertically centred in a box.
     fn line(&mut self, r: Rect, s: &str, size: f32, c: Rgba, align: Align) {
         let h = size * 1.5;
-        self.text(Rect::new(r.x, r.y + (r.h - h) / 2.0, r.w, h), s, size, c, align);
+        // The face sits a little high in its line box, so the box drops by that much to centre the letters.
+        self.text(Rect::new(r.x, r.y + (r.h - h) / 2.0 + size * 0.12, r.w, h), s, size, c, align);
     }
 
     fn icon(&mut self, r: Rect, glyph: &str, size: f32, c: Rgba) {
@@ -861,7 +859,7 @@ impl GuiMenu {
                 "Mechanic" => Glyph::Art(Art::Qol),
                 _ => Glyph::Art(Art::Lightning01),
             };
-            let cw = name.chars().count() as f32 * char_w * 0.84 + px(20.0) + px(26.0);
+            let cw = name.chars().count() as f32 * char_w * 0.92 + px(20.0) + px(26.0);
             let on = *number == active_chip;
             let r = Rect::new(x, chip_y, cw, chip_h);
             let hit = Hit::Chip(n);
@@ -871,8 +869,12 @@ impl GuiMenu {
                 d.ring(r, Radii::all(px(RADII.xs)), 0.3, [1.0, 1.0, 1.0, 0.10]);
             }
             let ink = if on { p.on_accent } else { p.text };
-            d.glyph(Rect::new(r.x + px(space::S), r.y, px(18.0), r.h), glyph, px(17.0), ink);
-            d.line(Rect::new(r.x + px(26.0), r.y, r.w - px(26.0), r.h), name, px(text::LABEL.size), ink, Align::Centre);
+            // The icon and the label are centred in the chip as one group.
+            let label_w = name.chars().count() as f32 * char_w * 0.92;
+            let group = px(18.0) + px(6.0) + label_w;
+            let gx = r.x + (r.w - group) / 2.0;
+            d.glyph(Rect::new(gx, r.y, px(18.0), r.h), glyph, px(17.0), ink);
+            d.line(Rect::new(gx + px(24.0), r.y, label_w + px(12.0), r.h), name, px(text::LABEL.size), ink, Align::Start);
             d.region(hit, r);
             x += cw + px(space::XS);
         }
@@ -894,7 +896,7 @@ impl GuiMenu {
             if n == 0 {
                 d.glyph(r, Art::DotsGrid, px(17.0), ink);
             } else {
-                d.glyph(r, Art::Capitalized, px(15.0), ink);
+                d.line(r, "Aa", px(text::LABEL.size), ink, Align::Centre);
             }
             d.region(hit, r);
             if self.hover == Some(hit) {
@@ -983,7 +985,7 @@ impl GuiMenu {
                 border: None,
                 shadow: Some(vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(64.0), color: Color::rgba(0.0, 0.0, 0.0, 0.26) }),
             });
-            d.icon(icon_area, card.icon, px(54.0), [0.74, 0.75, 0.88, 1.0]);
+            d.glyph(icon_area, menu_v2::mod_icon(card.id), px(44.0), [0.74, 0.75, 0.88, 1.0]);
             let dot = px(7.0);
             let dot_rect = d.at(Rect::new(r.right() - px(space::L) - dot, r.y + px(space::L), dot, dot));
             d.scene.push(Primitive::Rect {
@@ -1171,8 +1173,11 @@ impl GuiMenu {
                     d.ring(r, Radii::all(px(RADII.xs)), 0.3, [1.0, 1.0, 1.0, 0.10]);
                 }
                 let ink = if on { p.on_accent } else { p.text };
-                d.glyph(Rect::new(r.x + px(space::S), r.y, px(18.0), r.h), glyph, px(17.0), ink);
-                d.line(Rect::new(r.x + px(26.0), r.y, r.w - px(26.0), r.h), name, px(text::LABEL.size), ink, Align::Centre);
+                let label_w = name.chars().count() as f32 * px(text::LABEL.size) * 0.62 * 0.92;
+                let group = px(18.0) + px(6.0) + label_w;
+                let gx = r.x + (r.w - group) / 2.0;
+                d.glyph(Rect::new(gx, r.y, px(18.0), r.h), glyph, px(17.0), ink);
+                d.line(Rect::new(gx + px(24.0), r.y, label_w + px(12.0), r.h), name, px(text::LABEL.size), ink, Align::Start);
                 d.region(hit, r);
                 x += cw + px(space::XS);
             }
