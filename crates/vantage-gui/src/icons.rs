@@ -32,13 +32,61 @@ pub enum Icon {
     Close,
     Back,
     Forward,
+    Mouse,
+    Gauge,
+    ZoomIn,
+    Shield,
+    Flask,
+    Signal,
+    Crosshair,
+    Sun,
+    Compass,
+    Clock,
+    Speed,
+    Timer,
+    Hourglass,
+    Calendar,
+    Angle,
+    Ruler,
+    Swords,
+    Totem,
+    Cube,
+    Backpack,
+    List,
+    Chunk,
+    Droplet,
+    Diamond,
+    Scoreboard,
+    Target,
+    ArrowTop,
+    Captions,
+    Brackets,
+    Bulb,
+    Flame,
+    Box,
+    Tag,
+    Rings,
+    Sprint,
+    Crouch,
+    Pointer,
+    Mute,
+    Funnel,
+    Flag,
+    Bomb,
+    TextT,
+    Hex,
+    Perspective,
+    Glass,
+    Hash,
+    Moon,
+    Dash,
 }
 
 type Contour = Vec<[f32; 2]>;
 
 /// Points of a circular arc from `from` to `to` degrees (y points down, 0 is east, 90 south).
 fn arc(cx: f32, cy: f32, r: f32, from: f32, to: f32) -> Contour {
-    let steps = (((to - from).abs() / 12.0).ceil() as usize).max(2);
+    let steps = (((to - from).abs() / 6.0).ceil() as usize).max(2);
     (0..=steps)
         .map(|i| {
             let a = (from + (to - from) * i as f32 / steps as f32) * PI / 180.0;
@@ -91,7 +139,7 @@ fn sparkle(cx: f32, cy: f32, r: f32) -> Contour {
 
 impl Icon {
     /// Every icon, for tests and previews.
-    pub const ALL: [Icon; 23] = [
+    pub const ALL: [Icon; 71] = [
         Icon::Layers,
         Icon::EditHud,
         Icon::Sliders,
@@ -115,6 +163,54 @@ impl Icon {
         Icon::Close,
         Icon::Back,
         Icon::Forward,
+        Icon::Mouse,
+        Icon::Gauge,
+        Icon::ZoomIn,
+        Icon::Shield,
+        Icon::Flask,
+        Icon::Signal,
+        Icon::Crosshair,
+        Icon::Sun,
+        Icon::Compass,
+        Icon::Clock,
+        Icon::Speed,
+        Icon::Timer,
+        Icon::Hourglass,
+        Icon::Calendar,
+        Icon::Angle,
+        Icon::Ruler,
+        Icon::Swords,
+        Icon::Totem,
+        Icon::Cube,
+        Icon::Backpack,
+        Icon::List,
+        Icon::Chunk,
+        Icon::Droplet,
+        Icon::Diamond,
+        Icon::Scoreboard,
+        Icon::Target,
+        Icon::ArrowTop,
+        Icon::Captions,
+        Icon::Brackets,
+        Icon::Bulb,
+        Icon::Flame,
+        Icon::Box,
+        Icon::Tag,
+        Icon::Rings,
+        Icon::Sprint,
+        Icon::Crouch,
+        Icon::Pointer,
+        Icon::Mute,
+        Icon::Funnel,
+        Icon::Flag,
+        Icon::Bomb,
+        Icon::TextT,
+        Icon::Hex,
+        Icon::Perspective,
+        Icon::Glass,
+        Icon::Hash,
+        Icon::Moon,
+        Icon::Dash,
     ];
 
     /// The icon's strokes as polylines on the 24 by 24 grid; a stroke that returns to its first point is closed.
@@ -149,7 +245,17 @@ impl Icon {
                 vec![[8.0, 7.0], [9.6, 4.2], [14.4, 4.2], [16.0, 7.0]],
                 circle(12.0, 13.5, 3.6),
             ],
-            Icon::Brush => vec![line([20.5, 3.5], [11.8, 12.2]), closed(vec![[11.8, 12.2], [14.6, 15.0], [12.2, 19.2], [7.0, 20.6], [3.4, 20.6], [5.4, 16.8], [8.4, 13.4]])],
+            Icon::Brush => {
+                // A paintbrush along the diagonal: a leaf-shaped tuft, a ferrule and a handle.
+                let tip = [3.2_f32, 20.8];
+                let (dx, dy) = (0.7071_f32, -0.7071_f32);
+                let (nx, ny) = (0.7071_f32, 0.7071_f32);
+                let at = |s: f32, w: f32| [tip[0] + dx * s + nx * w, tip[1] + dy * s + ny * w];
+                let half = |s: f32| 4.2 * (s / 11.5).powf(0.6) * (1.0 - 0.28 * s / 11.5);
+                let mut tuft: Contour = (0..=14).map(|i| 11.5 * (1.0 - i as f32 / 14.0)).map(|s| at(s, half(s))).collect();
+                tuft.extend((0..=14).map(|i| 11.5 * i as f32 / 14.0).map(|s| at(s, -half(s))));
+                vec![closed(tuft), closed(vec![at(11.5, 3.6), at(14.0, 2.9), at(14.0, -2.9), at(11.5, -3.6)]), line(at(14.0, 0.0), [20.6, 3.4])]
+            }
             Icon::Sparkles => vec![sparkle(10.0, 13.0, 8.0), sparkle(19.0, 5.0, 3.2)],
             Icon::Gear => {
                 let mut teeth = Vec::new();
@@ -181,7 +287,7 @@ impl Icon {
                 vec![closed(c)]
             }
             Icon::Bolt => vec![closed(vec![[13.0, 2.5], [5.0, 13.5], [11.5, 13.5], [10.5, 21.5], [19.0, 10.0], [12.5, 10.0]])],
-            Icon::Wrench => vec![line([4.0, 20.0], [12.4, 11.6]), arc(16.0, 8.0, 4.6, 140.0, 410.0)],
+            Icon::Wrench => vec![arc(16.5, 7.5, 4.8, 345.0, 645.0), line([13.2, 10.8], [4.5, 19.5])],
             Icon::Grid => vec![rrect(3.0, 3.0, 18.0, 18.0, 3.5), line([3.0, 9.5], [21.0, 9.5]), line([9.5, 9.5], [9.5, 21.0])],
             Icon::Bell => {
                 let mut body = arc(12.0, 8.5, 6.0, 180.0, 360.0);
@@ -211,6 +317,115 @@ impl Icon {
             Icon::Close => vec![line([6.0, 6.0], [18.0, 18.0]), line([18.0, 6.0], [6.0, 18.0])],
             Icon::Back => vec![line([19.5, 12.0], [5.0, 12.0]), vec![[11.0, 6.0], [5.0, 12.0], [11.0, 18.0]]],
             Icon::Forward => vec![line([4.5, 12.0], [19.0, 12.0]), vec![[13.0, 6.0], [19.0, 12.0], [13.0, 18.0]]],
+            Icon::Mouse => vec![rrect(6.5, 2.5, 11.0, 19.0, 5.5), line([12.0, 2.5], [12.0, 9.0]), line([12.0, 5.5], [12.0, 7.5])],
+            Icon::Gauge => vec![arc(12.0, 14.0, 9.0, 180.0, 360.0), line([3.0, 14.0], [5.0, 14.0]), line([19.0, 14.0], [21.0, 14.0]), line([12.0, 14.0], [16.5, 9.5]), circle(12.0, 14.0, 1.2)],
+            Icon::ZoomIn => vec![circle(10.5, 10.5, 6.5), line([15.4, 15.4], [20.5, 20.5]), line([10.5, 7.5], [10.5, 13.5]), line([7.5, 10.5], [13.5, 10.5])],
+            Icon::Shield => vec![closed(vec![[12.0, 2.5], [19.5, 5.5], [19.5, 12.0], [12.0, 21.5], [4.5, 12.0], [4.5, 5.5]])],
+            Icon::Flask => vec![vec![[9.5, 3.0], [9.5, 10.0], [4.5, 19.0], [19.5, 19.0], [14.5, 10.0], [14.5, 3.0]], line([8.0, 3.0], [16.0, 3.0]), line([7.0, 15.0], [17.0, 15.0])],
+            Icon::Signal => vec![line([5.0, 19.0], [5.0, 16.0]), line([10.0, 19.0], [10.0, 12.0]), line([15.0, 19.0], [15.0, 8.0]), line([20.0, 19.0], [20.0, 4.0])],
+            Icon::Crosshair => vec![circle(12.0, 12.0, 6.5), line([12.0, 2.5], [12.0, 7.0]), line([12.0, 17.0], [12.0, 21.5]), line([2.5, 12.0], [7.0, 12.0]), line([17.0, 12.0], [21.5, 12.0])],
+            Icon::Sun => {
+                let mut v = vec![circle(12.0, 12.0, 4.2)];
+                for k in 0..8 {
+                    let a = k as f32 * PI / 4.0;
+                    v.push(line([12.0 + 7.4 * a.cos(), 12.0 + 7.4 * a.sin()], [12.0 + 10.0 * a.cos(), 12.0 + 10.0 * a.sin()]));
+                }
+                v
+            }
+            Icon::Compass => vec![circle(12.0, 12.0, 9.5), closed(vec![[16.0, 8.0], [13.6, 13.6], [8.0, 16.0], [10.4, 10.4]])],
+            Icon::Clock => vec![circle(12.0, 12.0, 9.5), vec![[12.0, 6.5], [12.0, 12.0], [16.0, 14.2]]],
+            Icon::Speed => vec![vec![[5.5, 6.0], [11.5, 12.0], [5.5, 18.0]], vec![[12.5, 6.0], [18.5, 12.0], [12.5, 18.0]]],
+            Icon::Timer => vec![circle(12.0, 13.5, 7.5), line([12.0, 13.5], [15.2, 10.2]), line([9.5, 2.5], [14.5, 2.5]), line([12.0, 2.5], [12.0, 6.0])],
+            Icon::Hourglass => vec![closed(vec![[6.0, 3.0], [18.0, 3.0], [18.0, 7.0], [12.0, 12.0], [18.0, 17.0], [18.0, 21.0], [6.0, 21.0], [6.0, 17.0], [12.0, 12.0], [6.0, 7.0]])],
+            Icon::Calendar => vec![rrect(3.5, 5.0, 17.0, 16.0, 3.0), line([3.5, 10.0], [20.5, 10.0]), line([8.0, 2.5], [8.0, 6.5]), line([16.0, 2.5], [16.0, 6.5])],
+            Icon::Angle => vec![line([4.0, 20.0], [21.0, 20.0]), line([4.0, 20.0], [17.5, 6.5]), arc(4.0, 20.0, 9.0, -45.0, 0.0)],
+            Icon::Ruler => vec![rrect(2.5, 8.0, 19.0, 8.0, 2.0), line([7.0, 8.0], [7.0, 11.5]), line([11.0, 8.0], [11.0, 12.5]), line([15.0, 8.0], [15.0, 11.5]), line([19.0, 8.0], [19.0, 12.5])],
+            Icon::Swords => vec![
+                line([4.0, 4.0], [15.5, 15.5]),
+                line([11.5, 17.5], [17.5, 11.5]),
+                line([15.5, 15.5], [19.5, 19.5]),
+                line([20.0, 4.0], [8.5, 15.5]),
+                line([6.5, 11.5], [12.5, 17.5]),
+                line([8.5, 15.5], [4.5, 19.5]),
+            ],
+            Icon::Totem => vec![circle(12.0, 6.5, 3.2), line([12.0, 9.7], [12.0, 20.0]), line([5.0, 12.5], [19.0, 12.5]), line([8.5, 20.5], [15.5, 20.5])],
+            Icon::Cube => vec![closed(vec![[12.0, 3.0], [20.0, 7.5], [12.0, 12.0], [4.0, 7.5]]), vec![[4.0, 7.5], [4.0, 16.5], [12.0, 21.0], [20.0, 16.5], [20.0, 7.5]], line([12.0, 12.0], [12.0, 21.0])],
+            Icon::Backpack => vec![rrect(5.0, 9.0, 14.0, 12.0, 3.5), arc(12.0, 8.0, 3.2, 180.0, 360.0), line([5.0, 13.5], [19.0, 13.5]), rrect(8.5, 15.5, 7.0, 3.5, 1.2)],
+            Icon::List => vec![line([8.0, 6.0], [21.0, 6.0]), line([8.0, 12.0], [21.0, 12.0]), line([8.0, 18.0], [21.0, 18.0]), line([3.5, 6.0], [4.4, 6.0]), line([3.5, 12.0], [4.4, 12.0]), line([3.5, 18.0], [4.4, 18.0])],
+            Icon::Chunk => vec![rrect(3.0, 3.0, 18.0, 18.0, 2.5), line([12.0, 3.0], [12.0, 21.0]), line([3.0, 12.0], [21.0, 12.0])],
+            Icon::Droplet => {
+                let mut d = arc(12.0, 14.5, 6.5, -50.0, 230.0);
+                d.push([12.0, 3.5]);
+                vec![closed(d)]
+            }
+            Icon::Diamond => vec![closed(vec![[12.0, 3.0], [20.5, 12.0], [12.0, 21.0], [3.5, 12.0]]), closed(vec![[12.0, 8.0], [16.0, 12.0], [12.0, 16.0], [8.0, 12.0]])],
+            Icon::Scoreboard => vec![rrect(4.0, 3.0, 16.0, 18.0, 2.5), line([8.0, 8.0], [16.0, 8.0]), line([8.0, 12.0], [16.0, 12.0]), line([8.0, 16.0], [13.0, 16.0])],
+            Icon::Target => vec![circle(12.0, 12.0, 9.0), circle(12.0, 12.0, 4.6), circle(12.0, 12.0, 0.5)],
+            Icon::ArrowTop => vec![line([6.0, 3.5], [18.0, 3.5]), line([12.0, 21.0], [12.0, 8.0]), vec![[7.0, 13.0], [12.0, 8.0], [17.0, 13.0]]],
+            Icon::Captions => vec![rrect(2.5, 5.0, 19.0, 14.0, 3.0), line([6.5, 11.0], [10.0, 11.0]), line([12.5, 11.0], [17.5, 11.0]), line([6.5, 15.0], [8.5, 15.0]), line([11.0, 15.0], [17.5, 15.0])],
+            Icon::Brackets => vec![
+                vec![[3.5, 8.5], [3.5, 3.5], [8.5, 3.5]],
+                vec![[15.5, 3.5], [20.5, 3.5], [20.5, 8.5]],
+                vec![[20.5, 15.5], [20.5, 20.5], [15.5, 20.5]],
+                vec![[8.5, 20.5], [3.5, 20.5], [3.5, 15.5]],
+            ],
+            Icon::Bulb => {
+                let mut b = arc(12.0, 9.5, 6.2, 140.0, 400.0);
+                b.extend([[14.6, 17.5], [9.4, 17.5]]);
+                vec![b, line([10.0, 20.5], [14.0, 20.5])]
+            }
+            Icon::Flame => vec![closed(vec![[12.0, 2.5], [17.0, 9.0], [18.5, 14.0], [16.0, 19.0], [12.0, 21.0], [8.0, 19.0], [5.5, 14.0], [7.5, 10.0], [9.5, 12.5], [10.5, 7.0]])],
+            Icon::Box => vec![rrect(4.5, 4.5, 15.0, 15.0, 2.5), rrect(9.0, 9.0, 6.0, 6.0, 1.0)],
+            Icon::Tag => vec![closed(vec![[4.0, 12.5], [12.5, 4.0], [20.0, 4.0], [20.0, 11.5], [11.5, 20.0]]), circle(15.5, 8.5, 1.4)],
+            Icon::Rings => vec![circle(12.0, 12.0, 2.8), circle(12.0, 12.0, 6.4), circle(12.0, 12.0, 10.0)],
+            Icon::Sprint => vec![
+                circle(15.0, 4.5, 2.0),
+                line([14.0, 8.0], [11.0, 14.0]),
+                line([14.0, 8.0], [18.0, 11.5]),
+                line([13.0, 9.2], [8.5, 10.5]),
+                vec![[11.0, 14.0], [14.5, 17.5], [13.5, 21.5]],
+                vec![[11.0, 14.0], [7.0, 17.0], [4.5, 16.5]],
+            ],
+            Icon::Crouch => vec![
+                circle(9.0, 6.0, 2.0),
+                line([9.0, 9.0], [10.5, 15.0]),
+                line([9.5, 10.5], [14.5, 12.5]),
+                vec![[10.5, 15.0], [15.0, 15.5], [15.0, 20.5]],
+                vec![[10.5, 15.0], [8.0, 19.5], [10.5, 21.0]],
+            ],
+            Icon::Pointer => vec![closed(vec![[5.0, 3.0], [18.5, 11.5], [12.0, 13.0], [8.5, 20.5]])],
+            Icon::Mute => vec![closed(vec![[3.5, 9.5], [7.5, 9.5], [12.0, 5.5], [12.0, 18.5], [7.5, 14.5], [3.5, 14.5]]), line([15.5, 9.5], [20.5, 14.5]), line([20.5, 9.5], [15.5, 14.5])],
+            Icon::Funnel => vec![closed(vec![[3.5, 4.0], [20.5, 4.0], [14.0, 12.5], [14.0, 19.5], [10.0, 17.5], [10.0, 12.5]])],
+            Icon::Flag => vec![line([5.0, 21.5], [5.0, 3.5]), closed(vec![[5.0, 4.0], [19.0, 4.0], [15.5, 8.5], [19.0, 13.0], [5.0, 13.0]])],
+            Icon::Bomb => vec![circle(10.5, 14.0, 7.0), vec![[15.5, 9.0], [17.6, 6.6], [20.0, 6.6]], sparkle(20.4, 3.8, 2.4)],
+            Icon::TextT => vec![line([5.0, 5.5], [19.0, 5.5]), line([12.0, 5.5], [12.0, 19.0]), line([8.5, 19.0], [15.5, 19.0])],
+            Icon::Hex => vec![closed((0..6).map(|i| {
+                let a = (i as f32 * 60.0 - 90.0) * PI / 180.0;
+                [12.0 + 9.5 * a.cos(), 12.0 + 9.5 * a.sin()]
+            }).collect()), circle(12.0, 12.0, 3.0)],
+            Icon::Perspective => {
+                let a = 28.0_f32 * PI / 180.0;
+                let orbit: Contour = (0..=24)
+                    .map(|i| {
+                        let t = i as f32 / 24.0 * 2.0 * PI;
+                        let (x, y) = (9.8 * t.cos(), 4.4 * t.sin());
+                        [12.0 + x * a.cos() - y * a.sin(), 12.0 + x * a.sin() + y * a.cos()]
+                    })
+                    .collect();
+                vec![orbit, circle(12.0, 12.0, 2.8)]
+            }
+            Icon::Glass => vec![rrect(4.5, 3.5, 15.0, 17.0, 2.5), line([9.0, 17.0], [16.0, 9.5]), line([7.0, 12.5], [11.0, 8.0])],
+            Icon::Hash => vec![line([9.0, 4.0], [7.5, 20.0]), line([16.5, 4.0], [15.0, 20.0]), line([4.0, 9.0], [20.0, 9.0]), line([4.5, 15.0], [19.5, 15.0])],
+            Icon::Moon => {
+                let mut c = arc(12.0, 12.0, 9.0, 270.0, 0.0);
+                c.extend(arc(21.0, 3.0, 9.0, 90.0, 180.0));
+                vec![closed(c)]
+            }
+            Icon::Dash => {
+                let mut figure = Icon::Sprint.contours();
+                figure.extend([line([2.0, 9.0], [6.0, 9.0]), line([2.0, 12.5], [5.0, 12.5]), line([3.5, 19.5], [7.0, 19.5])]);
+                figure
+            }
         }
     }
 }

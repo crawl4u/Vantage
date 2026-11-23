@@ -267,7 +267,7 @@ impl Painter {
     /// A line icon centred in `r`, `size` across, in colour `c`.
     fn glyph(&mut self, r: Rect, icon: Icon, size: f32, c: Rgba) {
         let box_ = self.at(Rect::new(r.x + (r.w - size) / 2.0, r.y + (r.h - size) / 2.0, size, size));
-        self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: icon.contours(), color: color(c), width: 1.7 });
+        self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours: icon.contours(), color: color(c), width: 1.9 });
     }
 
     fn rect(&mut self, r: Rect, fill: Rgba, radii: Radii) {
@@ -955,7 +955,7 @@ impl GuiMenu {
                 border: None,
                 shadow: Some(vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(64.0), color: Color::rgba(0.0, 0.0, 0.0, 0.26) }),
             });
-            d.icon(icon_area, card.icon, px(54.0), [0.74, 0.75, 0.88, 1.0]);
+            d.glyph(icon_area, menu_v2::mod_icon(card.id), px(44.0), [0.74, 0.75, 0.88, 1.0]);
             let dot = px(7.0);
             let dot_rect = d.at(Rect::new(r.right() - px(space::L) - dot, r.y + px(space::L), dot, dot));
             d.scene.push(Primitive::Rect {
