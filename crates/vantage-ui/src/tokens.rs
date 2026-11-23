@@ -59,20 +59,20 @@ pub struct Palette {
 }
 
 impl Palette {
-    /// The default dark theme: a deep blue-grey glass with an indigo accent.
+    /// The default dark theme: translucent black glass with a purple accent.
     #[must_use]
     pub const fn dark() -> Self {
         Self {
-            panel: rgb(0x131A2B, 0.80),
-            surface: rgb(0x151B2B, 0.0),
-            raised: rgb(0x1E2740, 0.86),
-            dim: rgb(0x303851, 1.0),
-            field: rgb(0x1A2132, 1.0),
-            border: rgb(0xFFFFFF, 0.08),
+            panel: rgb(0x08080C, 0.74),
+            surface: rgb(0x0C0C12, 0.0),
+            raised: rgb(0x2A2A36, 0.50),
+            dim: rgb(0x3A3A4A, 0.60),
+            field: rgb(0x000000, 0.30),
+            border: rgb(0xFFFFFF, 0.10),
             text: rgb(0xE3E8FA, 1.0),
             muted: rgb(0x8E96AC, 1.0),
             highlight: rgb(0xFFFFFF, 1.0),
-            accent: rgb(0x2459F5, 1.0),
+            accent: rgb(0x7C3AED, 1.0),
             on_accent: rgb(0xFFFFFF, 1.0),
             star: rgb(0xFFD700, 1.0),
             danger: rgb(0xE5484D, 1.0),

@@ -23,8 +23,22 @@ pub struct Mesh {
     pub indices: Vec<u32>,
 }
 
-/// The feather on every edge, in design units.
+/// The feather on every edge when none is set, in scene units.
 pub const FEATHER: f32 = 1.0;
+
+thread_local! {
+    static FEATHER_NOW: std::cell::Cell<f32> = const { std::cell::Cell::new(FEATHER) };
+}
+
+/// Sets the feather the following meshes use, in scene units. The painter sets one screen pixel's worth so
+/// edges stay crisp however far the scene is scaled up.
+pub fn set_feather(units: f32) {
+    FEATHER_NOW.with(|f| f.set(units.max(1e-3)));
+}
+
+fn feather() -> f32 {
+    FEATHER_NOW.with(std::cell::Cell::get)
+}
 /// Segments along a corner arc of radius `r` (more for bigger corners).
 fn arc_steps(r: f32) -> usize {
     ((r * 0.9).ceil() as usize).clamp(2, 24)
@@ -135,7 +149,7 @@ pub fn filled(rect: Rect, radii: Radii, fill: Fill) -> Mesh {
         }
     };
     // The body is inset by half the feather, the fringe fades from there to half past the edge.
-    let half = FEATHER / 2.0;
+    let half = feather() / 2.0;
     let inner = outline(rect, radii, -half);
     fan(&mut mesh, &inner, &*colour_at);
     let outer = outline(rect, radii, half);
@@ -160,7 +174,7 @@ pub fn bordered(rect: Rect, radii: Radii, border: Border) -> Mesh {
     }
     let c = bytes(border.color);
     let fade = [c[0], c[1], c[2], 0];
-    let half = FEATHER / 2.0;
+    let half = feather() / 2.0;
     let outer_edge = outline(rect, radii, half);
     let outer_body = outline(rect, radii, -half);
     let inner_body = outline(rect, radii, -(border.width - half).max(half));
@@ -180,7 +194,7 @@ pub fn shadowed(rect: Rect, radii: Radii, shadow: Shadow) -> Mesh {
     }
     let moved = Rect::new(rect.x + shadow.offset[0], rect.y + shadow.offset[1], rect.w, rect.h);
     let base = bytes(shadow.color);
-    let blur = shadow.blur.max(FEATHER);
+    let blur = shadow.blur.max(feather());
     // Four rings approximate a smooth falloff: alpha at each distance from the edge.
     let stops = [(0.0, 1.0), (0.33, 0.7), (0.66, 0.27), (1.0, 0.0)];
     let body = outline(moved, radii, -blur * 0.0);

@@ -547,8 +547,12 @@ impl GuiMenu {
         let [w, h] = window_px();
         d.rect(Rect::new(0.0, 0.0, w, h), p.panel, Radii::all(px(RADII.lg)));
 
-        // Sidebar and logo.
+        // Sidebar and logo, divided from the pages by a hairline.
         let side = px(SIDEBAR_WIDTH);
+        // The sidebar is a lighter pane than the pages beside it.
+        let lg = px(RADII.lg);
+        d.rect(Rect::new(0.0, 0.0, side, h), [1.0, 1.0, 1.0, 0.07], Radii { tl: lg, tr: 0.0, br: 0.0, bl: lg });
+        d.rect(Rect::new(side, px(space::M), 0.35, h - px(space::M * 2.0)), [1.0, 1.0, 1.0, 0.12], Radii::default());
         let logo_w = side - px(space::XXL * 2.0);
         let logo = Rect::new(px(space::XXL), px(space::XL), logo_w, logo_w * vantage_ui::brand::SIZE[1] / vantage_ui::brand::SIZE[0]);
         let logo_rect = d.at(logo);
@@ -585,7 +589,7 @@ impl GuiMenu {
 
         // The player at the bottom of the sidebar.
         let foot = Rect::new(px(space::XL), h - px(52.0), side - px(space::XL * 2.0), px(40.0));
-        d.rect(Rect::new(foot.x, foot.y - px(space::S), foot.w, 1.0), [1.0, 1.0, 1.0, 0.08], Radii::default());
+        d.rect(Rect::new(foot.x, foot.y - px(space::S), foot.w, 0.35), [1.0, 1.0, 1.0, 0.10], Radii::default());
         d.rect(Rect::new(foot.x, foot.y, px(32.0), px(32.0)), p.dim, Radii::all(px(RADII.xs)));
         d.line(Rect::new(foot.x + px(42.0), foot.y - px(4.0), foot.w, px(20.0)), "Player", px(text::LABEL.size), p.text, Align::Start);
         d.line(Rect::new(foot.x + px(42.0), foot.y + px(12.0), foot.w, px(16.0)), "Vantage", px(text::CAPTION.size), p.muted, Align::Start);

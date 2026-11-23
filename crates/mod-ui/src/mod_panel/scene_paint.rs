@@ -83,6 +83,8 @@ impl CustomRenderer for SceneRenderer<'_> {
         let origin = [node.dest[0], node.dest[1]];
         // The scene is in the panel's units; one unit is this many logical pixels.
         let scale = canvas.px();
+        // Edges fade over about one screen pixel, so shapes stay crisp at any scale.
+        tess::set_feather(1.0 / scale.max(1e-3));
         let base_clip = canvas.clip().unwrap_or(canvas.screen());
         let mut clips = vec![base_clip];
         let mut fades = vec![1.0_f32];
