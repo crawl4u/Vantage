@@ -176,6 +176,8 @@ enum Hit {
     Back,
     /// A control of a settings page, by its place in this frame's list.
     Act(usize),
+    /// The notifications bell at the foot of the sidebar.
+    Bell,
 }
 
 impl Hit {
@@ -191,6 +193,7 @@ impl Hit {
             Hit::Close => (8, 0),
             Hit::Back => (9, 0),
             Hit::Act(n) => (10, n),
+            Hit::Bell => (11, 0),
         };
         (kind << 32) | n as u64
     }
@@ -208,6 +211,7 @@ impl Hit {
             8 => Hit::Close,
             9 => Hit::Back,
             10 => Hit::Act(n),
+            11 => Hit::Bell,
             _ => return None,
         })
     }
@@ -314,6 +318,13 @@ pub struct GuiMenu {
     hover_seen: Option<Hit>,
     /// The sort switch highlight position (0 custom order, 1 A to Z).
     sort_slide: Spring,
+    /// The page of the sidebar the toolkit draws itself that is open, if one is.
+    virt: Option<usize>,
+    /// Whether the notifications popover is open, and how far it has opened.
+    notes_open: bool,
+    notes: Spring,
+    /// The bell in the sidebar footer.
+    bell: Rect,
     pressed: Option<Hit>,
     /// How lit each card is (0 to 1), easing with the pointer.
     glow: Vec<Spring>,
@@ -379,6 +390,10 @@ impl Default for GuiMenu {
             hover_clock: 0.0,
             hover_seen: None,
             sort_slide: Spring::new(0.0, 22.0),
+            virt: None,
+            notes_open: false,
+            notes: Spring::new(0.0, 22.0),
+            bell: Rect::default(),
             pressed: None,
             glow: Vec::new(),
             content: 0.0,
@@ -414,6 +429,19 @@ fn number(v: f32, step: f32) -> String {
 }
 
 /// A lighter version of a colour, for a hovered accent button.
+/// The notifications bell as polylines in a 24 by 24 box.
+fn bell_contours() -> Vec<Vec<[f32; 2]>> {
+    let arc = |cx: f32, cy: f32, r: f32, from: f32, to: f32, n: usize| -> Vec<[f32; 2]> {
+        (0..=n).map(|i| {
+            let a = (from + (to - from) * i as f32 / n as f32).to_radians();
+            [cx + r * a.cos(), cy + r * a.sin()]
+        }).collect()
+    };
+    let mut body = arc(12.0, 8.0, 6.0, 180.0, 360.0, 14);
+    body.extend([[18.5, 12.5], [21.0, 17.0], [3.0, 17.0], [5.5, 12.5], [6.0, 8.0]]);
+    vec![body, arc(12.0, 19.5, 1.9, 0.0, 180.0, 6)]
+}
+
 fn color_up(c: Rgba) -> Rgba {
     [(c[0] + 0.12).min(1.0), (c[1] + 0.12).min(1.0), (c[2] + 0.12).min(1.0), c[3]]
 }
@@ -436,6 +464,8 @@ impl GuiMenu {
         self.field = None;
         self.last = None;
         self.outgoing = None;
+        self.virt = None;
+        self.notes_open = false;
     }
 
     /// The window's place now: centred, a little low while it fades in.
@@ -474,11 +504,63 @@ impl GuiMenu {
         out
     }
 
+    /// What floats above the page: the notifications popover.
+    fn overlay(&mut self, d: &mut Painter) {
+        let t = self.notes.value().clamp(0.0, 1.0);
+        if t < 0.01 {
+            return;
+        }
+        let p = d.p;
+        let w = px(190.0);
+        let h = px(74.0);
+        let r = Rect::new(self.bell.right() - w + px(6.0), self.bell.y - h - px(10.0) + (1.0 - t) * px(8.0), w, h);
+        d.scene.push(Primitive::PushOpacity(t));
+        d.rect(r, [0.05, 0.05, 0.08, 1.0], Radii::all(px(RADII.sm)));
+        d.ring(r, Radii::all(px(RADII.sm)), 0.3, [1.0, 1.0, 1.0, 0.14]);
+        d.line(Rect::new(r.x + px(14.0), r.y + px(10.0), r.w - px(20.0), px(20.0)), "Notifications", px(text::LABEL.size), p.text, Align::Start);
+        d.line(Rect::new(r.x + px(14.0), r.y + px(34.0), r.w - px(20.0), px(20.0)), "You are all caught up.", px(text::SMALL.size), p.muted, Align::Start);
+        d.scene.push(Primitive::PopOpacity);
+    }
+
+    /// Where a click on a sidebar entry, the back arrow or the bell goes, when the toolkit handles it itself.
+    fn route(&mut self, settings: &Settings, state: &PanelState, hit: Hit) -> Option<Vec<Action>> {
+        match hit {
+            Hit::Nav(n) => {
+                self.notes_open = false;
+                if n == menu_v2::EDIT_HUD {
+                    self.virt = None;
+                    let hud = menu_v2::grid(settings, state).2.into_iter().find(|(name, _)| *name == "HUD").map(|(_, number)| number);
+                    let mut actions = vec![Action::Event("tab_0".to_owned())];
+                    actions.extend(hud.map(|number| Action::Event(format!("flt_{number}"))));
+                    Some(actions)
+                } else if n >= menu_v2::VIRTUAL_BASE {
+                    self.virt = Some(n);
+                    Some(vec![Action::Event("tab_6".to_owned())])
+                } else {
+                    self.virt = None;
+                    None
+                }
+            }
+            Hit::Back if self.virt.is_some() => {
+                self.virt = None;
+                Some(vec![Action::Event("tab_0".to_owned())])
+            }
+            Hit::Bell => {
+                self.notes_open = !self.notes_open;
+                Some(Vec::new())
+            }
+            _ => None,
+        }
+    }
+
     fn lit_amounts(&self) -> Vec<(Hit, f32)> {
         self.hot.iter().map(|(k, s)| (*k, s.value().clamp(0.0, 1.0))).collect()
     }
 
     fn scroll_step(&mut self, input: &Input, tab: usize) {
+        let tab = self.virt.map_or(tab, |n| 1000 + n);
+        self.notes.set_target(if self.notes_open { 1.0 } else { 0.0 });
+        self.notes.step(input.dt);
         self.open.set_target(1.0);
         self.open.step(input.dt);
         self.clock += input.dt;
@@ -585,7 +667,8 @@ impl GuiMenu {
         let click = self.pointer(&scene, &input);
         // A press that became a drag is not a click.
         if let Some(up) = click.filter(|_| !self.dragged) {
-            actions.extend(mods_click(up, &cards, &order, &chips));
+            let routed = self.route(settings, state, up);
+            actions.extend(routed.unwrap_or_else(|| mods_click(up, &cards, &order, &chips)));
         }
         if !input.held {
             self.dragged = false;
@@ -668,13 +751,14 @@ impl GuiMenu {
                 stroke: layer.stroke,
             });
         }
-        let mut y = px(space::XXL * 3.0);
-        for (heading, entries) in menu_v2::sidebar(tab) {
-            d.text(Rect::new(px(space::XXL), y, side, px(20.0)), &heading.to_uppercase(), px(text::CAPTION.size), p.muted, Align::Start);
-            y += px(24.0);
-            for (id, label, glyph, active) in entries {
-                let target = id.strip_prefix("tab_").and_then(|n| n.parse::<usize>().ok()).unwrap_or(0);
-                let row = Rect::new(px(space::XL), y, side - px(space::XL * 2.0), px(36.0));
+        let mut y = px(space::XXL * 3.0 - 6.0);
+        for (heading, entries) in menu_v2::gui_sidebar(tab, self.virt) {
+            if !heading.is_empty() {
+                d.text(Rect::new(px(space::XXL), y, side, px(20.0)), &heading.to_uppercase(), px(text::CAPTION.size), p.muted, Align::Start);
+                y += px(18.0);
+            }
+            for (target, label, glyph, active) in entries {
+                let row = Rect::new(px(space::XL), y, side - px(space::XL * 2.0), px(26.0));
                 let hit = Hit::Nav(target);
                 if active {
                     d.rect(row, p.accent, Radii::all(px(RADII.sm)));
@@ -682,18 +766,25 @@ impl GuiMenu {
                     d.rect(row, [1.0, 1.0, 1.0, 0.07 * d.amount(hit)], Radii::all(px(RADII.sm)));
                 }
                 let ink = if active { p.on_accent } else { p.text };
-                d.icon(Rect::new(row.x + px(space::M), row.y, px(28.0), row.h), glyph, px(30.0), ink);
-                d.line(Rect::new(row.x + px(54.0), row.y, row.w - px(60.0), row.h), label, px(text::LABEL.size), ink, Align::Start);
+                d.icon(Rect::new(row.x + px(space::M), row.y, px(24.0), row.h), glyph, px(24.0), ink);
+                d.line(Rect::new(row.x + px(48.0), row.y, row.w - px(54.0), row.h), label, px(text::LABEL.size), ink, Align::Start);
                 d.region(hit, row);
-                y += px(40.0);
+                y += px(28.0);
             }
-            y += px(space::M);
+            y += px(6.0);
         }
 
         // The player at the bottom of the sidebar.
         let foot = Rect::new(px(space::XL), h - px(52.0), side - px(space::XL * 2.0), px(40.0));
         d.rect(Rect::new(foot.x, foot.y - px(space::S), foot.w, 0.35), [1.0, 1.0, 1.0, 0.10], Radii::default());
-        d.rect(Rect::new(foot.x, foot.y, px(32.0), px(32.0)), p.dim, Radii::all(px(RADII.xs)));
+        d.rect(Rect::new(foot.x, foot.y, px(32.0), px(32.0)), p.dim, Radii::all(px(16.0)));
+        let bell = Rect::new(foot.right() - px(26.0), foot.y + px(3.0), px(26.0), px(26.0));
+        self.bell = bell;
+        let bell_ink = d.hot(Hit::Bell, p.muted, p.text);
+        d.rect(bell, [1.0, 1.0, 1.0, 0.08 * d.amount(Hit::Bell)], Radii::all(px(RADII.xs)));
+        let icon = d.at(Rect::new(bell.x + px(4.0), bell.y + px(4.0), px(18.0), px(18.0)));
+        d.scene.push(Primitive::Path { rect: icon, view: [24.0, 24.0], contours: bell_contours(), color: color(bell_ink), stroke: Some(1.8) });
+        d.region(Hit::Bell, bell);
         d.line(Rect::new(foot.x + px(42.0), foot.y - px(4.0), foot.w, px(20.0)), "Player", px(text::LABEL.size), p.text, Align::Start);
         d.line(Rect::new(foot.x + px(42.0), foot.y + px(12.0), foot.w, px(16.0)), "Vantage", px(text::CAPTION.size), p.muted, Align::Start);
 
@@ -912,6 +1003,7 @@ impl GuiMenu {
                 d.scene.push(Primitive::PopOpacity);
             }
         }
+        self.overlay(&mut d);
         d.scene.push(Primitive::PopOpacity);
         d.scene
     }
@@ -957,7 +1049,10 @@ impl GuiMenu {
                 actions.push(Action::Text { id: id.clone(), text: text.clone(), submit: false });
             }
         }
-        let scene = menu_v2::with_page(settings, state, tab, &mut |page| self.build_page(settings, state, tab, page, input));
+        let scene = match self.virt {
+            Some(n) => menu_v2::with_virtual(settings, state, n, &mut |page| self.build_page(settings, state, tab, page, input)),
+            None => menu_v2::with_page(settings, state, tab, &mut |page| self.build_page(settings, state, tab, page, input)),
+        };
         let scene = self.finish(scene);
         let was_pressed = self.pressed;
         let click = self.pointer(&scene, &input);
@@ -996,7 +1091,9 @@ impl GuiMenu {
         }
         let _ = was_pressed;
         if let Some(up) = click {
+            let routed = self.route(settings, state, up);
             actions.extend(match up {
+                _ if routed.is_some() => routed.unwrap_or_default(),
                 Hit::Act(n) => match self.acts.get(n) {
                     Some(Act::Toggle { id, on }) => vec![Action::EventValue(id.clone(), if *on { 0.0 } else { 1.0 })],
                     Some(Act::Press(id)) => vec![Action::Event(id.clone())],
@@ -1017,8 +1114,35 @@ impl GuiMenu {
         let p = Palette::dark();
         let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts() };
         d.scene.push(Primitive::PushOpacity(self.open.value()));
-        let pane = self.shell(&mut d, page.title, tab, "Search options...", state.option_query());
+        // An element page is titled with the element, by Vantage, with its Style and Layout pages as sub-tabs.
+        let sub_tabs = matches!(tab, 1 | 2) && self.virt.is_none();
+        let title = if sub_tabs && !page.element.is_empty() { page.element } else { page.title };
+        let pane = self.shell(&mut d, title, tab, "Search options...", state.option_query());
         self.acts.clear();
+        let pane = if sub_tabs {
+            let chip_h = px(28.0);
+            let title_w = title.chars().count() as f32 * px(text::HEADING.size) * 0.56;
+            d.line(Rect::new(pane[0] + px(space::XXL) + title_w + px(10.0), px(space::XL), px(120.0), px(28.0)), "by Vantage", px(text::CAPTION.size), p.muted, Align::Start);
+            let mut x = pane[0];
+            for (target, name, glyph) in [(2, "Style", icons::PALETTE), (1, "Layout", icons::GRID_3X3)] {
+                let cw = name.chars().count() as f32 * px(text::LABEL.size) * 0.62 * 0.84 + px(46.0);
+                let r = Rect::new(x, pane[1], cw, chip_h);
+                let hit = Hit::Nav(target);
+                let on = tab == target;
+                d.rect(r, if on { p.accent } else { d.hot(hit, p.raised, p.dim) }, Radii::all(px(RADII.xs)));
+                if !on {
+                    d.ring(r, Radii::all(px(RADII.xs)), 0.3, [1.0, 1.0, 1.0, 0.10]);
+                }
+                let ink = if on { p.on_accent } else { p.text };
+                d.icon(Rect::new(r.x + px(space::S), r.y, px(18.0), r.h), glyph, px(20.0), ink);
+                d.line(Rect::new(r.x + px(26.0), r.y, r.w - px(26.0), r.h), name, px(text::LABEL.size), ink, Align::Centre);
+                d.region(hit, r);
+                x += cw + px(space::XS);
+            }
+            [pane[0], pane[1] + chip_h + px(space::L), pane[2], pane[3] - chip_h - px(space::L)]
+        } else {
+            pane
+        };
 
         // The Crosshair page has a preview card beside its rows.
         let side = if tab == 5 { px(160.0) + px(space::L) } else { 0.0 };
@@ -1086,6 +1210,7 @@ impl GuiMenu {
                 d.region(hit, r);
             }
         }
+        self.overlay(&mut d);
         d.scene.push(Primitive::PopOpacity);
         d.scene
     }
@@ -1247,7 +1372,7 @@ fn mods_click(hit: Hit, cards: &[vantage_ui::mods::Card<'_>], order: &[usize], c
         Hit::Nav(tab) => one(format!("tab_{tab}")),
         Hit::Back => one("back".to_owned()),
         Hit::Close => vec![Action::Close],
-        Hit::Act(_) => Vec::new(),
+        Hit::Act(_) | Hit::Bell => Vec::new(),
     }
 }
 

@@ -101,6 +101,74 @@ const SIDEBAR: [(&str, &[(usize, &str)]); 2] = [
     ("Menu", &[(6, "General"), (8, "Credits")]),
 ];
 
+/// The first number of the sidebar entries that no tab backs: the toolkit draws those pages itself.
+pub const VIRTUAL_BASE: usize = 100;
+/// The sidebar entry that opens the Mods page filtered to the HUD elements, where each is placed and styled.
+pub const EDIT_HUD: usize = 100;
+const KEYBINDS: usize = 101;
+const SCREENSHOTS: usize = 102;
+const THEMES: usize = 103;
+const WARDROBE: usize = 104;
+const PREFERENCES: usize = 105;
+const CHANGELOG: usize = 106;
+
+/// A sidebar entry as `(target, title, icon, active)`: a tab number, or a number from `VIRTUAL_BASE` up.
+pub type GuiEntry = (usize, &'static str, &'static str, bool);
+
+/// The toolkit's sidebar: each group's heading (empty for none) and entries, with the page open for `tab` (or
+/// the toolkit's own page `virt`) lit.
+#[must_use]
+pub fn gui_sidebar(tab: usize, virt: Option<usize>) -> Vec<(&'static str, Vec<GuiEntry>)> {
+    let on = |target: usize| virt.map_or(target == tab, |v| v == target);
+    let entry = |target: usize, title: &'static str, icon: &'static str| (target, title, icon, on(target));
+    vec![
+        ("", vec![entry(EDIT_HUD, "Edit HUD", icons::SQUARE_DASHED)]),
+        (
+            "Mods and options",
+            vec![
+                entry(0, "Mods", icons::LAYERS),
+                entry(7, "Profiles", icons::PACKAGE),
+                entry(KEYBINDS, "Keybinds", icons::KEYBOARD),
+                entry(SCREENSHOTS, "Screenshots", icons::CAMERA),
+                entry(17, "Waypoints", icons::MAP_PIN),
+                entry(26, "Sharing", icons::CLOUD),
+            ],
+        ),
+        (
+            "Personalization",
+            vec![entry(THEMES, "Themes", icons::PALETTE), entry(WARDROBE, "Wardrobe", icons::SPARKLE), entry(PREFERENCES, "Preferences", icons::SETTINGS)],
+        ),
+        ("Vantage", vec![entry(CHANGELOG, "Changelog", icons::REWIND), entry(8, "Credits", icons::HEART)]),
+    ]
+}
+
+/// A page the toolkit draws that no tab backs (Keybinds and Preferences split the General tab's groups).
+pub fn with_virtual<R>(settings: &Settings, state: &PanelState, page: usize, f: &mut dyn FnMut(&PageView<'_>) -> R) -> R {
+    if page == KEYBINDS || page == PREFERENCES {
+        let prefs = page == PREFERENCES;
+        return with_page(settings, state, KEYBINDS_PAGE, &mut |view| {
+            let kept: Vec<Group<'_>> = view.groups.iter().copied().filter(|g| (g.title == APPEARANCE) == prefs).collect();
+            f(&PageView { title: if prefs { "Preferences" } else { "Keybinds" }, groups: &kept, popup: view.popup, picker: view.picker, element: "", has_text: view.has_text })
+        });
+    }
+    let info = |label: &'static str| Opt { id: "note", label, help: None, kind: options::Kind::Info, changed: false };
+    let (title, group, lines): (&str, &str, &[&'static str]) = match page {
+        SCREENSHOTS => ("Screenshots", "Screenshots", &["Screenshots are saved to the game's screenshots folder.", "A browser for them is not part of this menu yet."]),
+        WARDROBE => ("Wardrobe", "Cosmetics", &["Cosmetics are part of your Cinnabar account.", "Choosing and previewing them here is not available yet."]),
+        _ => ("Changelog", "Releases", &["Release notes are published with each release on GitHub."]),
+    };
+    let theme = Opt {
+        id: "menu_light",
+        label: "Light theme",
+        help: Some("Switch the menu between its dark and light looks."),
+        kind: options::Kind::Toggle { on: settings.menu_light },
+        changed: settings.menu_light,
+    };
+    let rows: Vec<Opt<'_>> = if page == THEMES { vec![theme] } else { lines.iter().map(|l| info(l)).collect() };
+    let (title, group) = if page == THEMES { ("Themes", "Theme") } else { (title, group) };
+    f(&PageView { title, groups: &[Group { title: group, collapsed: false, options: &rows }], popup: None, picker: None, element: "", has_text: false })
+}
+
 /// The sidebar entries, each pressing its old tab button, with `active` lit. While an element's Style or
 /// Layout page is open a last group switches between the two.
 fn entries(active: usize) -> Vec<Vec<Entry<'static>>> {
