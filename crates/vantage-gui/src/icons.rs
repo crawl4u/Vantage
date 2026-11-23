@@ -222,7 +222,7 @@ impl Icon {
                 vec![[3.0, 12.5], [12.0, 17.5], [21.0, 12.5]],
                 vec![[3.0, 17.0], [12.0, 22.0], [21.0, 17.0]],
             ],
-            Icon::EditHud => vec![rrect(3.0, 4.0, 18.0, 16.0, 3.5), line([9.5, 4.0], [9.5, 20.0])],
+            Icon::EditHud => vec![rrect(3.0, 3.0, 18.0, 18.0, 3.5), line([9.5, 3.0], [9.5, 21.0])],
             Icon::Sliders => vec![
                 line([3.0, 8.0], [5.6, 8.0]),
                 circle(8.0, 8.0, 2.4),
@@ -337,7 +337,7 @@ impl Icon {
             Icon::Speed => vec![vec![[5.5, 6.0], [11.5, 12.0], [5.5, 18.0]], vec![[12.5, 6.0], [18.5, 12.0], [12.5, 18.0]]],
             Icon::Timer => vec![circle(12.0, 13.5, 7.5), line([12.0, 13.5], [15.2, 10.2]), line([9.5, 2.5], [14.5, 2.5]), line([12.0, 2.5], [12.0, 6.0])],
             Icon::Hourglass => vec![closed(vec![[6.0, 3.0], [18.0, 3.0], [18.0, 7.0], [12.0, 12.0], [18.0, 17.0], [18.0, 21.0], [6.0, 21.0], [6.0, 17.0], [12.0, 12.0], [6.0, 7.0]])],
-            Icon::Calendar => vec![rrect(3.5, 5.0, 17.0, 16.0, 3.0), line([3.5, 10.0], [20.5, 10.0]), line([8.0, 2.5], [8.0, 6.5]), line([16.0, 2.5], [16.0, 6.5])],
+            Icon::Calendar => vec![rrect(3.5, 4.5, 17.0, 17.0, 3.0), line([3.5, 10.0], [20.5, 10.0]), line([8.0, 2.5], [8.0, 6.5]), line([16.0, 2.5], [16.0, 6.5])],
             Icon::Angle => vec![line([4.0, 20.0], [21.0, 20.0]), line([4.0, 20.0], [17.5, 6.5]), arc(4.0, 20.0, 9.0, -45.0, 0.0)],
             Icon::Ruler => vec![rrect(2.5, 8.0, 19.0, 8.0, 2.0), line([7.0, 8.0], [7.0, 11.5]), line([11.0, 8.0], [11.0, 12.5]), line([15.0, 8.0], [15.0, 11.5]), line([19.0, 8.0], [19.0, 12.5])],
             Icon::Swords => vec![
@@ -414,7 +414,7 @@ impl Icon {
                     .collect();
                 vec![orbit, circle(12.0, 12.0, 2.8)]
             }
-            Icon::Glass => vec![rrect(4.5, 3.5, 15.0, 17.0, 2.5), line([9.0, 17.0], [16.0, 9.5]), line([7.0, 12.5], [11.0, 8.0])],
+            Icon::Glass => vec![rrect(4.0, 4.0, 16.0, 16.0, 2.5), line([9.0, 16.5], [15.5, 9.5]), line([7.0, 12.0], [11.0, 8.0])],
             Icon::Hash => vec![line([9.0, 4.0], [7.5, 20.0]), line([16.5, 4.0], [15.0, 20.0]), line([4.0, 9.0], [20.0, 9.0]), line([4.5, 15.0], [19.5, 15.0])],
             Icon::Moon => {
                 let mut c = arc(12.0, 12.0, 9.0, 270.0, 0.0);
@@ -433,6 +433,25 @@ impl Icon {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The extent of an icon's strokes as `(width, height)`.
+    fn extent(icon: Icon) -> (f32, f32) {
+        let points: Vec<[f32; 2]> = icon.contours().into_iter().flatten().collect();
+        let range = |axis: usize| {
+            let lo = points.iter().map(|p| p[axis]).fold(f32::MAX, f32::min);
+            let hi = points.iter().map(|p| p[axis]).fold(f32::MIN, f32::max);
+            hi - lo
+        };
+        (range(0), range(1))
+    }
+
+    #[test]
+    fn square_icons_are_square() {
+        for icon in [Icon::EditHud, Icon::Grid, Icon::Chunk, Icon::Box, Icon::Glass, Icon::Brackets] {
+            let (w, h) = extent(icon);
+            assert!((w - h).abs() < 0.01, "{icon:?} is {w} wide and {h} high");
+        }
+    }
 
     #[test]
     fn every_icon_has_strokes_inside_the_grid() {
