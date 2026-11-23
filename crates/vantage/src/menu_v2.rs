@@ -211,17 +211,24 @@ pub const GUI_MENU: bool = true;
 /// The panel the toolkit's pages draw in: one node the host paints the published scene into, sized to fit the
 /// screen like the JSON pages are.
 #[must_use]
-pub fn scene_panel(settings: &Settings) -> String {
+pub fn scene_panel(settings: &Settings, state: &PanelState) -> String {
+    // The search pill is a transparent button over the painted one that opens the host's text editor.
+    let [ww, wh] = vantage_ui::shell::window_px();
+    let pill = crate::gui::search_rect();
+    let offset = [pill.x + pill.w / 2.0 - ww / 2.0, pill.y + pill.h / 2.0 - wh / 2.0];
     serde_json::json!({
         "reference_size": vantage_ui::shell::reference_size(),
         "fill": true,
-        "controls": [],
+        "controls": [{"kind": "text", "id": "module_search", "label": "Search", "value": state.search_text(), "max_chars": 48, "live": true}],
         "surface": {
             "screen": "vantage.scene",
             "document": serde_json::json!({
                 "namespace": "vantage",
                 "scene": {"type": "panel", "size": ["100%", "100%"], "controls": [
-                    {"draw": {"type": "custom", "renderer": "vantage_scene", "size": ["100%", "100%"]}}
+                    {"draw": {"type": "custom", "renderer": "vantage_scene", "size": ["100%", "100%"]}},
+                    {"search": {"type": "button", "size": [pill.w, pill.h], "offset": offset, "anchor_from": "center", "anchor_to": "center",
+                        "controls": [],
+                        "button_mappings": [{"from_button_id": "button.menu_select", "to_button_id": "mod.edit:0", "mapping_type": "pressed"}]}}
                 ]},
             }).to_string(),
             "bindings": backdrop(settings).bindings(),
@@ -481,7 +488,7 @@ pub fn handles(tab: usize) -> bool {
 pub fn page(settings: &Settings, state: &PanelState) -> Option<String> {
     let tab = state.tab_number();
     if tab == MODS_PAGE {
-        return Some(if GUI_MENU { scene_panel(settings) } else { mods_panel(settings, state) });
+        return Some(if GUI_MENU { scene_panel(settings, state) } else { mods_panel(settings, state) });
     }
     if tab == CREDITS_PAGE {
         return Some(credits_panel(settings, state));

@@ -25,6 +25,15 @@ const FONT: &str = "mod_panel_display";
 /// Cards per row, as the JSON Mods page has them.
 const COLUMNS: usize = 4;
 
+/// The search pill, relative to the window's top left.
+#[must_use]
+pub fn search_rect() -> Rect {
+    let [w, _] = window_px();
+    let close = Rect::new(w - px(space::XXL + 28.0), px(space::XL), px(28.0), px(28.0));
+    let width = px(200.0);
+    Rect::new(close.x - px(space::M) - width, close.y, width, close.h)
+}
+
 /// What the pointer did this frame, in the scene's units (the viewport's top left is the origin).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Input {
@@ -39,6 +48,8 @@ pub struct Input {
     pub dt: f32,
     /// The viewport's size.
     pub viewport: [f32; 2],
+    /// Enter or Escape was pressed, which ends editing the search text.
+    pub dismiss: bool,
 }
 
 /// Something the page wants done.
@@ -108,11 +119,13 @@ pub struct GuiMenu {
     /// The scene's content height last frame, for the scroll limit.
     content: f32,
     view: f32,
+    /// The search text is being edited: the host's editor draws it, so the page does not.
+    searching: bool,
 }
 
 impl Default for GuiMenu {
     fn default() -> Self {
-        Self { scroll: Spring::new(0.0, 22.0), scroll_target: 0.0, hover: None, pressed: None, glow: Vec::new(), content: 0.0, view: 0.0 }
+        Self { scroll: Spring::new(0.0, 22.0), scroll_target: 0.0, hover: None, pressed: None, glow: Vec::new(), content: 0.0, view: 0.0, searching: false }
     }
 }
 
@@ -141,6 +154,18 @@ impl GuiMenu {
             let on = matches!(self.hover, Some(Hit::Card(n) | Hit::Switch(n) | Hit::Star(n) | Hit::Hide(n)) if n == i);
             glow.set_target(if on { 1.0 } else { 0.0 });
             glow.step(input.dt);
+        }
+
+        // A press on the search pill starts editing it (the host's editor opens over it); any other press, or
+        // Enter or Escape, ends it.
+        let origin = window_origin(input.viewport);
+        let pill = search_rect();
+        let on_pill = input.pointer.is_some_and(|p| Rect::new(origin.x + pill.x, origin.y + pill.y, pill.w, pill.h).contains(p));
+        if input.pressed {
+            self.searching = on_pill;
+        }
+        if input.dismiss {
+            self.searching = false;
         }
 
         let scene = self.build(settings, state, &cards, &order, &chips, active_chip, active_sort, input);
@@ -248,7 +273,7 @@ impl GuiMenu {
 
         // Header.
         let pane = vantage_ui::shell::content_rect();
-        label(&mut scene, Rect::new(pane[0], px(space::XL), px(300.0), px(28.0)), "Mods", px(text::HEADING.size), p.highlight, Align::Start);
+        label(&mut scene, Rect::new(pane[0] + px(space::XXL), px(space::XL), px(300.0), px(28.0)), "Mods", px(text::HEADING.size), p.highlight, Align::Start);
         let close = Rect::new(w - px(space::XXL + 28.0), px(space::XL), px(28.0), px(28.0));
         if lit(Hit::Close) {
             rect(&mut scene, close, [1.0, 1.0, 1.0, 0.08], Radii::all(px(RADII.xs)));
@@ -257,9 +282,8 @@ impl GuiMenu {
         scene.region(Hit::Close.id(), at(close));
 
         // The search pill, with a magnifier drawn from a ring and a handle.
-        let pill_w = px(200.0);
-        let pill = Rect::new(close.x - px(space::M) - pill_w, close.y, pill_w, close.h);
-        rect(&mut scene, pill, p.field, Radii::all(px(RADII.xs)));
+        let pill = search_rect();
+        rect(&mut scene, pill, if self.searching { p.dim } else { p.field }, Radii::all(px(RADII.xs)));
         let lens = Rect::new(pill.x + px(space::L), pill.y + (pill.h - px(10.0)) / 2.0 - px(1.0), px(10.0), px(10.0));
         scene.push(Primitive::Rect {
             rect: at(lens),
@@ -275,9 +299,14 @@ impl GuiMenu {
             color: color(p.muted),
             stroke: Some(0.3),
         });
-        label(&mut scene, Rect::new(pill.x + px(30.0), pill.y + (pill.h - px(text::SMALL.size) * 1.5) / 2.0, pill.w - px(36.0), px(text::SMALL.size) * 1.5), "Search mods...", px(text::SMALL.size), p.muted, Align::Start);
+        // The host's editor draws the text while it is edited; otherwise the page shows the query or a hint.
+        if !self.searching {
+            let query = _state.search_text();
+            let (shown, ink) = if query.is_empty() { ("Search mods...", p.muted) } else { (query, p.text) };
+            label(&mut scene, Rect::new(pill.x + px(30.0), pill.y + (pill.h - px(text::SMALL.size) * 1.5) / 2.0, pill.w - px(36.0), px(text::SMALL.size) * 1.5), shown, px(text::SMALL.size), ink, Align::Start);
+        }
         // The back and forward arrows beside the title.
-        icon(&mut scene, Rect::new(pane[0] - px(space::XL), px(space::XL), px(20.0), px(28.0)), icons::CHEVRON_LEFT, px(26.0), p.muted);
+        icon(&mut scene, Rect::new(pane[0] - px(space::S), px(space::XL), px(20.0), px(28.0)), icons::CHEVRON_LEFT, px(26.0), p.muted);
 
         // Chips and the sort segments.
         let chip_y = pane[1];

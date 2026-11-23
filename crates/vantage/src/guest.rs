@@ -2861,6 +2861,7 @@ impl State {
                     wheel: controls.wheel,
                     dt: controls.seconds.clamp(0.0, 0.25),
                     viewport: [layout.width, layout.height],
+                    dismiss: controls.keys_pressed.iter().any(|k| matches!(k.as_str(), "Enter" | "NumpadEnter" | "Escape")),
                 };
                 let (scene, actions) = self.gui.frame(&self.settings, &self.panel, frame);
                 vantage_gui::bridge::publish(scene);
