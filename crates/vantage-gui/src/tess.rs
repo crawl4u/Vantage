@@ -196,6 +196,154 @@ pub fn shadowed(rect: Rect, radii: Radii, shadow: Shadow) -> Mesh {
     mesh
 }
 
+fn area(poly: &[[f32; 2]]) -> f32 {
+    let n = poly.len();
+    (0..n).map(|i| poly[i][0] * poly[(i + 1) % n][1] - poly[(i + 1) % n][0] * poly[i][1]).sum::<f32>() / 2.0
+}
+
+fn inside(poly: &[[f32; 2]], p: [f32; 2]) -> bool {
+    let mut c = false;
+    let n = poly.len();
+    let mut j = n - 1;
+    for i in 0..n {
+        let (a, b) = (poly[i], poly[j]);
+        if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0] {
+            c = !c;
+        }
+        j = i;
+    }
+    c
+}
+
+fn cross(o: [f32; 2], a: [f32; 2], b: [f32; 2]) -> f32 {
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+}
+
+/// Triangulates a simple polygon (counter-clockwise) by clipping ears.
+fn ear_clip(poly: &[[f32; 2]]) -> Vec<[usize; 3]> {
+    let mut idx: Vec<usize> = (0..poly.len()).collect();
+    let mut out = Vec::new();
+    let mut guard = 0;
+    while idx.len() > 3 && guard < poly.len() * poly.len() + 8 {
+        guard += 1;
+        let n = idx.len();
+        let mut clipped = false;
+        for k in 0..n {
+            let (a, b, c) = (idx[(k + n - 1) % n], idx[k], idx[(k + 1) % n]);
+            if cross(poly[a], poly[b], poly[c]) <= 1e-6 {
+                continue;
+            }
+            let blocked = idx.iter().any(|&v| {
+                v != a && v != b && v != c && poly[v] != poly[a] && poly[v] != poly[b] && poly[v] != poly[c] && cross(poly[a], poly[b], poly[v]) >= 0.0 && cross(poly[b], poly[c], poly[v]) >= 0.0 && cross(poly[c], poly[a], poly[v]) >= 0.0
+            });
+            if !blocked {
+                out.push([a, b, c]);
+                idx.remove(k);
+                clipped = true;
+                break;
+            }
+        }
+        if !clipped {
+            idx.remove(0);
+        }
+    }
+    if idx.len() == 3 {
+        out.push([idx[0], idx[1], idx[2]]);
+    }
+    out
+}
+
+/// An even-odd fill of `contours`: each outer outline with the holes inside it, joined to it by a bridge and
+/// triangulated. Contours nested two deep fill again, as even-odd says.
+#[must_use]
+pub fn path_fill(contours: &[Vec<[f32; 2]>], color: Color) -> Mesh {
+    let mut mesh = Mesh::default();
+    let rgba = bytes(color);
+    // Nesting depth of each contour decides outer (even) or hole (odd).
+    let depth: Vec<usize> = contours
+        .iter()
+        .enumerate()
+        .map(|(i, c)| contours.iter().enumerate().filter(|(j, o)| *j != i && o.len() > 2 && inside(o, c[0])).count())
+        .collect();
+    for (i, outer) in contours.iter().enumerate().filter(|(i, c)| depth[*i] % 2 == 0 && c.len() > 2) {
+        let mut poly = outer.clone();
+        if area(&poly) < 0.0 {
+            poly.reverse();
+        }
+        let mut holes: Vec<Vec<[f32; 2]>> = contours
+            .iter()
+            .enumerate()
+            .filter(|(j, h)| depth[*j] == depth[i] + 1 && h.len() > 2 && inside(outer, h[0]))
+            .map(|(_, h)| {
+                let mut h = h.clone();
+                if area(&h) > 0.0 {
+                    h.reverse();
+                }
+                h
+            })
+            .collect();
+        // Join each hole to the outline through its rightmost point, to the nearest outline point.
+        holes.sort_by(|a, b| {
+            let max = |h: &Vec<[f32; 2]>| h.iter().map(|p| p[0]).fold(f32::MIN, f32::max);
+            max(b).total_cmp(&max(a))
+        });
+        for hole in holes {
+            let at = (0..hole.len()).max_by(|&a, &b| hole[a][0].total_cmp(&hole[b][0])).unwrap_or(0);
+            let hp = hole[at];
+            let near = (0..poly.len())
+                .min_by(|&a, &b| {
+                    let d = |p: [f32; 2]| (p[0] - hp[0]).powi(2) + (p[1] - hp[1]).powi(2);
+                    d(poly[a]).total_cmp(&d(poly[b]))
+                })
+                .unwrap_or(0);
+            let mut merged = Vec::with_capacity(poly.len() + hole.len() + 2);
+            merged.extend_from_slice(&poly[..=near]);
+            for k in 0..=hole.len() {
+                merged.push(hole[(at + k) % hole.len()]);
+            }
+            merged.push(poly[near]);
+            merged.extend_from_slice(&poly[near + 1..]);
+            poly = merged;
+        }
+        let base = mesh.vertices.len() as u32;
+        mesh.vertices.extend(poly.iter().map(|p| Vertex { pos: *p, color: rgba }));
+        for t in ear_clip(&poly) {
+            mesh.indices.extend([base + t[0] as u32, base + t[1] as u32, base + t[2] as u32]);
+        }
+    }
+    mesh
+}
+
+/// A stroke of `width` along each contour (closed contours join their ends).
+#[must_use]
+pub fn path_stroke(contours: &[Vec<[f32; 2]>], width: f32, closed: bool, color: Color) -> Mesh {
+    let mut mesh = Mesh::default();
+    let rgba = bytes(color);
+    let half = width / 2.0;
+    for c in contours {
+        let n = c.len();
+        if n < 2 {
+            continue;
+        }
+        let segs = if closed { n } else { n - 1 };
+        for i in 0..segs {
+            let (a, b) = (c[i], c[(i + 1) % n]);
+            let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+            let len = (dx * dx + dy * dy).sqrt();
+            if len < 1e-4 {
+                continue;
+            }
+            let (nx, ny) = (-dy / len * half, dx / len * half);
+            let base = mesh.vertices.len() as u32;
+            for p in [[a[0] + nx, a[1] + ny], [a[0] - nx, a[1] - ny], [b[0] - nx, b[1] - ny], [b[0] + nx, b[1] + ny]] {
+                mesh.vertices.push(Vertex { pos: p, color: rgba });
+            }
+            mesh.indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+        }
+    }
+    mesh
+}
+
 /// The mesh of one drawable primitive (text, icons, clips and opacity are the painter's own business).
 #[must_use]
 pub fn primitive(p: &Primitive) -> Option<Mesh> {
@@ -210,6 +358,14 @@ pub fn primitive(p: &Primitive) -> Option<Mesh> {
                 mesh.append(bordered(*rect, *radii, *border));
             }
             Some(mesh)
+        }
+        Primitive::Path { rect, view, contours, color, stroke } => {
+            let (sx, sy) = (rect.w / view[0].max(1e-3), rect.h / view[1].max(1e-3));
+            let placed: Vec<Vec<[f32; 2]>> = contours.iter().map(|c| c.iter().map(|p| [rect.x + p[0] * sx, rect.y + p[1] * sy]).collect()).collect();
+            Some(match stroke {
+                Some(width) => path_stroke(&placed, width * sx.min(sy), true, *color),
+                None => path_fill(&placed, *color),
+            })
         }
         _ => None,
     }
@@ -269,6 +425,34 @@ mod tests {
         assert!(bounds.right() > rect.right() + 10.0 && bounds.bottom() > rect.bottom() + 10.0);
         let faintest = mesh.vertices.iter().map(|v| v.color[3]).min().unwrap();
         assert_eq!(faintest, 0);
+    }
+
+    fn mesh_area(mesh: &Mesh) -> f32 {
+        mesh.indices
+            .chunks(3)
+            .map(|t| {
+                let (a, b, c) = (mesh.vertices[t[0] as usize].pos, mesh.vertices[t[1] as usize].pos, mesh.vertices[t[2] as usize].pos);
+                ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])).abs() / 2.0
+            })
+            .sum()
+    }
+
+    #[test]
+    fn a_square_with_a_square_hole_fills_the_ring_and_a_concave_shape_is_covered_exactly() {
+        let outer = vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]];
+        let hole = vec![[3.0, 3.0], [7.0, 3.0], [7.0, 7.0], [3.0, 7.0]];
+        let ring = path_fill(&[outer, hole], Color::hex(0xFFFFFF, 1.0));
+        assert!((mesh_area(&ring) - 84.0).abs() < 0.5, "ring area {}", mesh_area(&ring));
+        let l = vec![[0.0, 0.0], [8.0, 0.0], [8.0, 4.0], [4.0, 4.0], [4.0, 8.0], [0.0, 8.0]];
+        let shape = path_fill(&[l], Color::hex(0xFFFFFF, 1.0));
+        assert!((mesh_area(&shape) - 48.0).abs() < 0.1, "L area {}", mesh_area(&shape));
+    }
+
+    #[test]
+    fn a_stroke_has_a_quad_per_segment() {
+        let m = path_stroke(&[vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0]]], 2.0, false, Color::hex(0xFFFFFF, 1.0));
+        assert_eq!(m.indices.len(), 12);
+        assert!((mesh_area(&m) - 40.0).abs() < 0.1);
     }
 
     #[test]

@@ -214,7 +214,18 @@ impl GuiMenu {
         // Sidebar.
         let side = px(SIDEBAR_WIDTH);
         let mut y = px(space::XXL * 3.0);
-        label(&mut scene, Rect::new(px(space::XXL), px(space::XL), side - px(space::XXL * 2.0), px(28.0)), "VANTAGE", px(text::TITLE.size), p.highlight, Align::Start);
+        // The logo, from the brand layers.
+        let logo_w = side - px(space::XXL * 2.0);
+        let logo = Rect::new(px(space::XXL), px(space::XL), logo_w, logo_w * vantage_ui::brand::SIZE[1] / vantage_ui::brand::SIZE[0]);
+        for layer in vantage_ui::brand::LAYERS {
+            scene.push(Primitive::Path {
+                rect: at(logo),
+                view: vantage_ui::brand::SIZE,
+                contours: layer.contours.iter().map(|c| c.to_vec()).collect(),
+                color: Color::hex(layer.rgb, 1.0),
+                stroke: layer.stroke,
+            });
+        }
         for (heading, entries) in menu_v2::sidebar(0) {
             label(&mut scene, Rect::new(px(space::XXL), y, side, px(20.0)), &heading.to_uppercase(), px(text::CAPTION.size), p.muted, Align::Start);
             y += px(24.0);
@@ -244,6 +255,29 @@ impl GuiMenu {
         }
         icon(&mut scene, close, icons::X, px(30.0), p.text);
         scene.region(Hit::Close.id(), at(close));
+
+        // The search pill, with a magnifier drawn from a ring and a handle.
+        let pill_w = px(200.0);
+        let pill = Rect::new(close.x - px(space::M) - pill_w, close.y, pill_w, close.h);
+        rect(&mut scene, pill, p.field, Radii::all(px(RADII.xs)));
+        let lens = Rect::new(pill.x + px(space::L), pill.y + (pill.h - px(10.0)) / 2.0 - px(1.0), px(10.0), px(10.0));
+        scene.push(Primitive::Rect {
+            rect: at(lens),
+            fill: Fill::None,
+            radii: Radii::all(px(5.0)),
+            border: Some(vantage_gui::style::Border { width: px(1.4), color: color(p.muted) }),
+            shadow: None,
+        });
+        scene.push(Primitive::Path {
+            rect: at(Rect::new(lens.right() - px(2.0), lens.bottom() - px(2.0), px(5.0), px(5.0))),
+            view: [1.0, 1.0],
+            contours: vec![vec![[0.0, 0.0], [1.0, 1.0]]],
+            color: color(p.muted),
+            stroke: Some(0.3),
+        });
+        label(&mut scene, Rect::new(pill.x + px(30.0), pill.y + (pill.h - px(text::SMALL.size) * 1.5) / 2.0, pill.w - px(36.0), px(text::SMALL.size) * 1.5), "Search mods...", px(text::SMALL.size), p.muted, Align::Start);
+        // The back and forward arrows beside the title.
+        icon(&mut scene, Rect::new(pane[0] - px(space::XL), px(space::XL), px(20.0), px(28.0)), icons::CHEVRON_LEFT, px(26.0), p.muted);
 
         // Chips and the sort segments.
         let chip_y = pane[1];

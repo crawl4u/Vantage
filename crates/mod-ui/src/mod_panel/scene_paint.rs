@@ -90,7 +90,7 @@ impl CustomRenderer for SceneRenderer<'_> {
         for primitive in &scene.primitives {
             let fade = *fades.last().unwrap_or(&1.0);
             match primitive {
-                Primitive::Rect { .. } => {
+                Primitive::Rect { .. } | Primitive::Path { .. } => {
                     if let Some(mesh) = tess::primitive(primitive)
                         && let Some((mesh, bounds)) = engine_mesh(&mesh, origin, scale, fade, canvas.solid_page())
                     {
@@ -168,7 +168,6 @@ impl CustomRenderer for SceneRenderer<'_> {
                         fades.pop();
                     }
                 }
-                Primitive::Path { .. } => {}
             }
         }
         canvas.group(base_clip)?;
