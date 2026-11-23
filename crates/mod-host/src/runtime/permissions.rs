@@ -49,6 +49,21 @@ mod tests {
     }
 
     #[test]
+    fn a_trusted_mod_is_not_held_to_granted_command_names_or_command_rates() {
+        use super::super::cinnabar::extension::gameplay::Host as _;
+        let state = |grants| State::new(grants, String::new(), super::super::Declared::default());
+        let mut sandboxed = state(ModGrants { commands: vec!["help".into()], ..Default::default() });
+        // A sandboxed mod needs a gameplay frame and a granted name, so neither command goes through.
+        assert!(sandboxed.request_command("/op everyone".into()).unwrap().is_err());
+        let mut trusted = state(ModGrants::trusted(Vec::new()));
+        // Without a gameplay frame even a trusted mod waits, but it is never told it ran out of budget.
+        for _ in 0..100 {
+            let reply = trusted.request_command("/op everyone".into());
+            assert!(reply.is_ok(), "no budget trap for a trusted mod");
+        }
+    }
+
+    #[test]
     fn the_account_is_readable_only_with_its_grant() {
         use super::super::cinnabar::extension::account::Host as _;
         crate::runtime::set_account(Some(crate::runtime::AccountData {

@@ -160,14 +160,15 @@ fn rig_valid(rig: &GameplayCameraRig) -> bool {
 }
 
 /// Accepts `/name args` only for a granted bare name, in printable ASCII.
-fn command_allowed(command: &str, granted: &[String]) -> bool {
+fn command_allowed(command: &str, granted: &[String], trusted: bool) -> bool {
     let Some(body) = command.strip_prefix('/') else {
         return false;
     };
     let name = body.split(' ').next().unwrap_or_default();
-    command.len() <= MAX_COMMAND_BYTES
+    // A trusted mod may send any command; the text itself must still be a line the game can carry.
+    command.len() <= if trusted { 4096 } else { MAX_COMMAND_BYTES }
         && command.bytes().all(|byte| (0x20..0x7f).contains(&byte))
-        && granted.iter().any(|granted| granted == name)
+        && (trusted || granted.iter().any(|granted| granted == name))
 }
 
 fn cue_name_valid(name: &str) -> bool {
@@ -180,7 +181,7 @@ fn cue_name_valid(name: &str) -> bool {
 
 impl cinnabar::extension::events::Host for State {
     fn emit(&mut self, name: String, values: Vec<f32>) -> Result<Result<(), String>> {
-        if self.world.pending_cues.len() >= MAX_CUES_PER_FRAME {
+        if !self.grants.trusted && self.world.pending_cues.len() >= MAX_CUES_PER_FRAME {
             bail!("cue budget exhausted");
         }
         if !cue_valid(&name, &values) {
@@ -549,21 +550,21 @@ impl cinnabar::extension::gameplay::Host for State {
     }
 
     fn request_command(&mut self, command: String) -> Result<Result<(), String>> {
-        if self.world.pending_commands.len() >= MAX_COMMANDS_PER_FRAME {
+        if !self.grants.trusted && self.world.pending_commands.len() >= MAX_COMMANDS_PER_FRAME {
             bail!("command budget exhausted");
         }
-        if self.grants.commands.is_empty() {
+        if self.grants.commands.is_empty() && !self.grants.trusted {
             return Ok(Err("commands capability denied".into()));
         }
         if self.snapshot.is_none() {
             return Ok(Err("commands require a current gameplay frame".into()));
         }
-        if !command_allowed(&command, &self.grants.commands) {
+        if !command_allowed(&command, &self.grants.commands, self.grants.trusted) {
             return Ok(Err(
                 "command is not granted or not short printable text".into()
             ));
         }
-        if self.world.window_sent + self.world.pending_commands.len() >= MAX_COMMANDS_PER_SECOND {
+        if !self.grants.trusted && self.world.window_sent + self.world.pending_commands.len() >= MAX_COMMANDS_PER_SECOND {
             return Ok(Err("command rate limit reached".into()));
         }
         self.world.pending_commands.push(command);
