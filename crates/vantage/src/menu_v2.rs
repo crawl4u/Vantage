@@ -114,73 +114,6 @@ const WARDROBE: usize = 104;
 const PREFERENCES: usize = 105;
 const CHANGELOG: usize = 106;
 
-/// The line icon of mod `id`, drawn by the toolkit so every card's icon has the same size and weight.
-#[must_use]
-pub fn mod_icon(id: &str) -> Icon {
-    match id {
-        "hud_keystrokes" => Icon::Keyboard,
-        "hud_cps" => Icon::Mouse,
-        "hud_fps" => Icon::Gauge,
-        "zoom_on" => Icon::ZoomIn,
-        "hud_armor" => Icon::Shield,
-        "hud_coords" | "gp_wp_on" => Icon::MapPin,
-        "hud_potion" | "hud_potioncount" => Icon::Flask,
-        "hud_ping" => Icon::Signal,
-        "ch_on" => Icon::Crosshair,
-        "fullbright" => Icon::Sun,
-        "hud_facing" => Icon::Compass,
-        "hud_clock" => Icon::Clock,
-        "gp_time_on" => Icon::Moon,
-        "gp_weather_on" => Icon::Cloud,
-        "hud_food" => Icon::Heart,
-        "hud_speed" => Icon::Speed,
-        "hud_stopwatch" => Icon::Timer,
-        "hud_playtime" => Icon::Hourglass,
-        "hud_day" => Icon::Calendar,
-        "hud_viewangles" => Icon::Angle,
-        "hud_reach" => Icon::Ruler,
-        "hud_combo" => Icon::Flame,
-        "hud_totems" => Icon::Totem,
-        "hud_itemcounter" => Icon::Hash,
-        "hud_inventory" => Icon::Backpack,
-        "hud_arraylist" => Icon::List,
-        "hud_chunk" => Icon::Chunk,
-        "hud_slime" | "slime_chunks" | "gp_hit_on" => Icon::Droplet,
-        "hud_monument" | "guardians" => Icon::Diamond,
-        "hud_scoreboard" => Icon::Scoreboard,
-        "hud_target" => Icon::Target,
-        "hud_waila" => Icon::Eye,
-        "hud_height" => Icon::ArrowTop,
-        "hud_subtitles" => Icon::Captions,
-        "hud_pvp" => Icon::Swords,
-        "borders" => Icon::Brackets,
-        "subchunks" => Icon::Layers,
-        "lights" => Icon::Bulb,
-        "blaze" => Icon::Flame,
-        "hitboxes" => Icon::Box,
-        "gp_nametags" => Icon::Tag,
-        "gp_blur_on" => Icon::Rings,
-        "gp_dmg_on" => Icon::Bolt,
-        "gp_no_hurt_cam" => Icon::Camera,
-        "gp_toggle_sprint" => Icon::Sprint,
-        "gp_always_sprint" => Icon::Dash,
-        "gp_toggle_sneak" => Icon::Crouch,
-        "gp_cursor_center" => Icon::Pointer,
-        "item_delay_fix" => Icon::Wrench,
-        "gp_nocam_on" => Icon::Refresh,
-        "gp_noswing_on" => Icon::Mute,
-        "gp_cpslim_on" => Icon::Funnel,
-        "gp_bo_on" => Icon::Cube,
-        "gp_mk_on" => Icon::Flag,
-        "gp_tnt_on" => Icon::Bomb,
-        "gp_th_on" => Icon::TextT,
-        "gp_hive_on" => Icon::Hex,
-        "gp_persp_on" => Icon::Perspective,
-        "gp_glass_on" => Icon::Glass,
-        _ => Icon::Sparkles,
-    }
-}
-
 /// A sidebar entry as `(target, title, icon, active)`: a tab number, or a number from `VIRTUAL_BASE` up.
 pub type GuiEntry = (usize, &'static str, vantage_gui::icons::Icon, bool);
 
@@ -1146,13 +1079,6 @@ fn backdrop(settings: &Settings) -> Backdrop {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn every_mod_has_a_drawn_icon_of_its_own_kind() {
-        for (id, name, _) in crate::menu_controls::MODS {
-            assert_ne!(mod_icon(id), Icon::Sparkles, "{name} has no icon of its own");
-        }
-    }
 
     #[test]
     fn every_mod_has_a_card_with_a_display_name_and_a_known_category() {
