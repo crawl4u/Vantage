@@ -133,6 +133,80 @@ pub struct Views {
     pub chroma: u32,
 }
 
+impl Views {
+    /// Plausible numbers for the Mods page's cards, which show what each element looks like.
+    #[must_use]
+    pub fn preview() -> Self {
+        Self {
+            cps: [12, 8],
+            cps_stats: [87, 14, 320],
+            fps: Some(144),
+            feet: [128, 64, -42],
+            feet_exact: [128.5, 64.0, -41.5],
+            facing: Some(2),
+            yaw: Some(360),
+            overworld: true,
+            slime: Some(true),
+            item_count: 64,
+            potion_count: 12,
+            totems: 3,
+            pvp: [4, 62, 2, 1],
+            sidebar: Some(Sidebar { title: "Scoreboard".to_owned(), rows: vec![("You".to_owned(), 12), ("Them".to_owned(), 9)] }),
+            height_limit: Some(256),
+            clock: Some(12 * 3600 + 30 * 60),
+            ping: Some(24),
+            speed: Some(43),
+            stopwatch: 12,
+            playtime: 5040,
+            reach: Some(320),
+            combo: 5,
+            food: Some([18, 50]),
+            day: Some(12),
+            ..Self::default()
+        }
+    }
+}
+
+/// An element as it looks at its default settings with example numbers: the box it fills, its background
+/// and its lines of text.
+#[derive(Clone, Debug)]
+pub struct Sample {
+    /// The box in unscaled GUI pixels.
+    pub size: [f32; 2],
+    /// The background colour with its opacity as alpha.
+    pub background: [f32; 4],
+    pub rounded: bool,
+    pub shadow: bool,
+    pub lines: Vec<Line>,
+}
+
+/// `element` at its default settings, or none when it has no text to show (keys, items, effects and elements that
+/// need live data such as a target).
+#[must_use]
+pub fn sample(element: Element) -> Option<Sample> {
+    let settings = Settings::default();
+    let lines = lines(element, &Views::preview(), &settings);
+    if lines.iter().all(|l| l.text.is_empty() && l.head.is_none() && l.tail.is_none()) {
+        return None;
+    }
+    let style = settings.style(element);
+    Some(Sample {
+        size: size(&settings, element),
+        background: rgba(style.bg_color, if style.background { style.opacity / 100.0 } else { 0.0 }),
+        rounded: style.rounded,
+        shadow: style.shadow,
+        lines,
+    })
+}
+
+/// The Keystrokes element at its default settings: its keys and their idle colour.
+#[must_use]
+pub fn sample_keys() -> (Vec<Key>, [f32; 4]) {
+    let settings = Settings::default();
+    let style = settings.style(Element::Keystrokes);
+    (keys(&settings), rgba(style.bg_color, if style.background { style.opacity / 100.0 } else { 0.0 }))
+}
+
 /// The server's sidebar as the Scoreboard shows it: the title and the rows (label, score), top to bottom.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Sidebar {

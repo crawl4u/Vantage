@@ -1,7 +1,32 @@
 //! Small renders of a mod's own output, drawn as the icon of its card. Each is built from the same drawing
 //! primitives as the rest of the menu, so it keeps the menu's fonts and stays sharp at any size.
 
+use std::sync::OnceLock;
+
 use super::{Align, Painter, Radii, Rect, Rgba, px};
+use crate::config::Element;
+use crate::hud;
+
+/// The game's own font: it follows the player's texture pack.
+const GAME_FONT: &str = "default";
+
+/// The element whose switch is mod `id`, if the mod is a HUD element.
+fn element_of(id: &str) -> Option<Element> {
+    Element::ALL.iter().copied().find(|e| e.toggle_id() == id)
+}
+
+/// Every element at its defaults with example numbers, worked out once.
+fn sample(element: Element) -> Option<&'static hud::Sample> {
+    static SAMPLES: OnceLock<Vec<Option<hud::Sample>>> = OnceLock::new();
+    SAMPLES.get_or_init(|| Element::ALL.iter().map(|e| hud::sample(*e)).collect())[element.index()].as_ref()
+}
+
+/// How far the HUD is enlarged in a card: every element shares it, as in the game, and only one too wide to fit shrinks.
+const PREVIEW_SCALE: f32 = 1.15;
+
+/// The game font's size for the HUD's text, in unscaled GUI pixels.
+const HUD_TEXT: f32 = 9.0;
+
 
 /// What a mod's preview shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,8 +91,77 @@ const BOX: Rgba = [0.0, 0.0, 0.0, 0.5];
 /// A key, slot or swatch on that box.
 const PART: Rgba = [1.0, 1.0, 1.0, 0.16];
 
+/// Draws the element at its defaults as it looks in the game: its own box, colours and text, in the game's font.
+fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
+    let [bw, bh] = sample.size;
+    let k = (area.w * 0.72 / bw.max(1.0)).min(area.h * 0.8 / bh.max(1.0)).min(PREVIEW_SCALE);
+    let r = Rect::new(area.centre().x - bw * k / 2.0, area.centre().y - bh * k / 2.0, bw * k, bh * k);
+    if sample.background[3] > 0.0 {
+        d.rect(r, sample.background, Radii::all(if sample.rounded { 3.0 * k } else { 0.0 }));
+    }
+    let slot = r.h / sample.lines.len().max(1) as f32;
+    let size = HUD_TEXT * k;
+    for (i, line) in sample.lines.iter().enumerate() {
+        let mut pieces: Vec<(&str, Rgba)> = Vec::new();
+        if let Some((head, color)) = &line.head {
+            pieces.push((head.as_str(), *color));
+        }
+        pieces.push((line.text.as_str(), line.color));
+        if let Some((tail, color)) = &line.tail {
+            pieces.push((tail.as_str(), *color));
+        }
+        let gap = 3.0 * k;
+        let widths: Vec<f32> = pieces.iter().map(|(text, _)| hud::text_width(text) * k).collect();
+        let total = widths.iter().sum::<f32>() + gap * (pieces.len() - 1) as f32;
+        let mut x = r.x + (r.w - total) / 2.0;
+        let y = r.y + i as f32 * slot + (slot - size * 1.5) / 2.0;
+        for ((text, color), width) in pieces.iter().zip(widths) {
+            let cell = Rect::new(x, y, width + 4.0 * k, size * 1.5);
+            if sample.shadow {
+                d.text_in(Rect::new(cell.x + 0.6 * k, cell.y + 0.6 * k, cell.w, cell.h), text, size, [0.0, 0.0, 0.0, 0.55], Align::Start, GAME_FONT);
+            }
+            d.text_in(cell, text, size, *color, Align::Start, GAME_FONT);
+            x += width + gap;
+        }
+    }
+}
+
+/// Draws the Keystrokes element at its defaults: its keys at their real places.
+fn paint_keys(d: &mut Painter, area: Rect) {
+    let (keys, idle) = hud::sample_keys();
+    let right = keys.iter().map(|k| k.rect[0] + k.rect[2]).max().unwrap_or(1) as f32;
+    let bottom = keys.iter().map(|k| k.rect[1] + k.rect[3]).max().unwrap_or(1) as f32;
+    let k = (area.w * 0.62 / right).min(area.h * 0.9 / bottom).min(PREVIEW_SCALE);
+    let (x0, y0) = (area.centre().x - right * k / 2.0, area.centre().y - bottom * k / 2.0);
+    for key in keys {
+        let [x, y, w, h] = key.rect.map(|v| v as f32 * k);
+        let r = Rect::new(x0 + x, y0 + y, w, h);
+        d.rect(r, idle, Radii::all(2.5 * k));
+        let size = HUD_TEXT * k;
+        d.text_in(Rect::new(r.x, r.y + (r.h - size * 1.5) / 2.0, r.w, size * 1.5), &key.label, size, [1.0, 1.0, 1.0, 1.0], Align::Centre, GAME_FONT);
+    }
+}
+
 /// Draws mod `id`'s preview centred in `area` in colour `ink`; false when the mod has none.
 pub(super) fn paint(d: &mut Painter, id: &str, area: Rect, ink: Rgba) -> bool {
+    if let Some(element) = element_of(id) {
+        if element == Element::Keystrokes {
+            paint_keys(d, area);
+            return true;
+        }
+        if let Some(sample) = sample(element) {
+            paint_sample(d, sample, area);
+            return true;
+        }
+    }
+    if id == "ch_on" {
+        // The crosshair as it is drawn at its default settings, at the size it has in the game.
+        let shapes = crate::menu_v2::crosshair_shapes(&crate::config::Settings::default());
+        let side = px(crate::menu_v2::PREVIEW_BOX);
+        let k = (area.h * 0.9 / side).min(1.0);
+        d.preview_shapes(area.centre().x - side * k / 2.0, area.centre().y - side * k / 2.0, k, &shapes);
+        return true;
+    }
     let Some(look) = look(id) else { return false };
     let c = area.centre();
     let size = px(14.0);

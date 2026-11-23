@@ -245,6 +245,8 @@ struct Painter {
     hover: Option<Hit>,
     /// How far each recently hovered region is lit, easing in and out.
     lit_amounts: Vec<(Hit, f32)>,
+    /// The window's size while it opens, as a fraction of its size once open: everything is drawn about its centre.
+    zoom: f32,
 }
 
 impl Painter {
@@ -260,18 +262,44 @@ impl Painter {
     }
 
     fn at(&self, r: Rect) -> Rect {
-        Rect::new(self.origin.x + r.x, self.origin.y + r.y, r.w, r.h)
+        let [w, h] = window_px();
+        let (cx, cy) = (w / 2.0, h / 2.0);
+        let z = self.zoom;
+        Rect::new(self.origin.x + cx + (r.x - cx) * z, self.origin.y + cy + (r.y - cy) * z, r.w * z, r.h * z)
     }
 
     fn lit(&self, h: Hit) -> bool {
         self.hover == Some(h)
     }
 
+    /// The crosshair's shapes, laid out in design units from `(x, y)` and drawn `k` times their size.
+    fn preview_shapes(&mut self, x: f32, y: f32, k: f32, shapes: &[crate::menu_v2::PreviewShape]) {
+        for shape in shapes {
+            match *shape {
+                crate::menu_v2::PreviewShape::Bar { rect, radius, color } => {
+                    self.rect(Rect::new(x + px(rect[0]) * k, y + px(rect[1]) * k, px(rect[2]) * k, px(rect[3]) * k), color, Radii::all(px(radius) * k));
+                }
+                crate::menu_v2::PreviewShape::Ring { centre, outer, inner, color } => {
+                    let r = Rect::new(x + px(centre[0] - outer) * k, y + px(centre[1] - outer) * k, px(outer * 2.0) * k, px(outer * 2.0) * k);
+                    if inner <= 0.0 {
+                        self.rect(r, color, Radii::all(px(outer) * k));
+                    } else {
+                        self.ring(r, Radii::all(px(outer) * k), px(outer - inner) * k, color);
+                    }
+                }
+            }
+        }
+    }
+
     /// An icon centred in `r`, `size` across, in colour `c`.
     fn glyph(&mut self, r: Rect, icon: impl Into<Glyph>, size: f32, c: Rgba) {
         let box_ = self.at(Rect::new(r.x + (r.w - size) / 2.0, r.y + (r.h - size) / 2.0, size, size));
         match icon.into() {
-            Glyph::Font(glyph) => self.icon(r, glyph, size * 1.25, c),
+            Glyph::Font(glyph) => {
+                // The font's glyphs sit right of their cell's centre, so the square moves left to put them on the art's centre line.
+                let square = Rect::new(r.x + (r.w - size) / 2.0 - size * 0.27, r.y + (r.h - size) / 2.0, size, size);
+                self.icon(square, glyph, size * 1.1, c);
+            }
             Glyph::Pixel(art) => {
                 // Each lit run is a one-pixel-high rectangle; all of them go in one hard-edged fill so the
                 // pixels stay square and no seams show between neighbours.
@@ -307,7 +335,13 @@ impl Painter {
 
     fn text(&mut self, r: Rect, s: &str, size: f32, c: Rgba, align: Align) {
         let rect = self.at(r);
-        self.scene.push(Primitive::Text { rect, text: s.to_owned(), size, color: color(c), align, font: FONT });
+        self.scene.push(Primitive::Text { rect, text: s.to_owned(), size: size * self.zoom, color: color(c), align, font: FONT });
+    }
+
+    /// Text in a named font; `"default"` is the game's own font, so it follows the player's texture pack.
+    fn text_in(&mut self, r: Rect, s: &str, size: f32, c: Rgba, align: Align, font: &'static str) {
+        let rect = self.at(r);
+        self.scene.push(Primitive::Text { rect, text: s.to_owned(), size: size * self.zoom, color: color(c), align, font });
     }
 
     /// A line of text vertically centred in a box.
@@ -320,7 +354,7 @@ impl Painter {
     fn icon(&mut self, r: Rect, glyph: &str, size: f32, c: Rgba) {
         let rect = self.at(r);
         if let Some(g) = glyph.chars().next() {
-            self.scene.push(Primitive::Icon { rect, glyph: g, size, color: color(c) });
+            self.scene.push(Primitive::Icon { rect, glyph: g, size: size * self.zoom, color: color(c) });
         }
     }
 
@@ -352,6 +386,8 @@ pub struct GuiMenu {
     sort_slide: Spring,
     /// The page of the sidebar the toolkit draws itself that is open, if one is.
     virt: Option<usize>,
+    /// The menu was asked to close and is animating out; the host closes it once it has.
+    closing: bool,
     /// Whether the notifications popover is open, and how far it has opened.
     notes_open: bool,
     notes: Spring,
@@ -423,6 +459,7 @@ impl Default for GuiMenu {
             hover_seen: None,
             sort_slide: Spring::new(0.0, 22.0),
             virt: None,
+            closing: false,
             notes_open: false,
             notes: Spring::new(0.0, 22.0),
             bell: Rect::default(),
@@ -441,7 +478,7 @@ impl Default for GuiMenu {
             cells: Vec::new(),
             grid_view: Rect::default(),
             dragged: false,
-            open: Spring::new(0.0, 16.0),
+            open: Spring::new(0.0, 30.0),
             field: None,
             clock: 0.0,
         }
@@ -485,12 +522,29 @@ impl GuiMenu {
         self.outgoing = None;
         self.virt = None;
         self.notes_open = false;
+        self.closing = false;
+    }
+
+    /// Starts the close animation; `finished_closing` says when the menu can be taken away.
+    pub fn request_close(&mut self) {
+        self.closing = true;
+    }
+
+    /// Whether the close animation has run out.
+    #[must_use]
+    pub fn finished_closing(&self) -> bool {
+        self.closing && self.open.value() < 0.03
+    }
+
+    /// The window's size now: it grows from a little under its full size as it opens.
+    fn zoom(&self) -> f32 {
+        0.95 + 0.05 * self.open.value().clamp(0.0, 1.0)
     }
 
     /// The window's place now: centred, a little low while it fades in.
     fn window_place(&self, viewport: [f32; 2]) -> Vec2 {
         let o = window_origin(viewport);
-        Vec2::new(o.x, o.y + (1.0 - self.open.value()) * px(14.0))
+        Vec2::new(o.x, o.y + (1.0 - self.open.value()) * px(8.0))
     }
 
     /// Cross-fades from the page that was open to the one now built: the window and sidebar stay, everything
@@ -542,16 +596,14 @@ impl GuiMenu {
     }
 
     /// Where a click on a sidebar entry, the back arrow or the bell goes, when the toolkit handles it itself.
-    fn route(&mut self, settings: &Settings, state: &PanelState, hit: Hit) -> Option<Vec<Action>> {
+    fn route(&mut self, hit: Hit) -> Option<Vec<Action>> {
         match hit {
             Hit::Nav(n) => {
                 self.notes_open = false;
                 if n == menu_v2::EDIT_HUD {
+                    // The HUD editor, the same as pressing the menu key a second time.
                     self.virt = None;
-                    let hud = menu_v2::grid(settings, state).2.into_iter().find(|(name, _)| *name == "HUD").map(|(_, number)| number);
-                    let mut actions = vec![Action::Event("tab_0".to_owned())];
-                    actions.extend(hud.map(|number| Action::Event(format!("flt_{number}"))));
-                    Some(actions)
+                    Some(vec![Action::Event("move".to_owned())])
                 } else if n >= menu_v2::VIRTUAL_BASE {
                     self.virt = Some(n);
                     Some(vec![Action::Event("tab_6".to_owned())])
@@ -580,7 +632,7 @@ impl GuiMenu {
         let tab = self.virt.map_or(tab, |n| 1000 + n);
         self.notes.set_target(if self.notes_open { 1.0 } else { 0.0 });
         self.notes.step(input.dt);
-        self.open.set_target(1.0);
+        self.open.set_target(if self.closing { 0.0 } else { 1.0 });
         self.open.step(input.dt);
         self.clock += input.dt;
         self.page.set_target(1.0);
@@ -686,7 +738,7 @@ impl GuiMenu {
         let click = self.pointer(&scene, &input);
         // A press that became a drag is not a click.
         if let Some(up) = click.filter(|_| !self.dragged) {
-            let routed = self.route(settings, state, up);
+            let routed = self.route(up);
             actions.extend(routed.unwrap_or_else(|| mods_click(up, &cards, &order, &chips)));
         }
         if !input.held {
@@ -796,7 +848,7 @@ impl GuiMenu {
         // The player at the bottom of the sidebar.
         let foot = Rect::new(px(space::XL), h - px(52.0), side - px(space::XL * 2.0), px(40.0));
         d.rect(Rect::new(0.0, foot.y - px(space::S), side, 0.35), [1.0, 1.0, 1.0, 0.12], Radii::default());
-        d.rect(Rect::new(foot.x, foot.y, px(32.0), px(32.0)), p.dim, Radii::all(px(16.0)));
+        d.rect(Rect::new(foot.x, foot.y, px(32.0), px(32.0)), p.dim, Radii::all(px(RADII.xs)));
         let bell = Rect::new(foot.right() - px(26.0), foot.y + px(3.0), px(26.0), px(26.0));
         self.bell = bell;
         let bell_ink = d.hot(Hit::Bell, p.muted, p.text);
@@ -804,7 +856,7 @@ impl GuiMenu {
         d.glyph(bell, Art::Bell, px(20.0), bell_ink);
         d.region(Hit::Bell, bell);
         d.line(Rect::new(foot.x + px(42.0), foot.y - px(4.0), foot.w, px(20.0)), "Player", px(text::LABEL.size), p.text, Align::Start);
-        d.line(Rect::new(foot.x + px(42.0), foot.y + px(12.0), foot.w, px(16.0)), "Vantage", px(text::CAPTION.size), p.muted, Align::Start);
+        d.line(Rect::new(foot.x + px(42.0), foot.y + px(12.0), foot.w, px(16.0)), concat!("Vantage ", env!("CARGO_PKG_VERSION")), px(text::CAPTION.size), p.muted, Align::Start);
 
         self.chrome = d.scene.primitives.len();
         // Header: arrow, title, search pill, close.
@@ -840,7 +892,7 @@ impl GuiMenu {
         input: Input,
     ) -> Scene {
         let p = Palette::dark();
-        let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts() };
+        let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts(), zoom: self.zoom() };
         d.scene.push(Primitive::PushOpacity(self.open.value()));
         let pane = self.shell(&mut d, "Mods", crate::menu_controls::MODS_PAGE, "Search mods...", state.search_text());
 
@@ -1136,7 +1188,7 @@ impl GuiMenu {
         }
         let _ = was_pressed;
         if let Some(up) = click {
-            let routed = self.route(settings, state, up);
+            let routed = self.route(up);
             actions.extend(match up {
                 _ if routed.is_some() => routed.unwrap_or_default(),
                 Hit::Act(n) => match self.acts.get(n) {
@@ -1157,7 +1209,7 @@ impl GuiMenu {
 
     fn build_page(&mut self, settings: &Settings, state: &PanelState, tab: usize, page: &menu_v2::PageView<'_>, input: Input) -> Scene {
         let p = Palette::dark();
-        let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts() };
+        let mut d = Painter { scene: Scene::new(), origin: self.window_place(input.viewport), p, hover: self.hover, lit_amounts: self.lit_amounts(), zoom: self.zoom() };
         d.scene.push(Primitive::PushOpacity(self.open.value()));
         // An element page is titled with the element, by Vantage, with its Style and Layout pages as sub-tabs.
         let sub_tabs = matches!(tab, 1 | 2) && self.virt.is_none();
@@ -1271,21 +1323,7 @@ impl GuiMenu {
         let side = px(crate::menu_v2::PREVIEW_BOX);
         let boxr = Rect::new(card.x + (card.w - side) / 2.0, card.y + px(36.0), side, side);
         d.rect(boxr, [0.0, 0.0, 0.0, 0.35], Radii::all(px(RADII.xs)));
-        for shape in shapes {
-            match shape {
-                crate::menu_v2::PreviewShape::Bar { rect, radius, color } => {
-                    d.rect(Rect::new(boxr.x + px(rect[0]), boxr.y + px(rect[1]), px(rect[2]), px(rect[3])), color, Radii::all(px(radius)));
-                }
-                crate::menu_v2::PreviewShape::Ring { centre, outer, inner, color } => {
-                    let r = Rect::new(boxr.x + px(centre[0] - outer), boxr.y + px(centre[1] - outer), px(outer * 2.0), px(outer * 2.0));
-                    if inner <= 0.0 {
-                        d.rect(r, color, Radii::all(px(outer)));
-                    } else {
-                        d.ring(r, Radii::all(px(outer)), px(outer - inner), color);
-                    }
-                }
-            }
-        }
+        d.preview_shapes(boxr.x, boxr.y, 1.0, &shapes);
     }
 
     /// One option as a row card: its name and help on the left, its control on the right.

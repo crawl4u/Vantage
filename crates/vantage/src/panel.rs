@@ -2725,7 +2725,7 @@ mod tests {
         assert!(whole.contains("\"transitions\":{\"#world_blur\":{\"duration\":0.25,\"from\":0,\"exit\":0}"), "{whole}");
         assert!(whole.contains("\"#world_brightness\":{\"duration\":0.25,\"from\":1,\"exit\":1}"), "{whole}");
         let p = patch(&settings, &state);
-        assert!(p.contains("\"#world_blur\":8") && p.contains("\"#world_brightness\":0.7"), "{p}");
+        assert!(p.contains("\"#world_blur\":4") && p.contains("\"#world_brightness\":0.8"), "{p}");
         state.moving = true;
         let m = patch(&settings, &state);
         assert!(m.contains("\"#world_blur\":0") && m.contains("\"#world_brightness\":1,"), "{m}");

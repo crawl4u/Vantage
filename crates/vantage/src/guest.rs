@@ -2813,10 +2813,19 @@ impl State {
             core_toggle(controls.panel_open);
         }
         // A rebound menu key opens and closes the menu (the embedded menu knows the default).
+        // The first press opens the menu, the second opens the HUD editor from it and the third closes the editor.
+        let mut edit_hud = false;
         if !capturing && custom_menu && controls.focused && controls.keys_pressed.iter().any(|k| *k == self.settings.menu_key) {
-            core_toggle(controls.panel_open);
+            if controls.panel_open && !self.panel.moving {
+                edit_hud = true;
+            } else {
+                core_toggle(controls.panel_open);
+            }
         }
         let mut effect = Effect::default();
+        if edit_hud {
+            effect = effect.merge(self.panel.event(&mut self.settings, "move", 1.0));
+        }
         // Mods Core: a click on this mod in its list sets and opens the menu.
         let whole = || crate::panel::build(&self.settings, &self.panel);
         // The whole menu already carries every value, so no patch follows it, and the rest of
@@ -2854,7 +2863,7 @@ impl State {
             effect = effect.merge(self.panel.event(&mut self.settings, &event.id, event.value));
         }
         // The Mods page is drawn by the toolkit: it reads the raw pointer, and its clicks are ordinary menu events.
-        if controls.panel_open && crate::menu_v2::uses_scene(&self.settings, &self.panel, self.panel.tab_number()) {
+        if controls.panel_open && !self.panel.moving && crate::menu_v2::uses_scene(&self.settings, &self.panel, self.panel.tab_number()) {
             if let Some(layout) = panel::read_layout().filter(|layout| layout.scale > 0.0) {
                 let pointer = controls
                     .pointer
@@ -2876,14 +2885,15 @@ impl State {
                     self.gui.page_frame(&self.settings, &self.panel, tab, frame)
                 };
                 vantage_gui::bridge::publish(scene);
+                if self.gui.finished_closing() {
+                    let _ = panel::close();
+                }
                 for action in actions {
                     match action {
                         crate::gui::Action::Event(id) => effect = effect.merge(self.panel.event(&mut self.settings, &id, 1.0)),
                         crate::gui::Action::EventValue(id, value) => effect = effect.merge(self.panel.event(&mut self.settings, &id, value)),
                         crate::gui::Action::Text { id, text, submit } => effect = effect.merge(self.panel.field(&mut self.settings, &id, &text, !submit)),
-                        crate::gui::Action::Close => {
-                            let _ = panel::close();
-                        }
+                        crate::gui::Action::Close => self.gui.request_close(),
                     }
                 }
             }
