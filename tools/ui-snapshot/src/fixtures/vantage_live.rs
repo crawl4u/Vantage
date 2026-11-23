@@ -38,3 +38,64 @@ pub(super) fn choice(tab: usize, id: &str) -> Fixture {
     let panel: Panel = serde_json::from_str(&page).expect("the page is a valid panel");
     Fixture::ModPanel(Box::new(panel), None, None)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The host rejects an invalid page and keeps drawing the old one, so a page that fails here would
+    /// look frozen in the game.
+    fn assert_valid(page: &str, what: &str) {
+        let panel: Panel = serde_json::from_str(page).unwrap_or_else(|e| panic!("{what} is not a panel: {e}"));
+        panel.validate().unwrap_or_else(|e| panic!("{what} is invalid: {e}"));
+    }
+
+    #[test]
+    fn every_page_the_redesign_draws_is_a_valid_panel_to_the_host() {
+        for tab in 0..vantage::menu_controls::TABS.len() {
+            if !menu_v2::handles(tab) {
+                continue;
+            }
+            let mut settings = Settings::default();
+            let mut state = PanelState::default();
+            state.event(&mut settings, &format!("tab_{tab}"), 1.0);
+            let page = menu_v2::page(&settings, &state).expect("a handled page");
+            assert_valid(&page, &format!("page {tab}"));
+        }
+    }
+
+    #[test]
+    fn the_colour_picker_and_a_choice_list_are_valid_panels_to_the_host() {
+        let mut settings = Settings::default();
+        let mut state = PanelState::default();
+        state.event(&mut settings, "tab_10", 1.0);
+        state.event(&mut settings, "choose_hit_color", 1.0);
+        assert_valid(&menu_v2::page(&settings, &state).unwrap(), "a choice list");
+        state.event(&mut settings, &format!("pick_{}", vantage::config::CUSTOM_ROW), 1.0);
+        assert_valid(&menu_v2::page(&settings, &state).unwrap(), "the colour picker");
+    }
+
+    #[test]
+    fn the_general_page_is_valid_with_each_keybind_section_open() {
+        let mut settings = Settings::default();
+        let mut state = PanelState::default();
+        state.event(&mut settings, "tab_6", 1.0);
+        let page: serde_json::Value = serde_json::from_str(&menu_v2::page(&settings, &state).unwrap()).unwrap();
+        let headings: Vec<String> = page["controls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|c| c["id"].as_str())
+            .filter(|id| id.starts_with("group_"))
+            .map(str::to_owned)
+            .collect();
+        assert!(headings.len() > 3);
+        for heading in headings {
+            let mut settings = Settings::default();
+            let mut state = PanelState::default();
+            state.event(&mut settings, "tab_6", 1.0);
+            state.event(&mut settings, &heading, 1.0);
+            assert_valid(&menu_v2::page(&settings, &state).unwrap(), &format!("General with {heading} open"));
+        }
+    }
+}
