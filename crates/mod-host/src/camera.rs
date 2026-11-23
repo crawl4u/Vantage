@@ -1,4 +1,4 @@
-use super::{MAX_IMPORT_WRITES, State, cinnabar};
+use super::{State, cinnabar};
 use crate::DamageShake;
 use anyhow::{Result, bail};
 use mod_api::native_camera::ViewTilt;
@@ -32,7 +32,7 @@ impl cinnabar::extension::camera::Host for State {
     /// Stages a relative presented heading without changing player look or movement.
     fn set_view_yaw_offset(&mut self, degrees: f32) -> Result<Result<(), String>> {
         self.camera_writes += 1;
-        if self.camera_writes > MAX_IMPORT_WRITES {
+        if self.camera_writes > crate::runtime::max_import_writes() {
             bail!("camera import budget exhausted");
         }
         if self.exclusive.camera {
@@ -56,7 +56,7 @@ impl cinnabar::extension::camera::Host for State {
         view: Option<cinnabar::extension::camera::Perspective>,
     ) -> Result<Result<(), String>> {
         self.camera_writes += 1;
-        if self.camera_writes > MAX_IMPORT_WRITES {
+        if self.camera_writes > crate::runtime::max_import_writes() {
             bail!("camera import budget exhausted");
         }
         if self.exclusive.camera {
@@ -81,7 +81,7 @@ impl cinnabar::extension::camera::Host for State {
         tilt: Option<cinnabar::extension::camera::ViewTilt>,
     ) -> Result<Result<(), String>> {
         self.camera_writes += 1;
-        if self.camera_writes > MAX_IMPORT_WRITES {
+        if self.camera_writes > crate::runtime::max_import_writes() {
             bail!("camera import budget exhausted");
         }
         if self.exclusive.camera {
@@ -106,7 +106,7 @@ impl cinnabar::extension::camera::Host for State {
 
     fn set_view_scale(&mut self, fov_scale: f32, look_scale: f32) -> Result<Result<(), String>> {
         self.camera_writes += 1;
-        if self.camera_writes > MAX_IMPORT_WRITES {
+        if self.camera_writes > crate::runtime::max_import_writes() {
             bail!("camera import budget exhausted");
         }
         if self.exclusive.camera {
@@ -131,7 +131,7 @@ impl cinnabar::extension::camera::Host for State {
     /// and, like a tilt, stays readable while a menu owns input.
     fn read_damage_shake(&mut self) -> Result<Result<Option<DamageShake>, String>> {
         self.gameplay_reads += 1;
-        if self.gameplay_reads > MAX_IMPORT_WRITES {
+        if self.gameplay_reads > crate::runtime::max_import_writes() {
             bail!("gameplay read budget exhausted");
         }
         if !self.grants.camera {
@@ -146,7 +146,7 @@ impl cinnabar::extension::camera::Host for State {
         &mut self,
     ) -> Result<Result<Option<cinnabar::extension::camera::Perspective>, String>> {
         self.gameplay_reads += 1;
-        if self.gameplay_reads > MAX_IMPORT_WRITES {
+        if self.gameplay_reads > crate::runtime::max_import_writes() {
             bail!("gameplay read budget exhausted");
         }
         if !self.grants.camera {

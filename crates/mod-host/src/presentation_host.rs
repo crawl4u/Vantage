@@ -2,7 +2,7 @@
 //! after a successful callback. The client merges every mod's output in load order.
 
 use super::{
-    MAX_IMPORT_WRITES, State,
+    State,
     cinnabar::extension::{presentation as wit, render::Rgba},
 };
 use anyhow::{Result, bail};
@@ -103,7 +103,7 @@ impl PresentationState {
 /// players or entities authority.
 fn admit(state: &mut State, actor_rows: bool) -> Result<Result<(), String>> {
     state.presentation.writes += 1;
-    if state.presentation.writes > MAX_IMPORT_WRITES {
+    if state.presentation.writes > crate::runtime::max_import_writes() {
         bail!("presentation import budget exhausted");
     }
     Ok(if !state.grants.hud {

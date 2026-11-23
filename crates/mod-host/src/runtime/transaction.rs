@@ -68,6 +68,8 @@ impl State {
 
     /// Starts counters and immutable clocks exactly once per invocation, including post-return.
     pub(super) fn begin_callback(&mut self) {
+        // The import call counts that follow are this mod's: a trusted mod is not held to them.
+        super::set_import_writes_for(self.grants.trusted);
         let state = self;
         state.writes = 0;
         state.environment.begin_callback();

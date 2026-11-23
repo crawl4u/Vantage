@@ -1,7 +1,7 @@
 //! Transactional HUD output: the mod's JSON-UI surface, hidden vanilla elements and local
 //! feedback, with no input or world authority.
 
-use super::{MAX_IMPORT_WRITES, State};
+use super::State;
 use anyhow::{Result, bail};
 use std::sync::Arc;
 use ui::mod_hud::{ElementStates, HiddenElements, HudViewport};
@@ -158,7 +158,7 @@ impl HudState {
 /// Charges one HUD import and checks hud authority.
 pub(super) fn admit(state: &mut State) -> Result<Result<(), String>> {
     state.writes += 1;
-    if state.writes > MAX_IMPORT_WRITES {
+    if state.writes > crate::runtime::max_import_writes() {
         bail!("HUD import budget exhausted");
     }
     Ok(if state.grants.hud {

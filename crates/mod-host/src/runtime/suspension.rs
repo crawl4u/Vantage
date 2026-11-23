@@ -214,6 +214,8 @@ impl Instance {
             .as_mut()
             .expect("started frame invocation");
         call.last_polled = Some(slice.frame);
+        // A suspended frame resumes after other mods have run, so its call-count limit is set again.
+        super::set_import_writes_for(call.grants.trusted);
         let polled = poll_slice(
             call.future.get_mut().expect("exclusive continuation"),
             &slice,

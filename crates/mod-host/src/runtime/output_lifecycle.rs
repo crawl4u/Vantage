@@ -58,7 +58,7 @@ impl Environment {
     pub fn write(&mut self) -> anyhow::Result<()> {
         self.writes += 1;
         anyhow::ensure!(
-            self.writes <= super::MAX_IMPORT_WRITES,
+            self.writes <= super::max_import_writes(),
             "environment import budget exhausted"
         );
         Ok(())
@@ -98,7 +98,7 @@ impl Movement {
     pub fn write(&mut self) -> anyhow::Result<()> {
         self.writes += 1;
         anyhow::ensure!(
-            self.writes <= super::MAX_IMPORT_WRITES,
+            self.writes <= super::max_import_writes(),
             "movement import budget exhausted"
         );
         Ok(())

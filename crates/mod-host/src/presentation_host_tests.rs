@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::MAX_IMPORT_WRITES;
 use crate::ModGrants;
 use wit::Host as _;
 

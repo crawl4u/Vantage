@@ -1,6 +1,6 @@
 //! Bounded, transactional mod controls. No import exposes arbitrary files or synthetic button presses.
 
-use super::{MAX_IMPORT_WRITES, State, cinnabar};
+use super::{State, cinnabar};
 use crate::{ControlFrame, InteractionOutput, ModHost, empty_controls};
 use anyhow::{Context, Result, bail, ensure};
 use std::sync::Arc;
@@ -340,7 +340,7 @@ impl ControlState {
             &mut self.writes
         };
         *count += 1;
-        if *count > MAX_IMPORT_WRITES {
+        if *count > crate::runtime::max_import_writes() {
             bail!("controls import budget exhausted");
         }
         Ok(())

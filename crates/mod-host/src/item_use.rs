@@ -1,4 +1,4 @@
-use super::{MAX_IMPORT_WRITES, State, cinnabar};
+use super::{State, cinnabar};
 use anyhow::{Result, bail};
 
 /// A use pulse staged by the running frame callback and published only when it succeeds.
@@ -21,7 +21,7 @@ impl cinnabar::extension::item_use::Host for State {
     /// Stages one use press edge while gameplay owns input and the use control is held.
     fn pulse_use(&mut self) -> Result<Result<(), String>> {
         self.item_use_policy.writes += 1;
-        if self.item_use_policy.writes > MAX_IMPORT_WRITES {
+        if self.item_use_policy.writes > crate::runtime::max_import_writes() {
             bail!("item-use import budget exhausted");
         }
         if !self.grants.item_use {

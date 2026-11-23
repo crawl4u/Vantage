@@ -1,4 +1,4 @@
-use super::{MAX_IMPORT_WRITES, State, cinnabar};
+use super::{State, cinnabar};
 use crate::{
     CameraDelta, GameplayCameraPose, GameplayCameraRig, GameplayControlModes, GameplayFacts,
     GameplayMovementIntents, GameplayMovementSnapshot, GameplaySnapshot, GameplayVector3, ModCue,
@@ -194,7 +194,7 @@ impl cinnabar::extension::events::Host for State {
 
     fn poll(&mut self) -> Result<Vec<ModCue>> {
         self.world.polls += 1;
-        if self.world.polls > MAX_IMPORT_WRITES {
+        if self.world.polls > crate::runtime::max_import_writes() {
             bail!("cue poll budget exhausted");
         }
         Ok(self.world.incoming.clone())
@@ -369,7 +369,7 @@ impl cinnabar::extension::gameplay::Host for State {
     /// The feet position the client last relayed to the server, in a connected world.
     fn read_relayed_position(&mut self) -> Result<Result<Option<GameplayVector3>, String>> {
         self.packet_delay_writes += 1;
-        if self.packet_delay_writes > MAX_IMPORT_WRITES {
+        if self.packet_delay_writes > crate::runtime::max_import_writes() {
             bail!("packet delay import budget exhausted");
         }
         if !self.grants.packet_delay {
@@ -380,7 +380,7 @@ impl cinnabar::extension::gameplay::Host for State {
 
     fn set_packet_delay(&mut self, delay_ms: u32) -> Result<Result<(), String>> {
         self.packet_delay_writes += 1;
-        if self.packet_delay_writes > MAX_IMPORT_WRITES {
+        if self.packet_delay_writes > crate::runtime::max_import_writes() {
             bail!("packet delay import budget exhausted");
         }
         if !self.grants.packet_delay {
@@ -499,7 +499,7 @@ impl cinnabar::extension::gameplay::Host for State {
     /// The presented camera, available with the same grants and frame as `read-frame`.
     fn read_camera(&mut self) -> Result<Result<Option<GameplayCameraPose>, String>> {
         self.gameplay_reads += 1;
-        if self.gameplay_reads > MAX_IMPORT_WRITES {
+        if self.gameplay_reads > crate::runtime::max_import_writes() {
             bail!("gameplay read budget exhausted");
         }
         if !(self.grants.players || self.grants.terrain) {
@@ -516,7 +516,7 @@ impl cinnabar::extension::gameplay::Host for State {
         &mut self,
     ) -> Result<Result<Option<cinnabar::extension::gameplay::Snapshot>, String>> {
         self.gameplay_reads += 1;
-        if self.gameplay_reads > MAX_IMPORT_WRITES {
+        if self.gameplay_reads > crate::runtime::max_import_writes() {
             bail!("gameplay read budget exhausted");
         }
         if !(self.grants.players || self.grants.terrain) {
@@ -527,7 +527,7 @@ impl cinnabar::extension::gameplay::Host for State {
 
     fn set_camera_rig(&mut self, rig: Option<GameplayCameraRig>) -> Result<Result<(), String>> {
         self.camera_writes += 1;
-        if self.camera_writes > MAX_IMPORT_WRITES {
+        if self.camera_writes > crate::runtime::max_import_writes() {
             bail!("camera import budget exhausted");
         }
         if self.exclusive.camera {
@@ -572,7 +572,7 @@ impl cinnabar::extension::gameplay::Host for State {
 
     fn rotate(&mut self, yaw_delta: f32, pitch_delta: f32) -> Result<Result<(), String>> {
         self.camera_writes += 1;
-        if self.camera_writes > MAX_IMPORT_WRITES {
+        if self.camera_writes > crate::runtime::max_import_writes() {
             bail!("camera import budget exhausted");
         }
         if self.exclusive.camera {
@@ -610,7 +610,7 @@ pub(super) fn read_movement(
     state: &mut State,
 ) -> Result<Result<Option<GameplayMovementSnapshot>, String>> {
     state.gameplay_reads += 1;
-    if state.gameplay_reads > MAX_IMPORT_WRITES {
+    if state.gameplay_reads > crate::runtime::max_import_writes() {
         bail!("gameplay read budget exhausted");
     }
     if !state.grants.movement {

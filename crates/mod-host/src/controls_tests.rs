@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::MAX_IMPORT_WRITES;
 use crate::{
     GameplaySnapshot, GameplayVector3, ModGrants,
     runtime::{CALLBACK_FUEL, FRAME_FUEL, Instance, commit_event},

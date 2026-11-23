@@ -41,7 +41,23 @@ wasmtime::component::bindgen!({
     with: { "cinnabar:extension/budget@0.1.0": crate::runtime::budget_host },
 });
 
+/// Imports of one kind a sandboxed callback may call.
 pub(crate) const MAX_IMPORT_WRITES: u32 = 8;
+
+thread_local! {
+    /// The call count the running callback is held to: a trusted mod's is never reached.
+    static IMPORT_WRITES: std::cell::Cell<u32> = const { std::cell::Cell::new(MAX_IMPORT_WRITES) };
+}
+
+/// How many imports of one kind the running callback may call.
+pub(crate) fn max_import_writes() -> u32 {
+    IMPORT_WRITES.with(std::cell::Cell::get)
+}
+
+/// Holds the callbacks that follow to the limit of the mod they belong to.
+pub(crate) fn set_import_writes_for(trusted: bool) {
+    IMPORT_WRITES.with(|limit| limit.set(if trusted { u32::MAX } else { MAX_IMPORT_WRITES }));
+}
 /// Consecutive frame fuel overruns before a local guest loses its session authority.
 pub(crate) const MAX_CONSECUTIVE_FRAME_OVERRUNS: u32 = 3;
 #[path = "budget_host.rs"]
@@ -247,7 +263,7 @@ impl cinnabar::extension::hud::Host for State {
     /// Stages bounded plain text; nothing is published until the guest returns.
     fn set_label(&mut self, text: String) -> Result<Result<(), String>> {
         self.writes += 1;
-        if self.writes > MAX_IMPORT_WRITES {
+        if self.writes > crate::runtime::max_import_writes() {
             bail!("HUD import budget exhausted");
         }
         if text.len() > MAX_LABEL_BYTES || text.chars().any(|c| c.is_control() || c == '§') {

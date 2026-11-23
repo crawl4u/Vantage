@@ -1,5 +1,5 @@
 //! Retained mod touch buttons and the taps queued for their owner's next frame callback.
-use super::{Instance, MAX_IMPORT_WRITES, State, cinnabar::extension::touch as wit};
+use super::{Instance, State, cinnabar::extension::touch as wit};
 use anyhow::{Result, bail};
 use ui::mod_touch::{MAX_QUEUED_TOUCH_PRESSES, TouchButton};
 
@@ -116,7 +116,7 @@ impl TouchState {
 impl wit::Host for State {
     fn set_buttons(&mut self, buttons: Vec<wit::Button>) -> Result<Result<(), String>> {
         self.touch.writes += 1;
-        if self.touch.writes > MAX_IMPORT_WRITES {
+        if self.touch.writes > crate::runtime::max_import_writes() {
             bail!("touch import budget exhausted");
         }
         if !self.grants.controls {
@@ -141,7 +141,7 @@ impl wit::Host for State {
 
     fn read_presses(&mut self) -> Result<Result<Vec<String>, String>> {
         self.touch.reads += 1;
-        if self.touch.reads > MAX_IMPORT_WRITES {
+        if self.touch.reads > crate::runtime::max_import_writes() {
             bail!("touch import budget exhausted");
         }
         if !self.grants.controls {

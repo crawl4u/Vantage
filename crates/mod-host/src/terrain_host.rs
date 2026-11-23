@@ -58,7 +58,7 @@ impl cinnabar::extension::terrain::Host for State {
         after: Option<TerrainStamp>,
     ) -> Result<Result<TerrainReadResult, TerrainReadError>> {
         self.terrain.calls += 1;
-        if self.terrain.calls > super::MAX_IMPORT_WRITES as usize {
+        if self.terrain.calls > super::max_import_writes() as usize {
             bail!("terrain read budget exhausted");
         }
         if !self.grants.terrain {
@@ -109,7 +109,7 @@ impl cinnabar::extension::terrain::Host for State {
         limit: u32,
     ) -> Result<Result<Vec<TerrainPosition>, TerrainReadError>> {
         self.terrain.calls += 1;
-        if self.terrain.calls > super::MAX_IMPORT_WRITES as usize {
+        if self.terrain.calls > super::max_import_writes() as usize {
             bail!("terrain read budget exhausted");
         }
         if !self.grants.terrain {

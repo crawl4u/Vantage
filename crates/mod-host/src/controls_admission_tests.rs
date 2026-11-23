@@ -40,7 +40,7 @@ fn admitted_selection_and_samples_reject_invalid_names_and_overflow() {
     validate_frame(&frame).unwrap();
     state.controls.begin_frame();
     state.controls.frame = frame.clone();
-    for _ in 0..super::MAX_IMPORT_WRITES {
+    for _ in 0..crate::runtime::MAX_IMPORT_WRITES {
         assert_eq!(
             state
                 .read_selected_controls(Selection {

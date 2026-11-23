@@ -1,6 +1,6 @@
 //! Bounded, read-only local player facts with callback-scoped reads and exact content tokens.
 
-use super::{MAX_IMPORT_WRITES, State, cinnabar};
+use super::{State, cinnabar};
 use crate::{PlayerStateItem, PlayerStateSlot, PlayerStateSnapshot};
 use anyhow::{Result, bail, ensure};
 use mod_api::{
@@ -122,7 +122,7 @@ impl PlayerState {
     /// Full snapshot and revision imports consume the same callback read allowance.
     fn read_budget(&mut self) -> Result<()> {
         self.reads += 1;
-        if self.reads > MAX_IMPORT_WRITES {
+        if self.reads > crate::runtime::max_import_writes() {
             bail!("player-state read budget exhausted");
         }
         Ok(())

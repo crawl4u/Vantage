@@ -40,6 +40,15 @@ mod tests {
     }
 
     #[test]
+    fn a_callback_begun_by_a_trusted_mod_is_not_held_to_the_import_call_count() {
+        let state = |grants| State::new(grants, String::new(), super::super::Declared::default());
+        state(ModGrants::trusted(Vec::new())).begin_callback();
+        assert_eq!(crate::runtime::max_import_writes(), u32::MAX);
+        state(ModGrants::default()).begin_callback();
+        assert_eq!(crate::runtime::max_import_writes(), crate::runtime::MAX_IMPORT_WRITES);
+    }
+
+    #[test]
     fn the_account_is_readable_only_with_its_grant() {
         use super::super::cinnabar::extension::account::Host as _;
         crate::runtime::set_account(Some(crate::runtime::AccountData {
