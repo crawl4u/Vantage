@@ -216,7 +216,80 @@ pub fn mods_panel(settings: &Settings, panel_state: &PanelState) -> String {
     let hide = |id: &str| format!("hide_{id}");
     let reorder = |id: &str| format!("move_{id}");
     let ids = Ids { sort: "sort", search: "module_search", chip: &chip, toggle: &toggle, favorite: &favorite, hide: &hide, reorder: &reorder };
+    // A search no mod answers looks through the options of every page instead.
+    if !query.trim().is_empty() && mods::visible(&cards, &state).is_empty() {
+        let hits = option_hits(settings, panel_state, query);
+        if !hits.is_empty() {
+            return option_results_panel(&shell, &hits);
+        }
+    }
     mods::panel(&shell, &cards, &CATEGORIES, &state, &ids).to_string()
+}
+
+/// The pages whose options a search looks through: those not about one chosen element or one long list.
+fn searchable(tab: usize) -> bool {
+    CONVERTED.contains(&tab) && !matches!(tab, 1 | 2 | 7 | 26)
+}
+
+/// A page with options matching `query`, with the names of the first few that do.
+struct PageHit {
+    tab: usize,
+    matches: Vec<&'static str>,
+}
+
+/// The pages with an option whose name has every word of `query`, in page order.
+fn option_hits(settings: &Settings, state: &PanelState, query: &str) -> Vec<PageHit> {
+    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    let defaults = Settings::default();
+    let mut hits = Vec::new();
+    for tab in (0..TABS.len()).filter(|tab| searchable(*tab)) {
+        let matches: Vec<&'static str> = rows_of(settings, state, &defaults, tab)
+            .filter(|row| {
+                let name = row.label.to_lowercase();
+                words.iter().all(|word| name.contains(word.as_str()))
+            })
+            .map(|row| row.label)
+            .collect();
+        if !matches.is_empty() {
+            hits.push(PageHit { tab, matches });
+        }
+    }
+    hits
+}
+
+/// How many matching option names a result lists before it says there are more.
+const RESULT_NAMES: usize = 3;
+
+/// The results of a search that found options but no mod: one row per page, opening that page.
+fn option_results_panel(shell: &Shell<'_>, hits: &[PageHit]) -> String {
+    let ids: Vec<String> = hits.iter().map(|hit| TAB_IDS[hit.tab].to_owned()).collect();
+    let notes: Vec<String> = hits
+        .iter()
+        .map(|hit| {
+            let mut names = hit.matches.iter().take(RESULT_NAMES).copied().collect::<Vec<_>>().join(", ");
+            if hit.matches.len() > RESULT_NAMES {
+                names.push_str(", ...");
+            }
+            names
+        })
+        .collect();
+    let opts: Vec<Opt<'_>> = hits
+        .iter()
+        .zip(&ids)
+        .zip(&notes)
+        .map(|((hit, id), note)| Opt {
+            id,
+            label: TABS.get(hit.tab).copied().unwrap_or("Settings"),
+            help: Some(note),
+            kind: options::Kind::Button { label: "Open" },
+            changed: false,
+        })
+        .collect();
+    let group = [Group { title: "Options", collapsed: false, options: &opts }];
+    let matched = options::search(&group, "");
+    let shown = options::groups_of(&matched);
+    let shell = Shell { title: "Search results", ..*shell };
+    options::panel(&shell, &shown, None, None).to_string()
 }
 
 /// The Credits page.
@@ -769,6 +842,22 @@ mod tests {
                 assert!(!is_furniture(tab, row.id), "{} is furniture", row.id);
             }
         }
+    }
+
+    #[test]
+    fn a_search_no_mod_answers_lists_the_pages_whose_options_match() {
+        let mut settings = Settings::default();
+        let mut state = PanelState::default();
+        state.field(&mut settings, "module_search", "thickness", true);
+        let hits = option_hits(&settings, &state, "thickness");
+        assert!(hits.iter().any(|hit| hit.tab == 5), "the Crosshair page has a thickness option");
+        let page: serde_json::Value = serde_json::from_str(&mods_panel(&settings, &state)).unwrap();
+        let ids: Vec<&str> = page["controls"].as_array().unwrap().iter().filter_map(|c| c["id"].as_str()).collect();
+        assert!(ids.contains(&TAB_IDS[5]) && ids.contains(&"module_search"));
+        // A search a mod answers keeps the grid.
+        state.field(&mut settings, "module_search", "zoom", true);
+        let page: serde_json::Value = serde_json::from_str(&mods_panel(&settings, &state)).unwrap();
+        assert!(page["surface"]["collections"]["mods"].is_object());
     }
 
     #[test]

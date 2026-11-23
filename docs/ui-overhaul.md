@@ -126,5 +126,5 @@ Not built, in the order they should be taken:
    on the converted pages, the Crosshair preview.
 5. (Keybinds: every keybind listed on the General page in collapsible sections, one open at a time, with conflicts noted in a help line; seen live: sections open and close; conflicts and rebinding not exercised. Credits: rebuilt, seen live, with the same attributions. Profiles: the old Config page now on the option rows, seen live as a plain list of slots and buttons, not yet a card list; not exercised beyond opening) Keybinds (grouped, with conflict marking and a keyboard map), Themes (pick,
    light theme, custom editor) and Preferences pages; Config, Credits and Waypoints still on the old design.
-6. Global search results page across all options; notifications; changelog.
+6. (Global search: a search no mod answers lists the pages whose options match, each opening that page; checked offline, typing live not tried) Notifications; changelog.
 7. HUD editor: drag with snapping, grouping, history, vanilla ghosts.

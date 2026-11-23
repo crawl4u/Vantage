@@ -76,6 +76,14 @@ mod tests {
     }
 
     #[test]
+    fn the_search_results_page_is_a_valid_panel_to_the_host() {
+        let mut settings = Settings::default();
+        let mut state = PanelState::default();
+        state.field(&mut settings, "module_search", "opacity", true);
+        assert_valid(&menu_v2::mods_panel(&settings, &state), "the search results");
+    }
+
+    #[test]
     fn the_general_page_is_valid_with_each_keybind_section_open() {
         let mut settings = Settings::default();
         let mut state = PanelState::default();

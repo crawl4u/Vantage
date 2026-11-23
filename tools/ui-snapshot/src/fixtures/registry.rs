@@ -103,6 +103,12 @@ pub(super) const STATES: &[State] = &[
         fixture: || vantage_live::fixture(2, ""),
     },
     State {
+        name: "vantage-search-options",
+        size: SIZE,
+        gui_scale: GUI_SCALE,
+        fixture: || vantage_live::fixture(0, "opacity"),
+    },
+    State {
         name: "vantage-page-general",
         size: SIZE,
         gui_scale: GUI_SCALE,
