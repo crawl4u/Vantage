@@ -591,7 +591,12 @@ pub fn popup_controls(p: &Palette, popup: &Popup<'_>, area: [f32; 4], first: usi
 
 /// The settings page: the shell with the groups as scrolling rows in its pane.
 #[must_use]
-pub fn panel(shell_state: &crate::shell::Shell<'_>, groups: &[Group<'_>], popup: Option<&Popup<'_>>) -> Value {
+pub fn panel(
+    shell_state: &crate::shell::Shell<'_>,
+    groups: &[Group<'_>],
+    popup: Option<&Popup<'_>>,
+    picker: Option<&crate::picker::Picker<'_>>,
+) -> Value {
     let p = shell_state.palette;
     let shell_declared = crate::shell::declared_controls(shell_state);
     let first = shell_declared.len();
@@ -614,6 +619,11 @@ pub fn panel(shell_state: &crate::shell::Shell<'_>, groups: &[Group<'_>], popup:
         let first = declared.len();
         controls.extend(popup_controls(&p, popup, [x, y, w, h], first));
         declared.extend(popup_declared(popup));
+    }
+    if let Some(picker) = picker {
+        let first = declared.len();
+        controls.extend(crate::picker::controls(&p, picker, [x, y, w, h], first));
+        declared.extend(crate::picker::declared(picker));
     }
     let [ww, wh] = crate::shell::window_px();
     let mut bindings = surface_bindings(groups);

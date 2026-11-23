@@ -417,6 +417,15 @@ impl PanelState {
         self.edit.is_some()
     }
 
+    /// What the redesigned colour picker shows while the hex editor is open: the setting's name, hue, saturation and
+    /// brightness, the opacity in percent (none for a colour with no opacity of its own) and the hex digits.
+    pub fn picker_view(&self) -> Option<(&'static str, [f32; 3], Option<u32>, &str)> {
+        let edit = self.edit.as_ref()?;
+        let id = edit.id.strip_prefix("hex:")?;
+        let opacity = self.picker_has_opacity().then(|| 100 - self.transparency.min(100));
+        Some((Self::label_of(id), self.hsv, opacity, edit.text.as_str()))
+    }
+
     /// Whether the hex colour editor is open (its native field sends text events).
     pub fn hex_open(&self) -> bool {
         self.edit.as_ref().is_some_and(|e| e.id.starts_with("hex:"))
@@ -1053,13 +1062,29 @@ impl PanelState {
         }
         if let Some(n) = id.strip_prefix("pick_").and_then(|n| n.parse::<usize>().ok()) {
             return match self.choice.take() {
-                // A colour's Custom row opens the old hex editor, which these pages do not draw: it is not offered.
-                Some(real) if n == CUSTOM_ROW && is_colour(&real) => Effect { republish: true, ..Effect::default() },
                 Some(real) => self.apply(settings, &real, n as f32).merge(Effect { save: true, republish: true, ..Effect::default() }),
                 None => Effect::default(),
             };
         }
         self.choice = None;
+        // The colour picker's square and strips.
+        if matches!(id, "pk_x" | "pk_y" | "pk_hue" | "pk_op") && self.hex_open() {
+            match id {
+                "pk_x" => self.hsv[1] = value.clamp(0.0, 1.0),
+                "pk_y" => self.hsv[2] = 1.0 - value.clamp(0.0, 1.0),
+                "pk_hue" => self.hsv[0] = value.clamp(0.0, 1.0),
+                _ => self.set_transparency(100 - (value.round().clamp(0.0, 100.0) as u32)),
+            }
+            if id != "pk_op" {
+                let [r, g, b] = menu::hsv_rgb(self.hsv[0], self.hsv[1], self.hsv[2]);
+                let rgb = (((r * 255.0).round() as u32) << 16) | (((g * 255.0).round() as u32) << 8) | (b * 255.0).round() as u32;
+                if let Some(edit) = self.edit.as_mut() {
+                    edit.text = format!("{rgb:06X}");
+                    edit.fresh = false;
+                }
+            }
+            return Effect { republish: true, ..Effect::default() };
+        }
         // The redesigned pages' back button returns to the Mods page.
         if id == "back" {
             return self.handle(settings, "tab_0", 1.0);

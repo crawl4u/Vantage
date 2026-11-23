@@ -122,7 +122,7 @@ Not built, in the order they should be taken:
 1. (done) Hide and sort.
 2. (done, seen live in the debug client) Drag a card by its handle to reorder; the order is saved. The lifted card has no floating copy under the pointer yet.
 3. Group headers on the Mods grid that collapse by type.
-4. (rows that show only while their parent option is on, and titled sections on Layout, Style, Zoom and Crosshair: done, seen live) Colour picker (Custom colours), more sections on the other pages
+4. (done, seen live: dependent rows, titled sections on Layout, Style, Zoom and Crosshair, and the colour picker with square, hue and opacity strips, hex field, saved, recent and preset colours; the square drag and typing in the hex field were not exercised live) More sections on the other pages
    on the converted pages, the Crosshair preview.
 5. Profiles (the old setups), Keybinds (grouped, with conflict marking and a keyboard map), Themes (pick,
    light theme, custom editor) and Preferences pages; Config, Credits and Waypoints still on the old design.

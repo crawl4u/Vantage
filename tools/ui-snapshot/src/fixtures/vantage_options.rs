@@ -52,7 +52,7 @@ pub(super) fn fixture(collapsed: bool, query: &'static str) -> Fixture {
         account_note: "Online",
         backdrop: Backdrop::NONE,
     };
-    let panel = options::panel(&shell, &shown, None);
+    let panel = options::panel(&shell, &shown, None, None);
     let panel: Panel = serde_json::from_value(panel).expect("the page is a valid panel");
     Fixture::ModPanel(Box::new(panel), None, None)
 }

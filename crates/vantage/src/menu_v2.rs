@@ -266,9 +266,9 @@ fn referenced(document: usize) -> Vec<usize> {
 
 /// Controls that are the menu's own furniture (tabs, setups, the HUD mover, popups), not options of a page.
 fn is_chrome(id: &str) -> bool {
-    const PREFIXES: [&str; 20] = [
+    const PREFIXES: [&str; 21] = [
         "tab_", "cfg_", "move", "reset_", "edit_", "ed_", "cf_", "dd_", "hex_", "cap_", "cp_", "toast_", "opt_", "lay_", "card_",
-        "flt_", "fav_", "hide_", "move_", "sort",
+        "flt_", "fav_", "hide_", "move_", "pk_", "sort",
     ];
     PREFIXES.iter().any(|prefix| id.starts_with(prefix)) || id == "module_search"
 }
@@ -406,7 +406,7 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
                 Value::Slider(value, min, max, step) => {
                     options::Kind::Slider { value: *value as f32, min: *min as f32, max: *max as f32, step: *step as f32 }
                 }
-                Value::Choice(selected, names) => options::Kind::Choice { options: names, selected: *selected },
+                Value::Choice(selected, names) => options::Kind::Choice { options: names, selected: (*selected).min(names.len().saturating_sub(1)) },
                 Value::Key(key) => options::Kind::Keybind { key },
                 Value::Button(label) => options::Kind::Button { label: label.unwrap_or("Apply") },
                 _ => options::Kind::Info,
@@ -451,14 +451,32 @@ pub fn settings_panel(settings: &Settings, state: &PanelState, tab: usize) -> St
     let open = state.open_choice().and_then(|id| match crate::panel::value(settings, state, id) {
         Value::Choice(selected, names) => {
             let label = rows.iter().find(|row| row.id == id).map_or("", |row| row.label);
-            // A colour's Custom row opens an editor these pages do not draw, so it is not listed.
-            let names = if crate::panel::is_colour(id) && names.last() == Some(&"Custom") { &names[..names.len() - 1] } else { names };
-            Some((label, names, selected))
+            Some((label, names, selected.min(names.len().saturating_sub(1))))
         }
         _ => None,
     });
     let popup = open.map(|(label, names, selected)| options::Popup { title: label, options: names, selected });
-    options::panel(&shell, &shown, popup.as_ref()).to_string()
+    let view = state.picker_view();
+    let picker = view.map(|(title, hsv, opacity, hex)| {
+        let rgb = u32::from_str_radix(hex, 16).unwrap_or(0);
+        crate::menu_v2::picker_data(settings, title, hsv, opacity, hex, rgb)
+    });
+    options::panel(&shell, &shown, popup.as_ref(), picker.as_ref()).to_string()
+}
+
+/// The picker card for the colour being edited.
+fn picker_data<'a>(settings: &'a Settings, title: &'a str, hsv: [f32; 3], opacity: Option<u32>, hex: &'a str, rgb: u32) -> vantage_ui::picker::Picker<'a> {
+    vantage_ui::picker::Picker {
+        title,
+        hsv,
+        opacity,
+        hex,
+        saved: settings.gameplay.favorite_colors.contains(&rgb),
+        recent: &settings.gameplay.recent_colors,
+        favorites: &settings.gameplay.favorite_colors,
+        presets: &crate::menu::PRESETS,
+        to_rgb: crate::menu::hsv_rgb,
+    }
 }
 
 /// The blur and dimming of the world behind the menu.
@@ -644,5 +662,44 @@ mod tests {
         let ids: Vec<&str> = page["controls"].as_array().unwrap().iter().filter_map(|c| c["id"].as_str()).collect();
         assert!(!ids.contains(&"ch_dot_round") && !ids.contains(&"ch_outline_color"));
         assert!(ids.contains(&"ch_dot") && ids.contains(&"ch_outline"));
+    }
+
+    #[test]
+    fn the_custom_row_opens_the_picker_and_its_sliders_set_the_colour_that_apply_keeps() {
+        let mut settings = Settings::default();
+        let mut state = PanelState::default();
+        state.event(&mut settings, "choose_hit_color", 1.0);
+        state.event(&mut settings, &format!("pick_{}", crate::config::CUSTOM_ROW), 1.0);
+        assert!(state.picker_view().is_some(), "the Custom row opens the picker");
+        // Full saturation and brightness at hue 0 is pure red.
+        state.event(&mut settings, "pk_hue", 0.0);
+        state.event(&mut settings, "pk_x", 1.0);
+        state.event(&mut settings, "pk_y", 0.0);
+        assert_eq!(state.picker_view().unwrap().3, "FF0000");
+        state.event(&mut settings, "pk_op", 40.0);
+        assert_eq!(state.picker_view().unwrap().2, Some(40));
+        let before = settings.clone();
+        state.event(&mut settings, "ed_ok", 1.0);
+        assert!(state.picker_view().is_none(), "Apply closes the picker");
+        assert_ne!(settings.hit_color, before.hit_color);
+        assert_eq!(crate::config::color_rgb(settings.hit_color), 0xFF0000);
+    }
+
+    #[test]
+    fn a_preset_picked_in_the_picker_is_kept_by_apply() {
+        let mut settings = Settings::default();
+        let mut state = PanelState::default();
+        state.event(&mut settings, "choose_hit_color", 1.0);
+        state.event(&mut settings, &format!("pick_{}", crate::config::CUSTOM_ROW), 1.0);
+        state.event(&mut settings, "cp_p0", 1.0);
+        state.event(&mut settings, "cp_star", 1.0);
+        state.event(&mut settings, "ed_ok", 1.0);
+        assert!(state.picker_view().is_none());
+        assert_eq!(crate::config::color_rgb(settings.hit_color), 0xC62828);
+        // A custom colour is past the named ones: the page still labels every control.
+        let page: serde_json::Value = serde_json::from_str(&settings_panel(&settings, &state, 10)).unwrap();
+        for control in page["controls"].as_array().unwrap() {
+            assert!(!control["label"].as_str().unwrap_or("x").is_empty(), "{} has no label", control["id"]);
+        }
     }
 }

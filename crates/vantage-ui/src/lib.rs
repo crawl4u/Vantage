@@ -8,5 +8,6 @@ pub mod icons;
 pub mod mods;
 pub mod node;
 pub mod options;
+pub mod picker;
 pub mod shell;
 pub mod tokens;
