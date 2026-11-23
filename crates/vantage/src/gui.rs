@@ -854,7 +854,7 @@ impl GuiMenu {
         for (n, (name, number)) in chips.iter().enumerate() {
             let glyph = match *name {
                 "All" => Glyph::Art(Art::Layers),
-                "Enabled" => Glyph::Line(Icon::Sparkles),
+                "Enabled" => Glyph::Art(Art::CheckCircle),
                 "Favorites" => Glyph::Art(Art::Star),
                 "HUD" => Glyph::Art(Art::Hud),
                 "Visual" => Glyph::Art(Art::Paintbrush),
@@ -894,7 +894,7 @@ impl GuiMenu {
             if n == 0 {
                 d.glyph(r, Art::DotsGrid, px(17.0), ink);
             } else {
-                d.line(r, "Aa", px(text::LABEL.size), ink, Align::Centre);
+                d.glyph(r, Art::Capitalized, px(15.0), ink);
             }
             d.region(hit, r);
             if self.hover == Some(hit) {
@@ -996,7 +996,7 @@ impl GuiMenu {
             if glow > 0.02 {
                 let fade = |c: Rgba| [c[0], c[1], c[2], c[3] * glow];
                 d.glyph(Rect::new(r.x + px(space::M), r.y + px(space::S), px(20.0), px(20.0)), if card.favorite { Art::StarFilled } else { Art::Star }, px(18.0), if card.favorite { fade(p.star) } else { fade(p.muted) });
-                d.glyph(Rect::new(r.x + px(space::M + 22.0), r.y + px(space::S), px(20.0), px(20.0)), Art::Eye, px(18.0), fade(p.muted));
+                d.glyph(Rect::new(r.x + px(space::M + 22.0), r.y + px(space::S), px(20.0), px(20.0)), if card.hidden { Art::EyeOff } else { Art::Eye }, px(18.0), fade(p.muted));
             } else if card.favorite {
                 d.glyph(Rect::new(r.x + px(space::M), r.y + px(space::S), px(20.0), px(20.0)), Art::StarFilled, px(18.0), p.star);
             }
