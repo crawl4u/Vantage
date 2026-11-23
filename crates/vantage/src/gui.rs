@@ -947,13 +947,13 @@ impl GuiMenu {
             // A soft shadow under the icon lifts it off the card, and an enabled card's dot glows.
             let icon_area = Rect::new(r.x, r.y + px(8.0), r.w, r.h - bar_h - px(8.0));
             let centre = icon_area.centre();
-            let halo = d.at(Rect::new(centre.x - px(7.0), centre.y - px(7.0), px(14.0), px(14.0)));
+            let halo = d.at(Rect::new(centre.x - px(3.0), centre.y - px(3.0), px(6.0), px(6.0)));
             d.scene.push(Primitive::Rect {
                 rect: halo,
                 fill: Fill::Solid(Color::rgba(0.0, 0.0, 0.0, 0.0)),
-                radii: Radii::all(px(7.0)),
+                radii: Radii::all(px(3.0)),
                 border: None,
-                shadow: Some(vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(34.0), color: Color::rgba(0.0, 0.0, 0.0, 0.16) }),
+                shadow: Some(vantage_gui::style::Shadow { offset: [0.0, 0.0], blur: px(64.0), color: Color::rgba(0.0, 0.0, 0.0, 0.26) }),
             });
             d.icon(icon_area, card.icon, px(54.0), [0.74, 0.75, 0.88, 1.0]);
             let dot = px(7.0);

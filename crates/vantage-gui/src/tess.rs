@@ -195,13 +195,13 @@ pub fn shadowed(rect: Rect, radii: Radii, shadow: Shadow) -> Mesh {
     let moved = Rect::new(rect.x + shadow.offset[0], rect.y + shadow.offset[1], rect.w, rect.h);
     let base = bytes(shadow.color);
     let blur = shadow.blur.max(feather());
-    // Rings along a smooth bell falloff: alpha at each distance from the edge, easing to nothing without a visible rim.
-    const RINGS: usize = 12;
+    // Rings along a gaussian falloff, many enough to read as one continuous blur.
+    const RINGS: usize = 28;
+    let tail = (-4.5_f32).exp();
     let stops: Vec<(f32, f32)> = (0..=RINGS)
         .map(|i| {
             let d = i as f32 / RINGS as f32;
-            let bell = (1.0 + (std::f32::consts::PI * d).cos()) / 2.0;
-            (d, bell * bell * (3.0 - 2.0 * bell))
+            (d, (((-4.5 * d * d).exp() - tail) / (1.0 - tail)).max(0.0))
         })
         .collect();
     let body = outline(moved, radii, -blur * 0.0);
