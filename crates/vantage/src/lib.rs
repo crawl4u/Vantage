@@ -32,6 +32,7 @@ pub mod menu;
 pub mod gui;
 pub mod menu_v2;
 pub mod menu_link;
+pub mod mod_icons;
 pub mod mods_core;
 pub mod menu_controls;
 pub mod menu_tabset;

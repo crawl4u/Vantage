@@ -117,31 +117,6 @@ const WARDROBE: usize = 104;
 const PREFERENCES: usize = 105;
 const CHANGELOG: usize = 106;
 
-/// The converted icon of mod `id`, where the converted set has one for it. The other mods keep their icon from the
-/// icon font.
-#[must_use]
-pub fn mod_icon(id: &str) -> Option<Art> {
-    Some(match id {
-        "hud_keystrokes" => Art::Keyboard,
-        "fullbright" => Art::Sun,
-        "gp_time_on" => Art::Moon,
-        "gp_weather_on" => Art::Cloud,
-        "hud_arraylist" => Art::Text,
-        "hud_scoreboard" => Art::Clipboard,
-        "hud_waila" => Art::Eye,
-        "hud_pvp" => Art::Combat,
-        "subchunks" => Art::Layers,
-        "borders" => Art::Maximise,
-        "hitboxes" => Art::SelectAll,
-        "gp_dmg_on" => Art::Lightning01,
-        "gp_nocam_on" => Art::Refresh,
-        "item_delay_fix" => Art::Qol,
-        "gp_th_on" => Art::TextInput,
-        "gp_hive_on" => Art::Honeycomb,
-        _ => return None,
-    })
-}
-
 /// A sidebar entry as `(target, title, icon, active)`: a tab number, or a number from `VIRTUAL_BASE` up.
 pub type GuiEntry = (usize, &'static str, Glyph, bool);
 
@@ -1107,17 +1082,6 @@ fn backdrop(settings: &Settings) -> Backdrop {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn converted_mod_icons_are_for_real_mods() {
-        for (id, name, _) in crate::menu_controls::MODS {
-            let _ = (name, mod_icon(id));
-        }
-        for id in ["hud_keystrokes", "gp_hive_on", "fullbright"] {
-            assert!(crate::menu_controls::MODS.iter().any(|m| m.0 == id), "{id} is not a mod");
-            assert!(mod_icon(id).is_some());
-        }
-    }
 
     #[test]
     fn every_mod_has_a_card_with_a_display_name_and_a_known_category() {
