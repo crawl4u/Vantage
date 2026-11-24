@@ -46,6 +46,7 @@ impl MenuRuntime {
             storage_query: self.storage_query.as_str().to_owned(),
             pack_query: self.pack_query.as_str().to_owned(),
             world_query: self.world_query.as_str().to_owned(),
+            server_query: self.server_query.as_str().to_owned(),
             pack_folder_name: self.pack_folder_name.as_str().to_owned(),
             pack_renaming: self.pack_renaming,
             caret: self.caret(),

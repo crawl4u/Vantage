@@ -13,6 +13,8 @@ pub enum Glyph {
     Pixel(&'static crate::pixel_art::PixelArt),
     /// A glyph of the menu's icon font.
     Font(&'static str),
+    /// A line icon from `icon_custom`, by name.
+    Line(&'static str),
 }
 
 impl From<crate::icon_art::Art> for Glyph {

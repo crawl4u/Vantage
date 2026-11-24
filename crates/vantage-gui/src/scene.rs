@@ -27,6 +27,14 @@ pub enum Primitive {
     Pixels { rect: Rect, view: [f32; 2], contours: Vec<Vec<[f32; 2]>>, color: Color },
     /// Open polylines stroked `width` view units wide with round joins and ends, in the box `rect`.
     Line { rect: Rect, view: [f32; 2], contours: Vec<Vec<[f32; 2]>>, color: Color, width: f32 },
+    /// The game's own icon of the item `id` (such as `minecraft:diamond_helmet`) filling `rect`, from whatever pack is
+    /// loaded; nothing where the painter has no icon for it.
+    Item { rect: Rect, id: String },
+    /// The signed-in player's own head, from their current skin, filling `rect`; its corners rounded by `radius`; nothing where the client has none.
+    PlayerHead { rect: Rect, radius: f32 },
+    /// The pack's texture at the game path `path` (such as `textures/ui/speed_effect`) filling `rect`; nothing where
+    /// the pack has none.
+    Texture { rect: Rect, path: String },
     /// Everything until the matching [`Primitive::PopClip`] is cut to `rect`.
     PushClip { rect: Rect, radii: Radii },
     PopClip,

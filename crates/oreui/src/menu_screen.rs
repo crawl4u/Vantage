@@ -542,6 +542,22 @@ impl Screen for OreUiScreen {
                         modal::draw(&mut canvas, view, size, &dialog)?;
                     }
                 }
+                MenuScreen::AddServer if java::selected(view, &canvas) => {
+                    canvas.capture_focus = true;
+                    let rollback = (canvas.nodes.len(), *canvas.next);
+                    for attempt in 0..2 {
+                        java::server_form::draw(&mut canvas, view, size)?;
+                        if !scroll_focus::reveal(&mut canvas, scrolls, view) || attempt == 1 {
+                            break;
+                        }
+                        canvas.nodes.truncate(rollback.0);
+                        *canvas.next = rollback.1;
+                        canvas.hits.clear();
+                        canvas.clear_focus_geometry();
+                        canvas.scrolls.clear();
+                    }
+                    focus = Some(focus_actions(&canvas));
+                }
                 MenuScreen::AddServer => {
                     play::draw_tab(&mut canvas, view, size, artwork, 2)?;
                     canvas.hits.clear();

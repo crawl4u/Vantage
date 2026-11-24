@@ -4,7 +4,7 @@
 //! under that. The tabs choose the list: the player's own servers, featured servers or creator
 //! servers. The selected entry is boxed in grey.
 
-use launcher::menu::{MenuAction, MenuView, PingInfo, pingable, server_list::ServerGroup};
+use launcher::menu::{MenuAction, MenuField, MenuView, PingInfo, pingable, server_list::ServerGroup};
 use ui_engine::engine::screen::PaintError;
 
 use super::{button, font, unit};
@@ -19,11 +19,15 @@ use crate::{
 const ENTRY_WIDTH: f32 = 305.0;
 const ENTRY_STEP: f32 = 36.0;
 const ICON: f32 = 32.0;
-const HEADER: f32 = 50.0;
+const HEADER: f32 = 68.0;
 const FOOTER: f32 = 64.0;
-const TITLE_TOP: f32 = 10.0;
+const TITLE_TOP: f32 = 6.0;
 /// The tabs' top edge, their width and the gap between them.
-const TABS_TOP: f32 = 24.0;
+const TABS_TOP: f32 = 18.0;
+/// The search field under the tabs: its top, height and width.
+const SEARCH_TOP: f32 = 42.0;
+const SEARCH_HEIGHT: f32 = 20.0;
+const SEARCH_WIDTH: f32 = 200.0;
 const TAB_WIDTH: f32 = 98.0;
 const TAB_GAP: f32 = 5.0;
 const TEXT_HEIGHT: f32 = 8.0;
@@ -60,6 +64,7 @@ const PINGING: &str = "sprites/server_list/pinging_1.png";
 /// One server of the list.
 struct Row {
     name: String,
+    address: String,
     message: String,
     ping: Option<PingInfo>,
     pinged: bool,
@@ -68,6 +73,16 @@ struct Row {
     /// The saved server's index, which only saved servers have, so they alone can be edited.
     saved: Option<usize>,
     selected: bool,
+}
+
+impl Row {
+    /// Whether the server's name or address has every whitespace-separated term of `query`, in any case.
+    fn matches(&self, query: &str) -> bool {
+        let haystack = format!("{} {}", self.name, self.address).to_lowercase();
+        query
+            .split_whitespace()
+            .all(|term| haystack.contains(&term.to_lowercase()))
+    }
 }
 
 /// What a tab is called, and what its list says while it is empty.
@@ -96,6 +111,7 @@ fn rows(view: &MenuView, group: ServerGroup) -> Vec<Row> {
             let ping = ping(&server.address);
             Row {
                 name: server.name.clone(),
+                address: server.address.clone(),
                 message: ping
                     .as_ref()
                     .map(|ping| ping.motd.clone())
@@ -119,6 +135,7 @@ fn rows(view: &MenuView, group: ServerGroup) -> Vec<Row> {
             let ping = ping(&server.address);
             Row {
                 name: server.name.clone(),
+                address: server.address.clone(),
                 message: ping
                     .as_ref()
                     .map(|ping| ping.motd.clone())
@@ -133,6 +150,7 @@ fn rows(view: &MenuView, group: ServerGroup) -> Vec<Row> {
             }
         }));
     }
+    rows.retain(|row| row.matches(&view.server_query));
     if !rows.iter().any(|row| row.selected)
         && let Some(first) = rows.first_mut()
     {
@@ -268,6 +286,24 @@ pub(crate) fn draw(
     let join = chosen.map(|row| row.join);
     let saved = chosen.and_then(|row| row.saved);
     tabs(canvas, view, centre, group, unit)?;
+    let search = SEARCH_WIDTH.min(centre * 2.0 - 24.0);
+    let search_left = centre - search / 2.0;
+    crate::widgets::java_field(
+        canvas,
+        view,
+        [
+            search_left,
+            SEARCH_TOP,
+            search_left + search,
+            SEARCH_TOP + SEARCH_HEIGHT,
+        ]
+        .map(|value| value * unit),
+        &view.server_query,
+        "Search...",
+        view.field == Some(MenuField::ServerQuery),
+        Some(MenuAction::SearchServers),
+        unit,
+    )?;
     let top = java_height - FOOTER;
     let place = |x: f32, row: f32, width: f32| {
         [x, top + row, x + width, top + row + BUTTON_HEIGHT].map(|value| value * unit)
@@ -394,7 +430,11 @@ fn list(
     if rows.is_empty() {
         put(
             canvas,
-            tab_text(group).1,
+            if view.server_query.trim().is_empty() {
+                tab_text(group).1
+            } else {
+                "No servers match"
+            },
             [
                 (centre - 80.0) * unit,
                 viewport[1] + (LIST_PADDING + 8.0) * unit,
@@ -443,6 +483,12 @@ fn entry(
         bounds[1] + ICON * unit,
     ];
     canvas.fill(icon, ICON_FILL)?;
+    // Java's picture for a server with no icon of its own.
+    canvas.sprite(
+        &crate::images::java::key(java_resource_pack::menu_files::UNKNOWN_WORLD_ICON),
+        icon,
+        [255; 4],
+    )?;
     let text_left = bounds[0] + (ICON + 3.0) * unit;
     let room = bounds[2] - text_left - (PING[0] + 8.0) * unit;
     put(
@@ -487,7 +533,15 @@ fn entry(
         [255; 4],
     )?;
     canvas.hit(row.select, bounds)?;
-    Ok(())
+    // Java's play arrow over the icon while the pointer is on the entry; pressing it joins the server.
+    super::worlds::play_arrow(
+        canvas,
+        view,
+        row.join,
+        state.hovered || state.focused,
+        icon,
+        unit,
+    )
 }
 
 #[cfg(test)]
@@ -580,5 +634,24 @@ mod tests {
             );
         }
         assert!(rows(&MenuView::new(true, "P".into()), ServerGroup::Creator).is_empty());
+    }
+
+    #[test]
+    fn the_search_needs_every_term_in_a_servers_name_or_address() {
+        let mut view = MenuView::new(true, "Player".into());
+        view.servers = vec![launcher::menu::SavedServer {
+            name: "Tidal PvP".to_owned(),
+            address: "play.tidal.test:19132".to_owned(),
+            favorite: false,
+            last_joined_unix: 0,
+        }]
+        .into();
+        let row = &rows(&view, ServerGroup::Saved)[0];
+        assert!(row.matches("") && row.matches("TIDAL pvp") && row.matches("tidal.test"));
+        assert!(!row.matches("tidal survival"));
+        view.server_query = "nothing".to_owned();
+        assert!(rows(&view, ServerGroup::Saved).is_empty());
+        view.server_query = "pvp".to_owned();
+        assert_eq!(rows(&view, ServerGroup::Saved).len(), 1);
     }
 }

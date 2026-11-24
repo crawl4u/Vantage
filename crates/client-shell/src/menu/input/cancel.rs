@@ -56,6 +56,13 @@ impl MenuRuntime {
             ));
             return;
         }
+        if self.screen == launcher::menu::MenuScreen::Servers
+            && self.dialog.is_none()
+            && !self.server_query.as_str().is_empty()
+        {
+            self.server_query.set_text("");
+            return;
+        }
         if self.screen == launcher::menu::MenuScreen::Play
             && self.dialog.is_none()
             && !self.world_query.as_str().is_empty()

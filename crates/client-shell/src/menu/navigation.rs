@@ -216,6 +216,9 @@ impl MenuRuntime {
         {
             self.death_presentation.return_seconds = Some(0.0);
         }
+        if screen != MenuScreen::Servers {
+            self.server_query.set_text("");
+        }
         if screen != MenuScreen::Play {
             self.world_query.set_text("");
         }

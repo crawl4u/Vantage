@@ -162,6 +162,7 @@ impl Views {
             combo: 5,
             food: Some([18, 50]),
             day: Some(12),
+            waila: Some(crate::waila::sample()),
             ..Self::default()
         }
     }
@@ -186,6 +187,14 @@ pub struct Sample {
     pub compass: Option<Vec<(String, f32)>>,
     /// The box's vertical padding in GUI pixels at size 1.
     pub pad_y: f32,
+    /// The room an icon at the left of the text takes (its size and the gap after it) and the icon's size, in GUI
+    /// pixels at size 1; zero for an element with no icon.
+    pub icon: [f32; 2],
+    /// The item drawn at the left of the text, and the tool's item at the right of the first line.
+    pub item: Option<String>,
+    pub tool: Option<String>,
+    /// The box's outline: its colour and width in GUI pixels at size 1.
+    pub border: Option<([f32; 4], f32)>,
 }
 
 /// `element` at its default settings, or none when it has no text to show (keys, items, effects and elements that
@@ -209,9 +218,19 @@ pub fn sample(element: Element) -> Option<Sample> {
     let [base_w, base_h] = size(&settings, element);
     let k = settings.style(element).scale as f32;
     let widest = if compass.is_some() { 0.0 } else { lines.iter().map(|l| text_width(&format!("{} {} {}", l.head.as_ref().map_or("", |h| h.0.as_str()), l.text, l.tail.as_ref().map_or("", |t| t.0.as_str())).trim().to_owned())).fold(0.0_f32, f32::max) };
-    let fitted = [(widest + 2.0 * PAD_X) * k, (pad_y(style) * 2.0 + ROW_H * lines.len() as f32) * k];
+    let icon = if element == Element::Waila { [WAILA_ICON + WAILA_GAP, WAILA_ICON] } else { [0.0, 0.0] };
+    let fitted = [(widest + icon[0] + 2.0 * PAD_X) * k, (pad_y(style) * 2.0 + (ROW_H * lines.len() as f32).max(icon[1])) * k];
+    let preview = Views::preview();
+    let waila = preview.waila.as_ref().filter(|_| element == Element::Waila);
+    let tool = waila.and_then(|b| b.mining.filter(|_| settings.waila_tool)).map(|m| m.icon());
+    let tool_room = if tool.is_some() { WAILA_TOOL + WAILA_GAP } else { 0.0 };
+    let fitted = [fitted[0] + tool_room * k, fitted[1]];
     Some(Sample {
-        size: [base_w.max(fitted[0]), base_h.max(fitted[1])],
+        item: waila.map(|b| b.icon.clone()),
+        tool,
+        border: (style.border && Settings::has_border(element)).then(|| (rgba(style.border_color, style.border_opacity / 100.0), style.border_width as f32)),
+        icon,
+        size: [fitted[0].max(if icon[0] > 0.0 { 0.0 } else { base_w }), base_h.max(fitted[1])],
         background: rgba(style.bg_color, if style.background { style.opacity / 100.0 } else { 0.0 }),
         rounded: style.rounded,
         shadow: style.shadow,
@@ -225,6 +244,20 @@ pub fn sample(element: Element) -> Option<Sample> {
         lines,
     })
 }
+
+/// How `element` is boxed at its default settings: the background colour with its opacity as alpha, whether the
+/// corners are rounded and whether its text has a shadow.
+#[must_use]
+pub fn sample_box(element: Element) -> ([f32; 4], bool, bool) {
+    let settings = Settings::default();
+    let style = settings.style(element);
+    // Inventory and Potion status always have their box (the style's background switch does not apply to them).
+    let boxed = style.background || matches!(element, Element::Inventory | Element::Potion);
+    (rgba(style.bg_color, if boxed { style.opacity / 100.0 } else { 0.0 }), style.rounded, style.shadow)
+}
+
+/// The Inventory HUD's grid: columns, rows, one cell's side and the room around the cells, in GUI pixels at size 1.
+pub const INVENTORY_GRID: (usize, usize, f32, f32) = (INV_COLS, INV_SLOTS / INV_COLS, INV_CELL, INV_PAD);
 
 /// The Keystrokes element at its default settings: its keys and their idle colour.
 #[must_use]
@@ -1451,7 +1484,7 @@ pub fn any_on(settings: &Settings) -> bool {
 // ---- Resize handles --------------------------------------------------------------------
 
 /// The side of a resize handle's square, in GUI pixels.
-const HANDLE: f32 = 6.0;
+const HANDLE: f32 = 7.0;
 /// How far the editor's frame sits outside what it frames, so it does not touch the text.
 const FRAME_GAP: f32 = 3.0;
 /// The frame and handles' colour: the menu's violet.
@@ -1462,42 +1495,6 @@ const HANDLE_REACH: f32 = 7.0;
 const HANDLE_BINDINGS: [&str; 8] = ["#hp0", "#hp1", "#hp2", "#hp3", "#hp4", "#hp5", "#hp6", "#hp7"];
 /// The binding that places the frame's top left corner.
 const FRAME_BINDING: &str = "#hf";
-/// The editor's two buttons on the frame (Lunar's): the settings gear and the red X that removes the element.
-const GEAR_BINDING: &str = "#hg";
-const REMOVE_BINDING: &str = "#hx";
-/// The side of a button's round badge, in GUI pixels.
-const ICON: f32 = 12.0;
-
-/// Which button of the frame a press took.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FrameButton {
-    Settings,
-    Remove,
-}
-
-/// Where the gear and the X sit for a frame: inside its top corners, or (for a frame too small to hold them)
-/// in a row just above it.
-pub fn button_places(frame: [f32; 4]) -> [[f32; 2]; 2] {
-    let [x, y, w, h] = frame;
-    let icon = ICON;
-    if w >= icon * 2.0 + 4.0 && h >= icon + 4.0 {
-        [[(x + 1.0).round(), (y + 1.0).round()], [(x + w - 1.0 - icon).round(), (y + 1.0).round()]]
-    } else {
-        let top = (y - icon - 1.0).max(0.0).round();
-        [[x.round(), top], [(x + icon + 2.0).round(), top]]
-    }
-}
-
-/// The frame's button under `point`, if any.
-pub fn button_at(frame: [f32; 4], point: [f32; 2]) -> Option<FrameButton> {
-    let places = button_places(frame);
-    let icon = ICON;
-    [FrameButton::Settings, FrameButton::Remove].into_iter().zip(places).find_map(|(button, at)| {
-        let inside = point[0] >= at[0] + 1.0 && point[0] <= at[0] + icon - 1.0 && point[1] >= at[1] + 1.0 && point[1] <= at[1] + icon - 1.0;
-        inside.then_some(button)
-    })
-}
-
 thread_local! {
     /// The visible rectangle of the element the editor shows resize handles on (none: no handles).
     static HANDLES: Cell<Option<[f32; 4]>> = const { Cell::new(None) };
@@ -1505,6 +1502,70 @@ thread_local! {
     static EDGE_HANDLES: Cell<bool> = const { Cell::new(false) };
     /// Whether the lines through the middle of the screen show (while elements are moved).
     static GUIDES: Cell<bool> = const { Cell::new(false) };
+    /// Whether the editor is open, which outlines every element so each can be found and picked.
+    static EDITING: Cell<bool> = const { Cell::new(false) };
+    /// The element under the pointer in the editor, whose outline is brighter, and the others picked with it (a marquee, or
+    /// a group), whose outlines are brighter still.
+    static HOVERED: Cell<Option<usize>> = const { Cell::new(None) };
+    static PICKED: std::cell::RefCell<Vec<usize>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Shows or hides the outline of every element while they are edited. It is part of the layer's document, so a change
+/// needs it written again.
+pub fn set_editing(on: bool) {
+    EDITING.with(|cell| cell.set(on));
+}
+
+/// Tells the editor's outlines which element the pointer is over. It is part of the layer's document, so a change needs it
+/// written again.
+pub fn set_hovered(element: Option<usize>) {
+    HOVERED.with(|cell| cell.set(element));
+}
+
+/// Tells the editor's outlines which elements are picked besides the one wearing the frame.
+pub fn set_picked(elements: &[usize]) {
+    PICKED.with(|cell| {
+        let mut picked = cell.borrow_mut();
+        picked.clear();
+        picked.extend_from_slice(elements);
+    });
+}
+
+/// How strong an element's outline is: faint at rest, brighter under the pointer and brightest once it is picked.
+fn outline_alpha(index: usize) -> (f32, f32) {
+    if PICKED.with(|cell| cell.borrow().contains(&index)) {
+        (0.12, 0.75)
+    } else if HOVERED.with(Cell::get) == Some(index) {
+        (0.07, 0.55)
+    } else {
+        (0.03, 0.22)
+    }
+}
+
+/// A faint outline round every element that is on, except the one wearing the editor's frame (`framed`), so each
+/// can be found on the screen while the editor is open.
+fn idle_outlines(o: &mut String, settings: &Settings, view: [f32; 2], framed: Option<[f32; 4]>) -> bool {
+    let mut wrote = false;
+    for element in Element::ALL {
+        if !settings.is_on(element) {
+            continue;
+        }
+        let [x, y, w, h] = rect(settings, element, view);
+        if w < 1.0 || h < 1.0 {
+            continue;
+        }
+        if framed.is_some_and(|f| x + w / 2.0 >= f[0] && x + w / 2.0 <= f[0] + f[2] && y + h / 2.0 >= f[1] && y + h / 2.0 <= f[1] + f[3]) {
+            continue;
+        }
+        if wrote {
+            o.push(',');
+        }
+        wrote = true;
+        let name = format!("io{}", element.index());
+        let (wash, line) = outline_alpha(element.index());
+        outlined(o, &name, [w + 2.0, h + 2.0], [x.round() - 1.0, y.round() - 1.0], [FRAME_COLOR[0], FRAME_COLOR[1], FRAME_COLOR[2], wash], [FRAME_COLOR[0], FRAME_COLOR[1], FRAME_COLOR[2], line], 1.0, 4.0);
+    }
+    wrote
 }
 
 /// Shows or hides the centre lines. They are part of the layer's document, so a change needs it written again.
@@ -1607,15 +1668,6 @@ fn handle_members(o: &mut String, rect: [f32; 4], edges: bool) {
         signed(o, at[1]);
         o.push(']');
     }
-    for (binding, at) in [GEAR_BINDING, REMOVE_BINDING].into_iter().zip(button_places(rect)) {
-        o.push_str(",\"");
-        o.push_str(binding);
-        o.push_str("\":[");
-        signed(o, at[0]);
-        o.push(',');
-        signed(o, at[1]);
-        o.push(']');
-    }
 }
 
 /// A patch that moves the handles to `rect`.
@@ -1625,6 +1677,30 @@ pub fn handles_patch(rect: [f32; 4], edges: bool) -> String {
     handle_members(&mut o, rect, edges);
     o.push_str("}}");
     o
+}
+
+/// A rounded box of `size` at `offset`: filled with `fill` and outlined `width` wide in `line`, in the escaped document.
+#[allow(clippy::too_many_arguments)]
+fn outlined(o: &mut String, name: &str, size: [f32; 2], offset: [f32; 2], fill: [f32; 4], line: [f32; 4], width: f32, radius: f32) {
+    o.push_str(r##"{\""##);
+    o.push_str(name);
+    o.push_str(r##"\":{\"type\":\"custom\",\"renderer\":\"cinnabar_rounded_rectangle\",\"radius\":"##);
+    num(o, f64::from(radius));
+    o.push_str(r##",\"color\":"##);
+    write_rgba(o, fill);
+    o.push_str(r##",\"border_color\":"##);
+    write_rgba(o, line);
+    o.push_str(r##",\"border_width\":"##);
+    num(o, f64::from(width));
+    o.push_str(r##",\"size\":["##);
+    num(o, f64::from(size[0]));
+    o.push(',');
+    num(o, f64::from(size[1]));
+    o.push_str(r##"],\"offset\":["##);
+    num(o, f64::from(offset[0]));
+    o.push(',');
+    num(o, f64::from(offset[1]));
+    o.push_str(r##"],\"anchor_from\":\"top_left\",\"anchor_to\":\"top_left\"}}"##);
 }
 
 /// A thin filled rectangle of the frame or a handle, in the escaped document.
@@ -1660,14 +1736,10 @@ fn handles_overlay(o: &mut String, rect: [f32; 4], edges: bool) {
     o.push_str(r##"],\"anchor_from\":\"top_left\",\"anchor_to\":\"top_left\",\"offset\":[0,0],\"bindings\":[{\"binding_name\":\""##);
     o.push_str(FRAME_BINDING);
     o.push_str(r##"\",\"binding_name_override\":\"#offset\"}],\"controls\":["##);
-    let line = [FRAME_COLOR[0], FRAME_COLOR[1], FRAME_COLOR[2], 0.8];
-    solid(o, "t", line, [w, 1.0], [0.0, 0.0], 0.0);
-    o.push(',');
-    solid(o, "b", line, [w, 1.0], [0.0, h - 1.0], 0.0);
-    o.push(',');
-    solid(o, "l", line, [1.0, h], [0.0, 0.0], 0.0);
-    o.push(',');
-    solid(o, "r", line, [1.0, h], [w - 1.0, 0.0], 0.0);
+    // One rounded box: a faint wash of the accent inside and a thin accent line round it.
+    let fill = [FRAME_COLOR[0], FRAME_COLOR[1], FRAME_COLOR[2], 0.10];
+    let line = [FRAME_COLOR[0], FRAME_COLOR[1], FRAME_COLOR[2], 0.9];
+    outlined(o, "f", [w, h], [0.0, 0.0], fill, line, 1.0, 4.0);
     o.push_str("]}}");
     for (i, binding) in HANDLE_BINDINGS.iter().take(handle_count(edges)).enumerate() {
         o.push(',');
@@ -1680,70 +1752,11 @@ fn handles_overlay(o: &mut String, rect: [f32; 4], edges: bool) {
         o.push_str(r##"],\"anchor_from\":\"top_left\",\"anchor_to\":\"top_left\",\"offset\":[0,0],\"bindings\":[{\"binding_name\":\""##);
         o.push_str(binding);
         o.push_str(r##"\",\"binding_name_override\":\"#offset\"}],\"controls\":["##);
-        solid(o, "rim", FRAME_COLOR, [HANDLE, HANDLE], [0.0, 0.0], 1.5);
+        // Round handles: an accent ring round a white centre.
+        solid(o, "rim", FRAME_COLOR, [HANDLE, HANDLE], [0.0, 0.0], HANDLE / 2.0);
         o.push(',');
-        solid(o, "dot", [1.0, 1.0, 1.0, 1.0], [HANDLE - 2.0, HANDLE - 2.0], [1.0, 1.0], 1.0);
+        solid(o, "dot", [1.0, 1.0, 1.0, 1.0], [HANDLE - 3.0, HANDLE - 3.0], [1.5, 1.5], (HANDLE - 3.0) / 2.0);
         o.push_str("]}}");
-    }
-    // The buttons: the Lucide cog and X from the mod's own font (`mod_panel`, see `tools/icons.py`: "settings" and "x"),
-    // as plain icons with the game's own text drop shadow and nothing behind them. A glyph is smooth at any GUI scale.
-    // The glyph sits a little inside its square, so each is nudged towards its corner (x, y in GUI pixels).
-    let icon = ICON;
-    for (name, binding, glyph, color, nudge, size) in [
-        ("bg", GEAR_BINDING, "\u{E806}", [0.88, 0.89, 0.93, 1.0], [-2.0_f32, -2.0_f32], 0.64_f32),
-        ("bx", REMOVE_BINDING, "\u{E809}", [0.93, 0.16, 0.2, 1.0], [-9.4, -3.5], 0.83),
-    ] {
-        o.push_str(r##",{\""##);
-        o.push_str(name);
-        o.push_str(r##"\":{\"type\":\"panel\",\"size\":["##);
-        num(o, f64::from(icon));
-        o.push(',');
-        num(o, f64::from(icon));
-        o.push_str(r##"],\"anchor_from\":\"top_left\",\"anchor_to\":\"top_left\",\"offset\":[0,0],\"bindings\":[{\"binding_name\":\""##);
-        o.push_str(binding);
-        o.push_str(r##"\",\"binding_name_override\":\"#offset\"}],\"controls\":["##);
-        // The font has one weight and the game's text shadow sits a full pixel away, so both are made here: the glyph
-        // is laid twice, a few tenths of a pixel apart (a little bolder), and a black copy of that sits just under it.
-        // The copies fan out along the bottom and right edges, not just down-right: a diagonal stroke (the X's
-        // backslash) would hide a shadow that runs along it.
-        // Lunar's buttons are the same size on every element: about 5.6 GUI pixels (the cog) and 4.7 (the X), measured on
-        // its big, medium and small boxes. `size` is the font scale that gives that; the nudges and the shadow follow it.
-        let k = size / 0.95;
-        let dark = [0.0, 0.0, 0.0, 0.55];
-        let layers = [
-            (dark, 0.0_f32, 1.1_f32),
-            (dark, 0.55, 1.1),
-            (dark, 1.1, 1.1),
-            (dark, 1.1, 0.55),
-            (dark, 1.1, 0.0),
-            (color, 0.0, 0.0),
-            (color, 0.4, 0.0),
-        ];
-        for (n, (tint, dx, dy)) in layers.into_iter().enumerate() {
-            if n > 0 {
-                o.push(',');
-            }
-            o.push_str(r##"{\"i"##);
-            push_u(o, n as u64);
-            o.push_str(r##"\":{\"type\":\"label\",\"text\":\""##);
-            o.push_str(glyph);
-            o.push_str(r##"\",\"localize\":false,\"font_type\":\"mod_panel\",\"shadow\":false,\"color\":"##);
-            write_rgba(o, tint);
-            // One line of the font at scale 0.95 is 11.4 pixels tall: centred on the square.
-            o.push_str(r##",\"text_alignment\":\"center\",\"font_scale_factor\":"##);
-            num(o, f64::from(size));
-            o.push_str(r##",\"size\":["##);
-            num(o, f64::from(icon));
-            o.push_str(r##","##);
-            num(o, f64::from(11.4 * k));
-            o.push_str(r##"],\"offset\":["##);
-            num(o, f64::from((dx + nudge[0]) * k));
-            o.push(',');
-            num(o, f64::from((icon - 11.4 * k) / 2.0 + (dy + nudge[1]) * k));
-            o.push_str(r##"],\"anchor_from\":\"top_left\",\"anchor_to\":\"top_left\"}}"##);
-        }
-        o.push_str("]}");
-        o.push('}');
     }
     o.push_str("]}}");
 }
@@ -4207,6 +4220,17 @@ pub fn document_cached(settings: &Settings, viewport: Option<[f32; 2]>, cache: &
         guides_overlay(&mut o);
         first = false;
     }
+    // Then the outlines of the elements, under them too.
+    if let (true, Some(view)) = (EDITING.with(Cell::get), viewport) {
+        let mut part = String::new();
+        if idle_outlines(&mut part, settings, view, HANDLES.with(Cell::get)) {
+            if !first {
+                o.push(',');
+            }
+            o.push_str(&part);
+            first = false;
+        }
+    }
     for element in Element::ALL {
         let slot = element.index();
         if !settings.is_on(element) {
@@ -4747,14 +4771,6 @@ fn values(o: &mut String, view: &Views, previous: Option<&Views>, settings: &Set
                 signed(o, at[1]);
                 o.push(']');
             }
-            for (binding, at) in [GEAR_BINDING, REMOVE_BINDING].into_iter().zip(button_places(rect)) {
-                member(o, binding);
-                o.push('[');
-                signed(o, at[0]);
-                o.push(',');
-                signed(o, at[1]);
-                o.push(']');
-            }
         }
     }
     for element in Element::ALL {
@@ -4923,13 +4939,16 @@ fn values(o: &mut String, view: &Views, previous: Option<&Views>, settings: &Set
             o.push_str(if view.target_hidden { "false" } else { "true" });
         }
         if element == Element::Waila {
+            // While the elements are placed and nothing is aimed at, the element is shown (it is not hidden) and the sample
+            // block stands in, icon and tool included, so it looks as it does by default.
+            let sample = crate::waila::sample();
+            let block = view.waila.as_ref().or_else(|| (!view.waila_hidden).then_some(&sample));
             // The icon: the aimed block's item (the identifier is the item's for almost every block); air draws nothing.
             member(o, WAILA_ICON_BINDING);
             o.push_str(r#"{"item":{"identifier":"#);
-            q(o, view.waila.as_ref().map_or("minecraft:air", |block| block.icon.as_str()));
+            q(o, block.map_or("minecraft:air", |block| block.icon.as_str()));
             o.push_str(r#","metadata":0}}"#);
             // The tool's icon (air when the block has none or the option is off) and its mark.
-            let block = view.waila.as_ref();
             member(o, WAILA_TOOL_BINDING);
             o.push_str(r#"{"item":{"identifier":"#);
             let tool_icon = block.and_then(|b| b.mining.filter(|_| settings.waila_tool)).map_or("minecraft:air".to_owned(), |m| m.icon());
@@ -5874,24 +5893,6 @@ mod tests {
     }
 
     #[test]
-    fn frame_buttons_sit_in_the_top_corners_and_take_presses() {
-        let frame = [100.0, 50.0, 120.0, 60.0];
-        let [gear, cross] = button_places(frame);
-        assert_eq!(gear, [101.0, 51.0]);
-        assert_eq!(cross, [207.0, 51.0]);
-        assert_eq!(button_at(frame, [gear[0] + 4.0, gear[1] + 4.0]), Some(FrameButton::Settings));
-        assert_eq!(button_at(frame, [cross[0] + 4.0, cross[1] + 4.0]), Some(FrameButton::Remove));
-        assert_eq!(button_at(frame, [160.0, 80.0]), None);
-        // The top corner's resize handle is not stolen by a button.
-        assert_eq!(button_at(frame, [100.0, 50.0]), None);
-        // A frame too small for both gets them in the row above it, not overlapping.
-        let tiny = [10.0, 40.0, 14.0, 12.0];
-        let [gear, cross] = button_places(tiny);
-        assert_eq!(gear[1], cross[1]);
-        assert!(cross[0] >= gear[0] + ICON);
-    }
-
-    #[test]
     fn dragging_snaps_to_edges_centres_and_other_elements() {
         let mut settings = Settings::default();
         let view = [427.0, 240.0];
@@ -6457,5 +6458,41 @@ mod tests {
         settings.va_reverse = true;
         assert_eq!(va_rows(&view, &settings)[0].1, "Pitch");
         assert_eq!(va_line_count(&settings), 2);
+    }
+
+    #[test]
+    fn waila_shows_its_sample_block_with_its_icon_and_tool_while_the_elements_are_placed() {
+        let mut settings = Settings::default();
+        settings.style_mut(Element::Waila).enabled = true;
+        let values_of = |view: &Views| {
+            let mut out = String::new();
+            values(&mut out, view, None, &settings, None);
+            out
+        };
+        let sample = crate::waila::sample();
+        let tool = sample.mining.expect("the sample block has a tool").icon();
+        // Placed (shown, nothing aimed at): the sample's block and its tool are the icons.
+        let placing = values_of(&Views { waila_hidden: false, ..Views::default() });
+        assert!(placing.contains(&sample.icon), "{placing}");
+        assert!(placing.contains(&tool), "{placing}");
+        // In play with nothing aimed at the element is out of sight, with nothing to draw.
+        let hidden = values_of(&Views { waila_hidden: true, ..Views::default() });
+        assert!(!hidden.contains(&sample.icon) && !hidden.contains(&tool), "{hidden}");
+    }
+
+    #[test]
+    fn an_outline_is_faint_at_rest_brighter_under_the_pointer_and_brightest_when_picked() {
+        let (rest, hover, picked) = (Element::Ping.index(), Element::Fps.index(), Element::Cps.index());
+        set_hovered(Some(hover));
+        set_picked(&[picked]);
+        let (calm, over, chosen) = (outline_alpha(rest).1, outline_alpha(hover).1, outline_alpha(picked).1);
+        assert!(calm < over && over < chosen, "{calm} {over} {chosen}");
+        // A picked element that the pointer is also over is still the brightest.
+        set_hovered(Some(picked));
+        assert_eq!(outline_alpha(picked), outline_alpha(picked));
+        assert!(outline_alpha(picked).1 > outline_alpha(rest).1);
+        set_hovered(None);
+        set_picked(&[]);
+        assert_eq!(outline_alpha(hover), outline_alpha(rest));
     }
 }

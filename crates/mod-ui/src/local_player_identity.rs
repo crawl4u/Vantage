@@ -5,7 +5,7 @@ use std::sync::Arc;
 use ui::mod_panel::local_player_head as identity;
 
 use json_ui::{DataSource, Scalar};
-use ui_engine::atlas::LOCAL_PLAYER_HEAD;
+use ui_engine::atlas::{LOCAL_PLAYER_HEAD, MENU_PLAYER_HEAD};
 
 use crate::ModUi;
 
@@ -36,6 +36,7 @@ impl LocalPlayerIdentity {
             && data.global_value(identity::AVAILABLE) == Some(&Scalar::Bool(self.available))
             && data.global_value(identity::UNAVAILABLE) == Some(&Scalar::Bool(!self.available))
             && matches!(data.global_value(identity::HEAD), Some(Scalar::Text(value)) if value == head)
+            && matches!(data.global_value(identity::MENU_HEAD), Some(Scalar::Text(value)) if value == MENU_PLAYER_HEAD)
         {
             return;
         }
@@ -44,6 +45,7 @@ impl LocalPlayerIdentity {
             (identity::AVAILABLE, Scalar::Bool(self.available)),
             (identity::UNAVAILABLE, Scalar::Bool(!self.available)),
             (identity::HEAD, Scalar::Text(head.into())),
+            (identity::MENU_HEAD, Scalar::Text(MENU_PLAYER_HEAD.into())),
         ];
         let data = Arc::make_mut(data);
         for (key, value) in values {
@@ -53,6 +55,11 @@ impl LocalPlayerIdentity {
 }
 
 impl ModUi {
+    /// Tells the first-party menu whose head and name its sidebar shows. The head itself is the host's menu raster.
+    pub fn set_menu_player_name(&self, name: Option<&Arc<str>>) {
+        vantage_gui::bridge::set_player(name);
+    }
+
     /// Publishes host identity without transferring skin texels to an extension.
     /// An absent portrait uses the neutral panel artwork and the name `Player`.
     pub fn set_local_player_panel_identity(&mut self, name: &str, available: bool) {

@@ -110,6 +110,8 @@ pub enum MenuField {
     PackFolderName,
     /// Filters the Java-style world list by name.
     WorldQuery,
+    /// Filters the Java-style server lists by name or address.
+    ServerQuery,
     StorageQuery,
     Name,
     Address,
@@ -247,6 +249,7 @@ pub enum MenuAction {
     JoinPlayWorld(usize),
     /// Focus the Java-style world list's search field.
     SearchWorlds,
+    SearchServers,
     /// Ask to delete the local world at this index, as its edit screen does.
     DeleteLocalWorld(usize),
     /// A press on a local-world screen (create, edit, templates) or its modals.

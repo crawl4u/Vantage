@@ -16,6 +16,24 @@ pub(super) struct LocalPlayerIdentity {
     portrait: Option<UiTexturePage>,
     /// The name and Xbox user ID last told to the mod host, so it is told again only when they change.
     reported: Option<(Arc<str>, Arc<str>)>,
+    /// The signed-in player's name for the first-party menu, whatever their skin is.
+    menu_name: Option<Arc<str>>,
+    /// The default skin's head, worked out once, for a player whose own skin has none to show.
+    default_head: Option<UiTexturePage>,
+}
+
+/// The head of the default player skin: the vanilla texture once the pack has installed it, else the generated one.
+/// The menu shows it for a player whose own skin has no head to read.
+fn default_portrait() -> Option<UiTexturePage> {
+    let rgba8 = render_model::actor::default_actor_skin_rgba8();
+    let side = render_model::actor::actor_skin_side(&rgba8)? as u32;
+    render_model::actor::skin_portrait::extract(&StandardSkin {
+        width: side,
+        height: side,
+        rgba8,
+        cape: None,
+        geometry: None,
+    })
 }
 
 #[derive(PartialEq, Eq)]
@@ -77,6 +95,11 @@ impl UiPresentationRuntime {
             }));
             self.local_player_identity.reported = account;
         }
+        self.local_player_identity.menu_name = local
+            .as_ref()
+            .and_then(|local| local.profile())
+            .map(|profile| Arc::clone(&profile.username))
+            .filter(|name| !name.trim().is_empty());
         let source = local.and_then(|local| {
             let actor = local.runtime_id();
             let profile = local.profile()?;
@@ -105,7 +128,17 @@ impl UiPresentationRuntime {
                 .textures
                 .lock()
                 .set_local_player_head(self.local_player_identity.portrait.as_ref());
+            // The first-party menu shows a head always: the player's own, else the default skin's.
+            let identity = &mut self.local_player_identity;
+            if identity.portrait.is_none() && identity.default_head.is_none() {
+                identity.default_head = default_portrait();
+            }
+            let menu_head = identity.portrait.as_ref().or(identity.default_head.as_ref());
+            engine.textures.lock().set_menu_player_head(menu_head);
         }
+        self.screens
+            .mod_ui
+            .set_menu_player_name(self.local_player_identity.menu_name.as_ref());
         self.screens.mod_ui.set_local_player_panel_identity(
             self.local_player_identity.name(),
             self.local_player_identity.portrait.is_some(),

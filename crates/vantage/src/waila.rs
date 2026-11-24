@@ -374,12 +374,10 @@ pub fn position_text(pos: [i32; 3]) -> String {
     format!("X {}  Y {}  Z {}", pos[0], pos[1], pos[2])
 }
 
-/// What the element shows while it is being placed and nothing is aimed at.
+/// What the element shows while it is being placed and nothing is aimed at, and on the Mods page's card: a grass block
+/// with its icon, its name, its mod and the shovel that mines it, which is how the element looks by default.
 pub fn sample() -> WailaView {
-    let mut sample = describe("minecraft:iron_ore", None, &["minecraft:mineable/pickaxe".to_owned(), "minecraft:needs_stone_tool".to_owned()], [12, 64, -3]);
-    sample.growth = Some(57);
-    sample.harvest = Some(true);
-    sample
+    describe("minecraft:grass_block", None, &["minecraft:mineable/shovel".to_owned()], [12, 64, -3])
 }
 
 /// The block the target point is in: the point is the block's centre, so it is floored on each axis.

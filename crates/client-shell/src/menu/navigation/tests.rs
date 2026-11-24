@@ -418,3 +418,30 @@ fn enter_plays_the_chosen_world_of_the_java_list_and_nothing_else() {
     menu.activate(MenuAction::SelectPlayWorld(5));
     assert_eq!(menu.enter_plays_world(), None);
 }
+
+#[test]
+fn a_quick_second_press_of_a_server_joins_it_in_the_java_style_only() {
+    use launcher::menu::settings_options::{SettingId, menu_style::MenuStyle};
+
+    let mut menu = MenuRuntime::new(true, 2, "Player".into());
+    let saved = MenuAction::SelectSaved(1);
+    // The Bedrock lists keep their own presses.
+    assert_eq!(menu.world_double_press(saved, 10.0), None);
+    assert_eq!(menu.world_double_press(saved, 10.1), None);
+    std::sync::Arc::make_mut(&mut menu.settings_options)
+        .set(SettingId::MenuStyle.index(), MenuStyle::Java.value());
+    assert_eq!(menu.world_double_press(saved, 20.0), None);
+    assert_eq!(
+        menu.world_double_press(saved, 20.2),
+        Some(MenuAction::PlaySaved(1))
+    );
+    // Another server, a slow press, or a world pressed in between is not a double press.
+    assert_eq!(menu.world_double_press(MenuAction::SelectFeatured(1), 20.3), None);
+    assert_eq!(
+        menu.world_double_press(MenuAction::SelectFeatured(1), 20.4),
+        Some(MenuAction::PlayFeatured(1))
+    );
+    assert_eq!(menu.world_double_press(saved, 21.0), None);
+    assert_eq!(menu.world_double_press(MenuAction::SelectPlayWorld(1), 21.1), None);
+    assert_eq!(menu.world_double_press(saved, 21.2), None);
+}

@@ -5,19 +5,32 @@ use super::*;
 /// Reserved texture for the host local player portrait, including its hat layer; it is its own namespace.
 pub const LOCAL_PLAYER_HEAD: &str = "client-raster:local-player-head";
 
+/// The head the first-party menu draws: the local player's, or the default skin's while there is none. It is its own
+/// namespace, so mod panels keep their neutral artwork for a player without a portrait.
+pub const MENU_PLAYER_HEAD: &str = "client-raster:menu-player-head";
+
 impl ServerAtlas {
     /// Updates the single host-owned local head without replacing other painters' rasters.
     pub fn set_local_player_head(&mut self, image: Option<&UiTexturePage>) {
-        let previous = self.client_rasters.get(LOCAL_PLAYER_HEAD);
+        self.set_head(LOCAL_PLAYER_HEAD, image);
+    }
+
+    /// Updates the head the first-party menu draws.
+    pub fn set_menu_player_head(&mut self, image: Option<&UiTexturePage>) {
+        self.set_head(MENU_PLAYER_HEAD, image);
+    }
+
+    fn set_head(&mut self, key: &'static str, image: Option<&UiTexturePage>) {
+        let previous = self.client_rasters.get(key);
         if previous.map(|p| (p.identity(), p.dimensions()))
             == image.map(|p| (p.identity(), p.dimensions()))
         {
             return;
         }
         let images = image
-            .map(|image| BTreeMap::from([(LOCAL_PLAYER_HEAD.to_owned(), image.clone())]))
+            .map(|image| BTreeMap::from([(key.to_owned(), image.clone())]))
             .unwrap_or_default();
-        self.set_client_rasters(LOCAL_PLAYER_HEAD, &images);
+        self.set_client_rasters(key, &images);
     }
 
     /// Checks the shared tile and byte budget before a painter allocates a namespace's pixels.

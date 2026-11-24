@@ -329,7 +329,7 @@ fn entry(
 
 /// Java's play arrow over a world's icon while the pointer is on the entry; pressing it plays
 /// the world. It is the game's sprite, or the resource pack's own, else a plain triangle.
-fn play_arrow(
+pub(super) fn play_arrow(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
     play: MenuAction,

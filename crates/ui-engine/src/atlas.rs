@@ -31,7 +31,7 @@ mod outlines;
 mod oversized;
 pub use oversized::{OversizedFrame, OversizedTextures};
 mod client_rasters;
-pub use client_rasters::LOCAL_PLAYER_HEAD;
+pub use client_rasters::{LOCAL_PLAYER_HEAD, MENU_PLAYER_HEAD};
 pub mod native_sheets;
 pub mod preread;
 mod source_reads;

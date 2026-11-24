@@ -8,7 +8,7 @@ preview and how a new mod gets its icon. The single source of truth is the table
 
 | Kind | What the card shows | Which mods |
 | --- | --- | --- |
-| `Preview` | A small render of the mod's own output, drawn by `crates/vantage/src/gui/previews.rs` | Every mod in the HUD category (category `0` in `MODS`) and the crosshair |
+| `Preview` | A small render of the mod's own output, drawn by `crates/vantage/src/gui/previews.rs` | Every mod in the HUD category (category `0` in `MODS`), the crosshair and the waypoint label |
 | `Art(..)` | An icon converted from the OneClient-style set (`crates/vantage-gui/src/icon_art.rs`) | A mod that has no output of its own on screen but matches an icon in the set, such as Fullbright (sun) or Time changer (moon) |
 | `Glyph` | The mod's glyph of the icon font | Everything else, until it gets a converted icon |
 

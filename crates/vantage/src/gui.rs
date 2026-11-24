@@ -25,6 +25,8 @@ use crate::menu_v2;
 use crate::panel::PanelState;
 
 /// The face the menu's text uses.
+mod editor;
+pub use editor::{EditorContext, GRID_STEP};
 mod previews;
 
 const FONT: &str = "mod_panel_display";
@@ -145,6 +147,10 @@ pub struct Input {
     pub viewport: [f32; 2],
     /// Enter or Escape was pressed, which ends editing the search text.
     pub dismiss: bool,
+    /// The secondary button went down this frame.
+    pub secondary: bool,
+    /// Alt is held.
+    pub alt: bool,
 }
 
 /// Something the page wants done.
@@ -158,6 +164,14 @@ pub enum Action {
     Text { id: String, text: String, submit: bool },
     Close,
 }
+
+/// How far right of the favourite star the hide button sits on a card, so the two never touch, in design units.
+const HIDE_OFFSET: f32 = 30.0;
+
+/// How much of a card a preview leaves free at its sides and its top, for the buttons in the corners, in design units.
+const PREVIEW_SIDE: f32 = 12.0;
+const PREVIEW_TOP: f32 = 22.0;
+const PREVIEW_KEYS_TOP: f32 = 6.0;
 
 /// A mod card's corner radius, in design units.
 const CARD_RADIUS: f32 = 12.0;
@@ -281,9 +295,9 @@ impl Painter {
 
     /// A thin scroll bar down the right of a scrolling area, shown only when there is more than fits: the thumb's size is
     /// the share of the content in view and its place is how far the content has scrolled.
-    fn scrollbar(&mut self, view: Rect, content: f32, scroll: f32) {
+    fn scrollbar(&mut self, view: Rect, content: f32, scroll: f32) -> Option<(Rect, Rect)> {
         if content <= view.h + 1.0 {
-            return;
+            return None;
         }
         let track = Rect::new(view.right() + px(7.0), view.y, px(3.0), view.h);
         self.rect(track, self.veil(0.07), Radii::all(track.w / 2.0));
@@ -291,6 +305,7 @@ impl Painter {
         let t = (scroll / (content - view.h)).clamp(0.0, 1.0);
         let thumb = Rect::new(track.x, track.y + (view.h - thumb_h) * t, track.w, thumb_h);
         self.rect(thumb, self.veil(0.35), Radii::all(track.w / 2.0));
+        Some((self.at(track), self.at(thumb)))
     }
 
     /// The crosshair's shapes, laid out in design units from `(x, y)` and drawn `k` times their size.
@@ -320,6 +335,11 @@ impl Painter {
                 // The font's glyphs sit right of their cell's centre, so the square moves left to put them on the art's centre line.
                 let square = Rect::new(r.x + (r.w - size) / 2.0 - size * 0.27, r.y + (r.h - size) / 2.0, size, size);
                 self.icon(square, glyph, size * 1.1, c);
+            }
+            Glyph::Line(name) => {
+                if let Some(contours) = vantage_gui::icon_custom::strokes(name) {
+                    self.scene.push(Primitive::Line { rect: box_, view: [GRID, GRID], contours, color: color(c), width: vantage_gui::icon_custom::STROKE });
+                }
             }
             Glyph::Pixel(art) => {
                 // Each lit run is a one-pixel-high rectangle; all of them go in one hard-edged fill so the
@@ -389,6 +409,9 @@ impl Painter {
 pub struct GuiMenu {
     scroll: Spring,
     scroll_target: f32,
+    /// The scroll bar's track and thumb on screen as last drawn, and where in the thumb a drag holds it.
+    bar: Option<(Rect, Rect)>,
+    bar_grab: Option<f32>,
     /// The filter, sort and search the grid was last laid out for: a change takes the page back to the top.
     grid_key: (usize, usize, String),
     hover: Option<Hit>,
@@ -432,6 +455,8 @@ pub struct GuiMenu {
     drag: Option<(String, Rect, f32, f32, f32, f32)>,
     /// Each switch's knob position (0 off, 1 on), by control id.
     knobs: HashMap<String, Spring>,
+    /// The HUD editor's panels and the rectangles of its chrome.
+    editor: editor::EditorState,
     /// A card being dragged to a new place in the grid.
     card_drag: Option<CardDrag>,
     /// Where each card is drawn, easing toward its cell (so the grid re-flows smoothly), by card index.
@@ -472,6 +497,8 @@ impl Default for GuiMenu {
         Self {
             scroll: Spring::new(0.0, 22.0),
             scroll_target: 0.0,
+            bar: None,
+            bar_grab: None,
             grid_key: (usize::MAX, usize::MAX, String::new()),
             hover: None,
             hot: Vec::new(),
@@ -496,6 +523,7 @@ impl Default for GuiMenu {
             acts: Vec::new(),
             drag: None,
             knobs: HashMap::new(),
+            editor: editor::EditorState::default(),
             card_drag: None,
             card_pos: Vec::new(),
             placed: Vec::new(),
@@ -544,7 +572,8 @@ impl GuiMenu {
         self.field = None;
         self.last = None;
         self.outgoing = None;
-        self.virt = None;
+        // The page that was open stays selected: the toolkit's own pages (Keybinds, Themes ...) share the General tab's
+        // number, so forgetting `virt` here would reopen them as General.
         self.notes_open = false;
         self.closing = false;
     }
@@ -690,8 +719,34 @@ impl GuiMenu {
         }
         let max = (self.content - self.view).max(0.0);
         self.scroll_target = (self.scroll_target - input.wheel * px(60.0)).clamp(0.0, max);
+        self.drag_bar(input, max);
         self.scroll.set_target(self.scroll_target);
         self.scroll.step(input.dt);
+    }
+
+    /// Dragging the scroll bar: a press on the thumb holds it, a press on the track beside it centres the thumb there, and
+    /// the content follows the pointer until the button is let go.
+    fn drag_bar(&mut self, input: &Input, max: f32) {
+        let Some((track, thumb)) = self.bar else {
+            self.bar_grab = None;
+            return;
+        };
+        if !input.held {
+            self.bar_grab = None;
+        }
+        if input.pressed {
+            // The track is thin, so its grab area is wider than it is drawn.
+            let area = Rect::new(track.x - px(8.0), track.y, track.w + px(16.0), track.h);
+            if let Some(p) = input.pointer.filter(|p| area.contains(*p)) {
+                self.bar_grab = Some(if p.y >= thumb.y && p.y <= thumb.bottom() { p.y - thumb.y } else { thumb.h / 2.0 });
+            }
+        }
+        if let (Some(grab), Some(p)) = (self.bar_grab, input.pointer) {
+            let room = (track.h - thumb.h).max(1.0);
+            let t = ((p.y - grab - track.y) / room).clamp(0.0, 1.0);
+            self.scroll_target = t * max;
+            self.scroll.snap(self.scroll_target);
+        }
     }
 
     /// Search pill editing: a press on the pill starts it, any other press or Enter or Escape ends it.
@@ -882,15 +937,23 @@ impl GuiMenu {
         // The player at the bottom of the sidebar.
         let foot = Rect::new(px(space::XL), h - px(52.0), side - px(space::XL * 2.0), px(40.0));
         d.rect(Rect::new(0.0, foot.y - px(space::S), side, 0.35), d.veil(0.12), Radii::default());
-        d.rect(Rect::new(foot.x, foot.y, px(32.0), px(32.0)), p.dim, Radii::all(px(RADII.xs)));
+        // The signed-in player: their skin's head in the rounded square, else the empty square, and their name.
+        let who = vantage_gui::bridge::player();
+        let avatar = Rect::new(foot.x, foot.y, px(32.0), px(32.0));
+        d.rect(avatar, p.dim, Radii::all(px(RADII.xs)));
+        // The head fills the whole rounded square and takes its corners.
+        let head = d.at(avatar);
+        d.scene.push(Primitive::PlayerHead { rect: head, radius: px(RADII.xs) * d.zoom });
         let bell = Rect::new(foot.right() - px(26.0), foot.y + px(3.0), px(26.0), px(26.0));
         self.bell = bell;
         let bell_ink = d.hot(Hit::Bell, p.muted, p.text);
         d.rect(bell, [1.0, 1.0, 1.0, 0.08 * d.amount(Hit::Bell)], Radii::all(px(RADII.xs)));
         d.glyph(bell, Art::Bell, px(20.0), bell_ink);
         d.region(Hit::Bell, bell);
-        d.line(Rect::new(foot.x + px(42.0), foot.y - px(4.0), foot.w, px(20.0)), "Player", px(text::LABEL.size), p.text, Align::Start);
-        d.line(Rect::new(foot.x + px(42.0), foot.y + px(12.0), foot.w, px(16.0)), concat!("Vantage ", env!("CARGO_PKG_VERSION")), px(text::CAPTION.size), p.muted, Align::Start);
+        // The two lines are centred on the square, the name above the version.
+        let name: &str = who.as_deref().unwrap_or("Player");
+        d.line(Rect::new(foot.x + px(42.0), foot.y + px(1.0), foot.w - px(70.0), px(20.0)), name, px(text::LABEL.size), p.text, Align::Start);
+        d.line(Rect::new(foot.x + px(42.0), foot.y + px(17.0), foot.w, px(16.0)), concat!("Vantage ", env!("CARGO_PKG_VERSION")), px(text::CAPTION.size), p.muted, Align::Start);
 
         self.chrome = d.scene.primitives.len();
         // Header: arrow, title, search pill, close.
@@ -1074,7 +1137,13 @@ impl GuiMenu {
             });
             match crate::mod_icons::kind(card.id) {
                 crate::mod_icons::Kind::Preview => {
-                    previews::paint(&mut d, card.id, icon_area, [0.92, 0.93, 1.0, 1.0]);
+                    // A preview is centred in the card above its name bar and keeps clear of the corner buttons (the favourite
+                    // star, the hide button and the dot) by the same room above and below. The keys are a narrow block in the middle,
+                    // so they may use the whole height.
+                    let body = Rect::new(r.x, r.y, r.w, bar.y - r.y);
+                    let top = if card.id == "hud_keystrokes" { px(PREVIEW_KEYS_TOP) } else { px(PREVIEW_TOP) };
+                    let room = Rect::new(body.x + px(PREVIEW_SIDE), body.y + top, body.w - px(PREVIEW_SIDE) * 2.0, body.h - top * 2.0);
+                    previews::paint(&mut d, card.id, room, [0.92, 0.93, 1.0, 1.0]);
                 }
                 crate::mod_icons::Kind::Art(art) => d.glyph(icon_area, art, px(44.0), if d.light { [0.07, 0.08, 0.16, 1.0] } else { [0.74, 0.75, 0.88, 1.0] }),
                 crate::mod_icons::Kind::Glyph => d.icon(icon_area, card.icon, px(54.0), if d.light { [0.07, 0.08, 0.16, 1.0] } else { [0.74, 0.75, 0.88, 1.0] }),
@@ -1091,14 +1160,14 @@ impl GuiMenu {
             if glow > 0.02 {
                 let fade = |c: Rgba| [c[0], c[1], c[2], c[3] * glow];
                 d.glyph(Rect::new(r.x + px(space::M), r.y + px(space::S), px(20.0), px(20.0)), if card.favorite { Art::StarFilled } else { Art::Star }, px(18.0), if card.favorite { fade(p.star) } else { fade(p.muted) });
-                d.glyph(Rect::new(r.x + px(space::M + 22.0), r.y + px(space::S), px(20.0), px(20.0)), if card.hidden { Art::EyeOff } else { Art::Eye }, px(18.0), fade(p.muted));
+                d.glyph(Rect::new(r.x + px(space::M + HIDE_OFFSET), r.y + px(space::S), px(20.0), px(20.0)), if card.hidden { Art::EyeOff } else { Art::Eye }, px(18.0), fade(p.muted));
             } else if card.favorite {
                 d.glyph(Rect::new(r.x + px(space::M), r.y + px(space::S), px(20.0), px(20.0)), Art::StarFilled, px(18.0), p.star);
             }
             d.region(Hit::Card(n), Rect::new(r.x, r.y, r.w, r.h - bar_h));
             d.region(Hit::Switch(n), bar);
-            d.region(Hit::Star(n), Rect::new(r.x + px(space::M - 1.0), r.y + px(space::S - 1.0), px(22.0), px(22.0)));
-            d.region(Hit::Hide(n), Rect::new(r.x + px(space::M + 21.0), r.y + px(space::S - 1.0), px(22.0), px(22.0)));
+            d.region(Hit::Star(n), Rect::new(r.x + px(space::M - 2.0), r.y + px(space::S - 2.0), px(24.0), px(24.0)));
+            d.region(Hit::Hide(n), Rect::new(r.x + px(space::M + HIDE_OFFSET - 2.0), r.y + px(space::S - 2.0), px(24.0), px(24.0)));
         }
         // The lifted card follows the pointer, a little see-through, over the others.
         if let (Some((_, index)), Some(drag), Some(pointer)) = (ghost, lifted, input.pointer) {
@@ -1123,7 +1192,7 @@ impl GuiMenu {
             }
         }
         d.scene.push(Primitive::PopClip);
-        d.scrollbar(view, self.content, scroll);
+        self.bar = d.scrollbar(view, self.content, scroll);
         if let Some((anchor, text_shown)) = tip {
             let t = ((self.hover_clock - 0.35) / 0.15).clamp(0.0, 1.0);
             if t > 0.0 {
@@ -1146,9 +1215,21 @@ impl GuiMenu {
         self.scroll_step(&input, tab);
         self.search_focus(&input);
         let origin = window_origin(input.viewport);
-
-        // A slider being dragged follows the pointer until the button goes up.
         let mut actions = Vec::new();
+        self.pre_input(&input, origin, &mut actions);
+        let scene = match self.virt {
+            Some(n) => menu_v2::with_virtual(settings, state, n, &mut |page| self.build_page(settings, state, tab, page, input)),
+            None => menu_v2::with_page(settings, state, tab, &mut |page| self.build_page(settings, state, tab, page, input)),
+        };
+        let scene = self.finish(scene);
+        self.post_input(&scene, &input, origin, &mut actions);
+        (scene, actions)
+    }
+
+    /// The part of a frame that comes before the scene is built: a slider being dragged follows the pointer, and the
+    /// keys typed go to the field being edited. `origin` is where the scene's own units start on the screen.
+    fn pre_input(&mut self, input: &Input, origin: Vec2, actions: &mut Vec<Action>) {
+        // A slider being dragged follows the pointer until the button goes up.
         if let Some((id, track, min, max, step, last)) = self.drag.clone() {
             if input.held {
                 if let Some(pointer) = input.pointer {
@@ -1182,11 +1263,11 @@ impl GuiMenu {
                 actions.push(Action::Text { id: id.clone(), text: text.clone(), submit: false });
             }
         }
-        let scene = match self.virt {
-            Some(n) => menu_v2::with_virtual(settings, state, n, &mut |page| self.build_page(settings, state, tab, page, input)),
-            None => menu_v2::with_page(settings, state, tab, &mut |page| self.build_page(settings, state, tab, page, input)),
-        };
-        let scene = self.finish(scene);
+    }
+
+    /// The part of a frame that comes after the scene is built: the press and release on its controls, the field and
+    /// slider they start, and the actions a click sends.
+    fn post_input(&mut self, scene: &Scene, input: &Input, origin: Vec2, actions: &mut Vec<Action>) {
         let was_pressed = self.pressed;
         let click = self.pointer(&scene, &input);
         // A press anywhere but the field ends typing in it, and a press on a field starts it.
@@ -1235,12 +1316,52 @@ impl GuiMenu {
                 other => mods_click(other, &[], &[], &[]),
             });
         }
-        (scene, actions)
     }
 
     /// The text typed so far into field `id`, if it is the one being edited.
     fn field_text(&self, id: &str) -> Option<String> {
         self.field.as_ref().filter(|(f, _)| f == id).map(|(_, t)| t.clone())
+    }
+
+    /// The Themes page: a card for each look of the menu, drawn as a small copy of the window in that look, with the
+    /// one in use outlined. Returns the y below the cards.
+    fn draw_themes(&mut self, d: &mut Painter, view: Rect, top: f32, light_on: bool) -> f32 {
+        let (w, h) = (px(168.0), px(108.0));
+        let gap = px(space::L);
+        for (n, (name, light)) in [("Vantage Dark", false), ("Vantage Light", true)].into_iter().enumerate() {
+            let look = if light { Palette::light() } else { Palette::dark() };
+            let card = Rect::new(view.x + n as f32 * (w + gap), top, w, h);
+            let chosen = light == light_on;
+            let id = self.acts.len();
+            // Choosing a look sends the menu's light switch the state that look needs.
+            self.acts.push(Act::Toggle { id: "menu_light".to_owned(), on: !light });
+            let hit = Hit::Act(id);
+            // The glass is drawn over a plain base so every look reads the same on the page.
+            let base = if light { [0.93, 0.93, 0.98, 1.0] } else { [0.05, 0.05, 0.08, 1.0] };
+            let radius = Radii::all(px(RADII.sm));
+            d.rect(card, base, radius);
+            d.rect(card, look.panel, radius);
+            // The sidebar strip with its rows, and the title bar.
+            let side = Rect::new(card.x + px(8.0), card.y + px(8.0), card.w * 0.26, card.h - px(16.0));
+            d.rect(Rect::new(side.x, side.y, side.w, px(5.0)), look.accent, Radii::all(px(2.0)));
+            for row in 0..5 {
+                let ink = if row == 1 { look.accent } else { look.dim };
+                d.rect(Rect::new(side.x, side.y + px(12.0) + row as f32 * px(11.0), side.w, px(7.0)), ink, Radii::all(px(2.0)));
+            }
+            let pane = Rect::new(side.right() + px(8.0), card.y + px(8.0), card.right() - side.right() - px(16.0), card.h - px(16.0));
+            d.rect(Rect::new(pane.x, pane.y, pane.w * 0.45, px(5.0)), look.highlight, Radii::all(px(2.0)));
+            for row in 0..4 {
+                let line = Rect::new(pane.x, pane.y + px(14.0) + row as f32 * px(20.0), pane.w, px(15.0));
+                d.rect(line, look.raised, Radii::all(px(3.0)));
+                d.rect(Rect::new(line.right() - px(22.0), line.y + px(4.0), px(16.0), px(7.0)), look.accent, Radii::all(px(3.5)));
+                d.rect(Rect::new(line.x + px(4.0), line.y + px(5.0), line.w * 0.35, px(5.0)), look.text, Radii::all(px(2.0)));
+            }
+            let outline = if chosen { d.p.accent } else { d.hot(hit, d.veil(0.12), d.veil(0.35)) };
+            d.ring(card, radius, if chosen { 1.6 } else { 0.5 }, outline);
+            d.line(Rect::new(card.x, card.bottom() + px(4.0), card.w, px(20.0)), name, px(text::SMALL.size), d.p.text, Align::Centre);
+            d.region(hit, card);
+        }
+        top + h + px(40.0)
     }
 
     fn build_page(&mut self, settings: &Settings, state: &PanelState, tab: usize, page: &menu_v2::PageView<'_>, input: Input) -> Scene {
@@ -1292,7 +1413,11 @@ impl GuiMenu {
         let scroll = self.scroll.value();
         let mut y = view.y - scroll;
         let gap = px(space::S);
-        for group in page.groups {
+        let themes = self.virt == Some(menu_v2::THEMES);
+        if themes {
+            y = self.draw_themes(&mut d, view, y, settings.menu_light);
+        }
+        for group in page.groups.iter().filter(|_| !themes) {
             // The heading collapses its section.
             let heading = Rect::new(view.x, y, view.w, px(24.0));
             let slug = vantage_ui::options::group_id(group.title);
@@ -1319,38 +1444,44 @@ impl GuiMenu {
         self.content = y + scroll - view.y;
         self.view = view.h;
         d.scene.push(Primitive::PopClip);
-        d.scrollbar(view, self.content, scroll);
+        self.bar = d.scrollbar(view, self.content, scroll);
 
         // The open choice's list over everything.
         if let Some(popup) = page.popup {
-            let [w, h] = window_px();
-            let dim = self.acts.len();
-            self.acts.push(Act::Press("pick_close".to_owned()));
-            d.rect(Rect::new(0.0, 0.0, w, h), [0.0, 0.0, 0.0, 0.55], Radii::all(px(RADII.lg)));
-            d.region(Hit::Act(dim), Rect::new(0.0, 0.0, w, h));
-            let rows = popup.options.len() as f32;
-            let card_w = px(220.0);
-            let card_h = (px(44.0) + rows * px(28.0) + px(space::M)).min(h - px(space::XXL));
-            let card = Rect::new((w - card_w) / 2.0, (h - card_h) / 2.0, card_w, card_h);
-            d.rect(card, p.raised, Radii::all(px(RADII.md)));
-            d.line(Rect::new(card.x + px(space::XL), card.y, card.w, px(44.0)), popup.title, px(text::HEADING.size), p.highlight, Align::Start);
-            for (i, name) in popup.options.iter().enumerate() {
-                let r = Rect::new(card.x + px(space::M), card.y + px(44.0) + i as f32 * px(28.0), card.w - px(space::M * 2.0), px(26.0));
-                if r.bottom() > card.bottom() {
-                    break;
-                }
-                let n = self.acts.len();
-                self.acts.push(Act::Press(format!("pick_{i}")));
-                let on = i == popup.selected;
-                let hit = Hit::Act(n);
-                d.rect(r, if on { p.accent } else { d.hot(hit, [0.0; 4], p.dim) }, Radii::all(px(RADII.xs)));
-                d.line(Rect::new(r.x + px(space::M), r.y, r.w, r.h), name, px(text::SMALL.size), if on { p.on_accent } else { p.text }, Align::Start);
-                d.region(hit, r);
-            }
+            self.draw_popup(&mut d, popup);
         }
         self.overlay(&mut d);
         d.scene.push(Primitive::PopOpacity);
         d.scene
+    }
+
+    /// The open choice's list: the page dimmed, and a card of its values to pick from.
+    fn draw_popup(&mut self, d: &mut Painter, popup: &vantage_ui::options::Popup<'_>) {
+        let p = d.p;
+        let [w, h] = window_px();
+        let dim = self.acts.len();
+        self.acts.push(Act::Press("pick_close".to_owned()));
+        d.rect(Rect::new(0.0, 0.0, w, h), [0.0, 0.0, 0.0, 0.55], Radii::all(px(RADII.lg)));
+        d.region(Hit::Act(dim), Rect::new(0.0, 0.0, w, h));
+        let rows = popup.options.len() as f32;
+        let card_w = px(220.0);
+        let card_h = (px(44.0) + rows * px(28.0) + px(space::M)).min(h - px(space::XXL));
+        let card = Rect::new((w - card_w) / 2.0, (h - card_h) / 2.0, card_w, card_h);
+        d.rect(card, p.raised, Radii::all(px(RADII.md)));
+        d.line(Rect::new(card.x + px(space::XL), card.y, card.w, px(44.0)), popup.title, px(text::HEADING.size), p.highlight, Align::Start);
+        for (i, name) in popup.options.iter().enumerate() {
+            let r = Rect::new(card.x + px(space::M), card.y + px(44.0) + i as f32 * px(28.0), card.w - px(space::M * 2.0), px(26.0));
+            if r.bottom() > card.bottom() {
+                break;
+            }
+            let n = self.acts.len();
+            self.acts.push(Act::Press(format!("pick_{i}")));
+            let on = i == popup.selected;
+            let hit = Hit::Act(n);
+            d.rect(r, if on { p.accent } else { d.hot(hit, [0.0; 4], p.dim) }, Radii::all(px(RADII.xs)));
+            d.line(Rect::new(r.x + px(space::M), r.y, r.w, r.h), name, px(text::SMALL.size), if on { p.on_accent } else { p.text }, Align::Start);
+            d.region(hit, r);
+        }
     }
 
     /// The crosshair preview: a card with a dark box and the crosshair's shapes in it.

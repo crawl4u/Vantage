@@ -18,6 +18,7 @@ fn max_bytes(field: MenuField) -> usize {
         | MenuField::SettingsQuery
         | MenuField::PackQuery
         | MenuField::WorldQuery
+        | MenuField::ServerQuery
         | MenuField::PackFolderName
         | MenuField::StorageQuery => ui::MAX_CHAT_INPUT_BYTES,
         MenuField::RealmCode => MAX_SERVER_ADDRESS_BYTES,

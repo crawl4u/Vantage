@@ -112,7 +112,7 @@ pub const VIRTUAL_BASE: usize = 100;
 pub const EDIT_HUD: usize = 100;
 const KEYBINDS: usize = 101;
 const SCREENSHOTS: usize = 102;
-const THEMES: usize = 103;
+pub const THEMES: usize = 103;
 const WARDROBE: usize = 104;
 const PREFERENCES: usize = 105;
 const CHANGELOG: usize = 106;
@@ -134,14 +134,14 @@ pub fn gui_sidebar(tab: usize, virt: Option<usize>) -> Vec<(&'static str, Vec<Gu
                 entry(0, "Mods", Art::Settings.into()),
                 entry(7, "Profiles", Art::Profiles.into()),
                 entry(KEYBINDS, "Keybinds", Art::Keyboard.into()),
-                entry(SCREENSHOTS, "Screenshots", Glyph::Font(vantage_ui::icons::CAMERA)),
-                entry(17, "Waypoints", Glyph::Font(vantage_ui::icons::MAP_PIN)),
+                entry(SCREENSHOTS, "Screenshots", Glyph::Line("camera")),
+                entry(17, "Waypoints", Glyph::Line("map-pin")),
                 entry(26, "Sharing", Art::Cloud.into()),
             ],
         ),
         (
             "Personalization",
-            vec![entry(THEMES, "Themes", Art::Paintbrush.into()), entry(WARDROBE, "Wardrobe", Glyph::Font(vantage_ui::icons::SPARKLE)), entry(PREFERENCES, "Preferences", Art::Cog.into())],
+            vec![entry(THEMES, "Themes", Art::Paintbrush.into()), entry(WARDROBE, "Wardrobe", Glyph::Line("sparkle")), entry(PREFERENCES, "Preferences", Art::Cog.into())],
         ),
         ("Vantage", vec![entry(CHANGELOG, "Changelog", Art::Refresh.into()), entry(8, "Credits", Art::Star.into())]),
     ]
@@ -152,8 +152,17 @@ pub fn with_virtual<R>(settings: &Settings, state: &PanelState, page: usize, f: 
     if page == KEYBINDS || page == PREFERENCES {
         let prefs = page == PREFERENCES;
         return with_page(settings, state, KEYBINDS_PAGE, &mut |view| {
-            let kept: Vec<Group<'_>> = view.groups.iter().copied().filter(|g| (g.title == APPEARANCE) == prefs).collect();
-            f(&PageView { title: if prefs { "Preferences" } else { "Keybinds" }, groups: &kept, popup: view.popup, picker: view.picker, element: "", has_text: view.has_text })
+            if !prefs {
+                let kept: Vec<Group<'_>> = view.groups.iter().copied().filter(|g| g.title != APPEARANCE).collect();
+                return f(&PageView { title: "Keybinds", groups: &kept, popup: view.popup, picker: view.picker, element: "", has_text: view.has_text });
+            }
+            // Preferences: how the menu and the client behave, from the General page's own sections and the menu blur's
+            // look, which every player sets once.
+            with_page(settings, state, MENU_BLUR_PAGE, &mut |blur| {
+                let general = view.groups.iter().copied().filter(|g| g.title == "General");
+                let kept: Vec<Group<'_>> = general.chain(blur.groups.iter().copied().filter(|g| !g.options.is_empty())).collect();
+                f(&PageView { title: "Preferences", groups: &kept, popup: view.popup, picker: view.picker, element: "", has_text: view.has_text })
+            })
         });
     }
     let info = |label: &'static str| Opt { id: "note", label, help: None, kind: options::Kind::Info, changed: false };
@@ -294,6 +303,35 @@ pub fn uses_scene(settings: &Settings, state: &PanelState, tab: usize) -> bool {
     (CONVERTED.contains(&tab) || tab == WAYPOINTS_PAGE || tab == CREDITS_PAGE) && state.picker_view().is_none()
 }
 
+/// The panel the HUD editor's chrome draws in while elements are moved: the same scene node as the pages, with the
+/// world left clear (no blur, dimming or desaturation) and nothing in it that takes a press: the toolkit reads the pointer
+/// itself, and a press anywhere else reaches the HUD layer.
+#[must_use]
+pub fn editor_panel() -> String {
+    let clear = Backdrop { blur: 0.0, brightness: 1.0, saturation: 1.0 };
+    serde_json::json!({
+        "reference_size": vantage_ui::shell::reference_size(),
+        "fill": true,
+        // The elements being edited stay on the screen under the editor's chrome.
+        "show_gameplay_hud": true,
+        "controls": [],
+        "surface": {
+            "screen": "vantage.scene",
+            "document": serde_json::json!({
+                "namespace": "vantage",
+                "scene": {"type": "panel", "size": ["100%", "100%"], "controls": [
+                    {"draw": {"type": "custom", "renderer": "vantage_scene", "size": ["100%", "100%"]}},
+                    {"head": {"type": "image", "texture": "", "size": [1, 1], "alpha": 0.0,
+                        "bindings": [{"binding_name": "#menu_player_head", "binding_name_override": "#texture"}]}},
+                ]},
+            }).to_string(),
+            "bindings": clear.bindings(),
+            "transitions": vantage_ui::shell::Backdrop::transitions(),
+        },
+    })
+    .to_string()
+}
+
 /// The panel the toolkit's pages draw in: one node the host paints the published scene into, sized to fit the
 /// screen like the JSON pages are.
 #[must_use]
@@ -313,6 +351,9 @@ pub fn scene_panel(settings: &Settings, state: &PanelState, tab: usize) -> Strin
                 "namespace": "vantage",
                 "scene": {"type": "panel", "size": ["100%", "100%"], "controls": [
                     {"draw": {"type": "custom", "renderer": "vantage_scene", "size": ["100%", "100%"]}},
+                    // Names the menu's head image so the atlas keeps it placed for the scene to draw.
+                    {"head": {"type": "image", "texture": "", "size": [1, 1], "alpha": 0.0,
+                        "bindings": [{"binding_name": "#menu_player_head", "binding_name_override": "#texture"}]}},
                     {"search": {"type": "button", "size": [pill.w, pill.h], "offset": offset, "anchor_from": "center", "anchor_to": "center",
                         "controls": [],
                         "button_mappings": [{"from_button_id": "button.menu_select", "to_button_id": "mod.edit:0", "mapping_type": "pressed"}]}}
@@ -717,18 +758,26 @@ fn palette(settings: &Settings) -> Palette {
     if settings.menu_light { Palette::light() } else { Palette::dark() }
 }
 
+/// The Menu blur page, whose look settings Preferences lists.
+const MENU_BLUR_PAGE: usize = 16;
+
 /// The page that also lists every keybind of every mod, in a section of its own.
 const KEYBINDS_PAGE: usize = 6;
 
-/// The name of the page that lists keybind `id` among its options, or a catch-all.
-fn keybind_owner(settings: &Settings, state: &PanelState, defaults: &Settings, id: &str) -> &'static str {
-    CONVERTED
-        .iter()
-        .copied()
-        .filter(|tab| *tab != KEYBINDS_PAGE)
-        .find(|tab| rows_of(settings, state, defaults, *tab).any(|row| row.id == id))
-        .and_then(|tab| TABS.get(tab).copied())
-        .unwrap_or(OTHER_KEYS)
+/// The name of the page that lists each option among its own, keyed by option id: the first rebuilt page (in page order)
+/// that has it. Worked out once for all options, as it reads every page's controls.
+fn option_owners(state: &PanelState) -> std::collections::HashMap<&'static str, &'static str> {
+    let mut owners = std::collections::HashMap::new();
+    for tab in CONVERTED.iter().copied().filter(|tab| *tab != KEYBINDS_PAGE) {
+        let Some(name) = TABS.get(tab).copied() else { continue };
+        for index in referenced(crate::menu::document_index(tab, state.element().index())) {
+            let (kind, id, _) = CONTROLS[index];
+            if !is_furniture(tab, id) && matches!(kind, Kind::Toggle | Kind::Slider | Kind::Choice | Kind::Keybind | Kind::Button | Kind::Text) {
+                owners.entry(id).or_insert(name);
+            }
+        }
+    }
+    owners
 }
 
 /// The section of keybinds no rebuilt page lists; it is split in several, each opened on its own, so the
@@ -743,13 +792,14 @@ const OTHER_KEYS_PER_SECTION: usize = 10;
 /// Every keybind the menu has that the page does not already list: one row each, grouped by the page that owns it.
 fn keybind_rows<'a>(settings: &'a Settings, state: &'a PanelState, defaults: &'a Settings) -> Vec<Row<'a>> {
     let listed: Vec<&str> = rows_of(settings, state, defaults, KEYBINDS_PAGE).map(|row| row.id).collect();
+    let owners = option_owners(state);
     let mut rows: Vec<Row<'a>> = CONTROLS
         .iter()
         .filter(|(kind, id, _)| *kind == Kind::Keybind && !listed.contains(id) && !is_furniture(KEYBINDS_PAGE, id))
         .map(|&(_, id, label)| {
             let value = crate::panel::value(settings, state, id);
             let changed = !same(&value, &crate::panel::value(defaults, state, id));
-            Row { id, label, value, changed, section: Some(keybind_owner(settings, state, defaults, id)) }
+            Row { id, label, value, changed, section: Some(owners.get(id).copied().unwrap_or(OTHER_KEYS)) }
         })
         .collect();
     // Rows of one owner sit together, owners in page order and the catch-all last.
@@ -1393,11 +1443,23 @@ mod tests {
         assert!(ids(&settings_panel(&settings, &state, 1)).contains(&"move".to_owned()));
         state.event(&mut settings, "move", 1.0);
         assert!(state.moving);
-        // The original document, with its layout bar, is what is shown while moving.
-        assert!(ids(&crate::panel::build(&settings, &state)).contains(&"move_done".to_owned()));
+        // With the redesign the toolkit draws the editor's chrome, so the panel has no controls of its own; without it the
+        // original document, with its layout bar, is what is shown while moving.
+        assert!(settings.new_menu);
+        assert_eq!(crate::panel::build(&settings, &state), editor_panel());
+        assert!(!ids(&crate::panel::build(&settings, &state)).contains(&"move_done".to_owned()));
+        let classic = Settings { new_menu: false, ..settings.clone() };
+        assert!(ids(&crate::panel::build(&classic, &state)).contains(&"move_done".to_owned()));
         state.event(&mut settings, "move_done", 1.0);
         state.event(&mut settings, "move_done", 1.0);
         assert!(!state.moving);
         assert!(ids(&settings_panel(&settings, &state, 1)).contains(&"move".to_owned()));
+    }
+
+    #[test]
+    fn the_editor_panel_keeps_the_gameplay_hud_on_the_screen_under_its_chrome() {
+        let panel: serde_json::Value = serde_json::from_str(&editor_panel()).unwrap();
+        assert_eq!(panel["show_gameplay_hud"], serde_json::Value::Bool(true));
+        assert!(panel["controls"].as_array().is_some_and(Vec::is_empty), "nothing takes a press but the toolkit");
     }
 }

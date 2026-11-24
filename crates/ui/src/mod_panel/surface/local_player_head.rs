@@ -6,6 +6,8 @@ use serde_json::{Map, Value};
 pub const NAME: &str = "#local_player_name";
 /// The host-owned local portrait texture, or an empty texture when unavailable.
 pub const HEAD: &str = "#local_player_head";
+/// The head the first-party menu draws: the local player's, or the default skin's while there is none. Always set.
+pub const MENU_HEAD: &str = "#menu_player_head";
 /// Whether the admitted local skin has a usable portrait.
 pub const AVAILABLE: &str = "#local_player_head_available";
 /// Whether the surface should show its own neutral artwork.
@@ -23,7 +25,7 @@ pub(super) fn validate(control: &Map<String, Value>) -> Result<(), String> {
         .is_some_and(|bindings| {
             bindings
                 .iter()
-                .any(|binding| binding.get("binding_name").and_then(Value::as_str) == Some(HEAD))
+                .any(|binding| matches!(binding.get("binding_name").and_then(Value::as_str), Some(HEAD | MENU_HEAD)))
         })
     {
         return Ok(());
@@ -48,7 +50,7 @@ pub(super) fn validate(control: &Map<String, Value>) -> Result<(), String> {
             .and_then(Value::as_str)
             .unwrap_or(source);
         match target {
-            "#texture" if source == HEAD && !texture => texture = true,
+            "#texture" if (source == HEAD || source == MENU_HEAD) && !texture => texture = true,
             "#visible" | "#alpha" | "#color" | "#size" | "#offset" => {}
             _ => return Err("surface image binding target is unsupported".into()),
         }

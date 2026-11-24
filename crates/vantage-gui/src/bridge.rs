@@ -7,6 +7,8 @@ use std::sync::{Arc, Mutex};
 use crate::scene::Scene;
 
 static LATEST: Mutex<Option<Arc<Scene>>> = Mutex::new(None);
+/// The signed-in player's name, set by the client each frame; none while it is not known.
+static PLAYER: Mutex<Option<Arc<str>>> = Mutex::new(None);
 
 /// Makes `scene` the one the painter draws from now on.
 pub fn publish(scene: Scene) {
@@ -19,6 +21,20 @@ pub fn publish(scene: Scene) {
 #[must_use]
 pub fn latest() -> Option<Arc<Scene>> {
     LATEST.lock().ok().and_then(|latest| latest.clone())
+}
+
+/// Tells the menu who is signed in: their name, or none while it is not known. Sharing the name allocates nothing, so
+/// it can be set every frame.
+pub fn set_player(name: Option<&Arc<str>>) {
+    if let Ok(mut player) = PLAYER.lock() {
+        *player = name.cloned();
+    }
+}
+
+/// The signed-in player's name, when it is known.
+#[must_use]
+pub fn player() -> Option<Arc<str>> {
+    PLAYER.lock().ok().and_then(|player| player.clone())
 }
 
 /// Forgets the published scene.

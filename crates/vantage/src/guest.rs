@@ -47,6 +47,16 @@ const BAR_RETURN_DELAY: f32 = 0.35;
 /// Where the move bar's Reset and Done buttons sit, from the middle of the top edge (GUI pixels:
 /// left, right, top, bottom), a little wider than the buttons themselves so a press that just
 /// misses one still counts as a press on it.
+/// The keys the editor reads while it is open.
+const EDITOR_KEYS: [&str; 11] = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyZ", "KeyY", "KeyG", "Delete", "KeyC", "KeyV", "MouseRight"];
+/// How long a change rests before the editor commits it as a step to undo, in seconds.
+const HISTORY_REST: f32 = 0.3;
+/// How many steps the editor remembers.
+const HISTORY_LIMIT: usize = 100;
+/// How many GUI pixels an arrow key moves a HUD, and with Shift.
+const NUDGE: f32 = 1.0;
+const NUDGE_FAR: f32 = 10.0;
+
 const DONE_ZONE: [f32; 4] = [-31.0, 111.0, 5.0, 25.0];
 /// Seconds between layer rewrites while Armor status is resized (it is the heaviest element).
 const ARMOR_RESIZE_STEP: f64 = 0.05;
@@ -370,6 +380,27 @@ struct State {
     piece_resize: Option<hud::PieceResize>,
     /// Whether the layer was last written with the centre lines.
     guides_sent: bool,
+    /// Whether every element has been outlined for the editor in the layer last written.
+    editing_sent: bool,
+    /// The element whose outline the layer last written shows as hovered.
+    hover_sent: Option<usize>,
+    /// A press on nothing in the editor lets go of the HUD it was on: no frame, no handles, nothing for the keys to move.
+    deselected: bool,
+    /// The HUDs picked besides the one the editor is on (a marquee, shift clicks, or a group), and which of them the layer
+    /// last written outlines as picked.
+    multi: Vec<usize>,
+    picked_sent: Vec<usize>,
+    /// A marquee being drawn in the editor: where the pointer went down and where it is now, in GUI pixels.
+    marquee: Option<[f32; 2]>,
+    marquee_now: [f32; 2],
+    /// The editor's undo and redo: the layouts before and after the one in force, and that one as last committed. A change
+    /// is committed once it has rested a moment.
+    undo: Vec<Vec<crate::config::Style>>,
+    /// The look (everything but the place and whether it is on) of the HUD last copied in the editor.
+    look: Option<crate::config::Style>,
+    redo: Vec<Vec<crate::config::Style>>,
+    committed: Option<Vec<crate::config::Style>>,
+    changed_at: Option<f32>,
     armor_sel: usize,
     /// Where the editor's resize handles were last drawn (none: not drawn).
     handles_sent: Option<([f32; 4], bool)>,
@@ -2613,6 +2644,8 @@ impl State {
         }
         if self.panel.moving {
             push_new(&mut bound, &["MouseLeft".to_owned()]);
+            // The editor's keys: arrows nudge, Ctrl and Z or Y undo and redo, G is the grid, Delete takes a HUD off.
+            push_new(&mut bound, &EDITOR_KEYS.map(str::to_owned));
         }
         // The item delay fix reacts to a fresh use press.
         if item_fix && !cps_on {
@@ -2630,7 +2663,10 @@ impl State {
         }
         let mut held: Vec<String> = if keystrokes {
             self.binds.all_keys()
-        } else if self.panel.moving || menu_mouse {
+        } else if self.panel.moving {
+            // The modifiers too: Shift places a HUD freely or nudges ten pixels, Ctrl undoes.
+            ["MouseLeft", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight"].map(str::to_owned).to_vec()
+        } else if menu_mouse {
             vec!["MouseLeft".to_owned()]
         } else {
             Vec::new()
@@ -2842,7 +2878,7 @@ impl State {
         let pick_up = self.panel.moving
             && controls.keys_pressed.iter().any(|k| k == "MouseLeft")
             && !self.over_done(controls.pointer)
-            && (self.button_under(controls.pointer).is_some() || self.handle_under(controls.pointer).is_some() || self.element_under(controls.pointer));
+            && (self.handle_under(controls.pointer).is_some() || self.element_under(controls.pointer));
         // The pointer in the menu's own units: to open a list or the number editor under the button
         // pressed, and for the scroll bar.
         let left_down = controls.keys_pressed.iter().any(|k| k == "MouseLeft");
@@ -2863,7 +2899,9 @@ impl State {
             effect = effect.merge(self.panel.event(&mut self.settings, &event.id, event.value));
         }
         // The Mods page is drawn by the toolkit: it reads the raw pointer, and its clicks are ordinary menu events.
-        if controls.panel_open && !self.panel.moving && crate::menu_v2::uses_scene(&self.settings, &self.panel, self.panel.tab_number()) {
+        // While elements are moved the toolkit draws the editor's chrome instead of a page.
+        let editing = controls.panel_open && self.panel.moving && self.settings.new_menu;
+        if editing || (controls.panel_open && !self.panel.moving && crate::menu_v2::uses_scene(&self.settings, &self.panel, self.panel.tab_number())) {
             if let Some(layout) = panel::read_layout().filter(|layout| layout.scale > 0.0) {
                 let pointer = controls
                     .pointer
@@ -2876,20 +2914,42 @@ impl State {
                     dt: controls.seconds.clamp(0.0, 0.25),
                     viewport: [layout.width, layout.height],
                     dismiss: controls.keys_pressed.iter().any(|k| matches!(k.as_str(), "Enter" | "NumpadEnter" | "Escape")),
+                    secondary: controls.keys_pressed.iter().any(|k| k == "MouseRight"),
+                    alt: controls.keys_held.iter().any(|k| k == "AltLeft" || k == "AltRight"),
                     typed: crate::gui::typed_from_keys(&controls.keys_pressed, controls.keys_held.iter().any(|k| k.starts_with("Shift"))),
                 };
                 let tab = self.panel.tab_number();
-                let (scene, actions) = if tab == crate::menu_controls::MODS_PAGE {
+                let (scene, actions) = if editing {
+                    let context = self.editor_context(&layout);
+                    self.gui.editor_frame_with(&self.settings, &self.panel, self.panel.dragging, &context, frame)
+                } else if tab == crate::menu_controls::MODS_PAGE {
                     self.gui.frame(&self.settings, &self.panel, frame)
                 } else {
                     self.gui.page_frame(&self.settings, &self.panel, tab, frame)
                 };
                 vantage_gui::bridge::publish(scene);
-                if self.gui.finished_closing() {
+                if !editing && self.gui.finished_closing() {
                     let _ = panel::close();
                 }
                 for action in actions {
                     match action {
+                        crate::gui::Action::Event(id) if id.starts_with("editor_pick_") => {
+                            // A HUD added from the library is the one the editor is on.
+                            self.deselected = false;
+                            self.multi.clear();
+                            effect = effect.merge(self.panel.event(&mut self.settings, &id, 1.0));
+                        }
+                        crate::gui::Action::Event(id) if id == "editor_undo" => effect = effect.merge(self.step_history(false)),
+                        crate::gui::Action::Event(id) if id == "editor_copy_look" => self.copy_look(),
+                        crate::gui::Action::Event(id) if id == "editor_group" => effect = effect.merge(self.group_picked()),
+                        crate::gui::Action::Event(id) if id == "editor_ungroup" => effect = effect.merge(self.ungroup_picked()),
+                        crate::gui::Action::Event(id) if id == "editor_paste_look" => effect = effect.merge(self.paste_look()),
+                        crate::gui::Action::Event(id) if id == "editor_redo" => effect = effect.merge(self.step_history(true)),
+                        crate::gui::Action::Event(id) if id.starts_with("editor_place_") => {
+                            if let Some(n) = id["editor_place_".len()..].parse::<usize>().ok() {
+                                effect = effect.merge(self.place_at_pointer(Element::from_index(n), controls.pointer));
+                            }
+                        }
                         crate::gui::Action::Event(id) => effect = effect.merge(self.panel.event(&mut self.settings, &id, 1.0)),
                         crate::gui::Action::EventValue(id, value) => effect = effect.merge(self.panel.event(&mut self.settings, &id, value)),
                         crate::gui::Action::Text { id, text, submit } => effect = effect.merge(self.panel.field(&mut self.settings, &id, &text, !submit)),
@@ -2898,8 +2958,13 @@ impl State {
                 }
             }
         }
+        if !self.panel.moving {
+            self.gui.editor_closed();
+        }
         if !controls.panel_open {
             self.gui.closed();
+            // The last scene would otherwise be drawn at full opacity for a frame when the menu opens again.
+            vantage_gui::bridge::clear();
         }
         // Texts typed in the Config page's fields and the hex editor's (before the keys, so Enter applies what was just typed).
         if controls.panel_open && (self.panel.on_config() || self.panel.on_mods() || self.panel.on_waypoints() || self.panel.hex_open() || (self.settings.new_menu && crate::menu_v2::handles(self.panel.tab_number()))) {
@@ -3195,6 +3260,10 @@ impl State {
         if self.panel.moving {
             if !controls.panel_open {
                 // Closing the menu ends the move.
+                self.undo.clear();
+                self.redo.clear();
+                self.committed = None;
+                self.changed_at = None;
                 self.panel.moving = false;
                 self.grab = None;
                 self.grab_piece = None;
@@ -3207,7 +3276,11 @@ impl State {
                 effect = effect.merge(Effect { republish: true, ..Effect::default() });
             } else {
                 effect = effect.merge(self.drag(controls.pointer, &controls.keys_pressed, &controls.keys_held));
+                effect = effect.merge(self.editor_keys(&controls.keys_pressed, &controls.keys_held));
+                effect = effect.merge(self.pick_for_menu(controls.pointer, &controls.keys_pressed));
+                self.track_hover(controls.pointer);
                 effect = effect.merge(self.bar_tick(controls.seconds));
+                effect = effect.merge(self.track_history(controls.seconds));
             }
         }
         self.sync_handles(revision);
@@ -3226,8 +3299,21 @@ impl State {
 
     /// Whether the pointer is on the move bar's Done button (while the bar shows).
     fn over_done(&self, pointer: Option<(f32, f32)>) -> bool {
+        // With the redesign the toolkit's chrome (the toolbar, the panels and the pill) takes the press.
+        if self.settings.new_menu {
+            return self.over_editor_chrome(pointer);
+        }
         let (Some((px, py)), Some(view)) = (pointer, host_hud::read_viewport()) else { return false };
         self.in_done_zone(view.width, px, py)
+    }
+
+    /// Whether the pointer is on the editor's chrome, which is not there to press while a HUD is held.
+    fn over_editor_chrome(&self, pointer: Option<(f32, f32)>) -> bool {
+        let (Some((px, py)), Some(layout)) = (pointer, panel::read_layout().filter(|layout| layout.scale > 0.0)) else { return false };
+        if !self.panel.moving || self.panel.dragging {
+            return false;
+        }
+        self.gui.editor_takes(vantage_gui::geom::Vec2::new((px - layout.offset.0) / layout.scale, (py - layout.offset.1) / layout.scale))
     }
 
     fn in_done_zone(&self, width: f32, px: f32, py: f32) -> bool {
@@ -3243,7 +3329,7 @@ impl State {
     /// the menu edits), when it is on: the one that wears the resize handles.
     fn handled_rect(&self, view: [f32; 2]) -> Option<([f32; 4], bool)> {
         let element = Element::from_index(self.panel.selected);
-        if !self.settings.is_on(element) {
+        if !self.settings.is_on(element) || self.deselected {
             return None;
         }
         // Pieces moved apart each have their own frame and handles: the one picked last (the first at
@@ -3277,16 +3363,6 @@ impl State {
         if slots.contains(&self.armor_sel) { Some(self.armor_sel) } else { slots.first().copied() }
     }
 
-    /// The gear or X on the handled element's frame that lies under the pointer, if any.
-    fn button_under(&self, pointer: Option<(f32, f32)>) -> Option<hud::FrameButton> {
-        let (Some((px, py)), Some(view)) = (pointer, host_hud::read_viewport()) else { return None };
-        if !self.panel.moving {
-            return None;
-        }
-        let (rect, _) = self.handled_rect([view.width, view.height])?;
-        hud::button_at(rect, [px, py])
-    }
-
     /// The corner of the handled element's handles that lies under the pointer, if any.
     fn handle_under(&self, pointer: Option<(f32, f32)>) -> Option<usize> {
         let (Some((px, py)), Some(view)) = (pointer, host_hud::read_viewport()) else { return None };
@@ -3306,6 +3382,20 @@ impl State {
         if guides != self.guides_sent {
             self.guides_sent = guides;
             hud::set_guides(guides);
+            self.settings_revision += 1;
+        }
+        // Every element is outlined while the editor is open.
+        if self.panel.moving != self.editing_sent {
+            self.editing_sent = self.panel.moving;
+            hud::set_editing(self.panel.moving);
+            if !self.panel.moving {
+                self.hover_sent = None;
+                hud::set_hovered(None);
+                hud::set_picked(&[]);
+                self.picked_sent.clear();
+                self.multi.clear();
+                self.marquee = None;
+            }
             self.settings_revision += 1;
         }
         let wanted = if self.panel.moving {
@@ -3330,9 +3420,14 @@ impl State {
 
     /// Whether a HUD element that is on lies under the pointer.
     fn element_under(&self, pointer: Option<(f32, f32)>) -> bool {
-        let (Some((px, py)), Some(view)) = (pointer, host_hud::read_viewport()) else { return false };
+        self.element_at(pointer).is_some()
+    }
+
+    /// The HUD element that is on and lies under the pointer; the last one drawn, which is on top, when several do.
+    fn element_at(&self, pointer: Option<(f32, f32)>) -> Option<Element> {
+        let (Some((px, py)), Some(view)) = (pointer, host_hud::read_viewport()) else { return None };
         let view = [view.width, view.height];
-        Element::ALL.iter().any(|element| {
+        Element::ALL.iter().rev().copied().find(|element| {
             if !self.settings.is_on(*element) {
                 return false;
             }
@@ -3345,6 +3440,26 @@ impl State {
             let [x, y, w, h] = hud::rect(&self.settings, *element, view);
             px >= x && px <= x + w && py >= y && py <= y + h
         })
+    }
+
+    /// Tells the editor's outlines which HUD the pointer is over (none while the chrome has it or a HUD is held), writing
+    /// the layer again when that changes.
+    fn track_hover(&mut self, pointer: Option<(f32, f32)>) {
+        let held = self.grab.is_some() || self.resize.is_some() || self.piece_resize.is_some() || self.potion_resize.is_some();
+        let over = if held || self.over_done(pointer) { None } else { self.element_at(pointer).map(Element::index) };
+        if over != self.hover_sent {
+            self.hover_sent = over;
+            hud::set_hovered(over);
+            self.settings_revision += 1;
+        }
+        // The HUDs picked with the one the editor is on are outlined as picked (a HUD turned off drops out).
+        let settings = &self.settings;
+        self.multi.retain(|i| settings.is_on(Element::from_index(*i)));
+        if self.multi != self.picked_sent {
+            self.picked_sent = self.multi.clone();
+            hud::set_picked(&self.picked_sent);
+            self.settings_revision += 1;
+        }
     }
 
     /// The move bar fades out while an element is held (so it never covers the place the element
@@ -3384,34 +3499,24 @@ impl State {
             self.potion_resize = None;
             self.resize = None;
             self.piece_resize = None;
-            // The Done button is pressed, not what lies behind it.
-            if self.in_done_zone(view[0], px, py) {
+            // The Done button, or the rest of the editor's chrome, is pressed, not what lies behind it.
+            if self.over_done(pointer) {
                 return effect;
             }
-            // The gear and the X on the frame come before the handles and what lies under them.
-            let element = Element::from_index(self.panel.selected);
-            match self.handled_rect(view).and_then(|(rect, _)| hud::button_at(rect, [px, py])) {
-                Some(hud::FrameButton::Settings) => {
-                    // Leave the editor and open the element's Style page.
-                    self.panel.selected = element.index();
-                    self.panel.dragging = false;
-                    effect = self.panel.open_settings(element.index());
+            // Shift adds the HUD under the pointer to the ones picked, or takes it off them.
+            if held.iter().any(|k| k == "ShiftLeft" || k == "ShiftRight") {
+                if let Some(under) = self.element_at(pointer) {
+                    effect.republish |= self.toggle_picked(under);
                     return effect;
                 }
-                Some(hud::FrameButton::Remove) => {
-                    // The element is switched off (it comes back from the Mods tab); its frame goes with it.
-                    self.settings.style_mut(element).enabled = false;
-                    self.settings.sanitize();
-                    self.save_due = Some(self.clock + SAVE_DELAY);
-                    self.settings_revision += 1;
-                    self.bound_cache = None;
-                    effect.republish = true;
-                    return effect;
-                }
-                None => {}
             }
+            let element = Element::from_index(self.panel.selected);
             // A resize handle of the element being edited comes before anything under it.
             if let Some(corner) = self.handled_rect(view).and_then(|(rect, edges)| hud::handle_at(rect, edges, [px, py])) {
+                // A locked HUD keeps its size.
+                if self.is_locked(element) {
+                    return effect;
+                }
                 if element == Element::Potion && self.settings.potion_split {
                     self.potion_resize = self.selected_potion().and_then(|id| hud::PotionResize::new(&self.settings, view, id, corner, [px, py]));
                 } else if element == Element::Armor && self.settings.style(element).armor_split {
@@ -3467,6 +3572,35 @@ impl State {
                     break;
                 }
             }
+            // A locked HUD is picked, so the editor shows it, but not picked up.
+            if let Some((held_element, _)) = self.grab {
+                if self.is_locked(held_element) {
+                    self.grab = None;
+                    self.grab_piece = None;
+                    self.potion_drag = None;
+                    self.armor_drag = None;
+                }
+            }
+            // The HUD pressed is picked with the ones it is grouped with (or with the ones already picked, when it is one
+            // of them); a press on nothing starts a marquee.
+            match self.element_at(pointer) {
+                Some(under) => self.pick(under),
+                None => {
+                    self.marquee = Some([px, py]);
+                    self.marquee_now = [px, py];
+                    self.multi.clear();
+                }
+            }
+        }
+        // A marquee follows the pointer until the button goes up, and then picks the HUDs it touches.
+        if let Some(start) = self.marquee {
+            if held.iter().any(|k| k == "MouseLeft") {
+                self.marquee_now = [px, py];
+                return effect;
+            }
+            self.marquee = None;
+            effect.republish |= self.finish_marquee(start, [px, py], view);
+            return effect;
         }
         if let Some(resize) = &self.potion_resize {
             if !held.iter().any(|k| k == "MouseLeft") {
@@ -3569,15 +3703,323 @@ impl State {
         }
         let free = held.iter().any(|k| k == "ShiftLeft" || k == "ShiftRight");
         let wanted = [px - grab[0], py - grab[1]];
-        let target = if (self.settings.align || self.settings.show_guides) && !free { hud::snap(&self.settings, element, view, wanted) } else { wanted };
-        if target != hud::top_left(&self.settings, element, view) {
+        // The grid, while it shows, beats the other snapping: a HUD lands with its corner on a line.
+        let target = if free {
+            wanted
+        } else if self.settings.show_grid {
+            // The lines are counted out from the middle of the screen, so a corner lands on one of them.
+            [0, 1].map(|axis| {
+                let middle = view[axis] / 2.0;
+                ((wanted[axis] - middle) / crate::gui::GRID_STEP).round() * crate::gui::GRID_STEP + middle
+            })
+        } else if self.settings.align || self.settings.show_guides {
+            hud::snap(&self.settings, element, view, wanted)
+        } else {
+            wanted
+        };
+        let before = hud::top_left(&self.settings, element, view);
+        if target != before {
             self.settings.style_mut(element).position = Some(hud::place_at(&self.settings, element, view, target));
+            // The HUDs picked with it go the same way.
+            let after = hud::top_left(&self.settings, element, view);
+            self.move_picked(element, [after[0] - before[0], after[1] - before[1]], view);
             self.viewport = Some(view);
             // The layer is redrawn every step; the menu (hidden while moving) is sent its
             // values once, when the element is let go.
             self.settings_revision += 1;
         }
         effect
+    }
+
+    /// Whether the editor has `element` locked: it can be picked but not moved or resized there.
+    fn is_locked(&self, element: Element) -> bool {
+        self.settings.locked_huds.iter().any(|id| id == element.toggle_id())
+    }
+
+    /// What the editor's chrome is told about the HUD being edited: its frame and size, whether it is locked, whether
+    /// there is anything to undo or redo, and how big a GUI pixel is in the chrome's units.
+    fn editor_context(&self, layout: &panel::PanelLayout) -> crate::gui::EditorContext {
+        let element = Element::from_index(self.panel.selected);
+        let view = host_hud::read_viewport().map(|view| [view.width, view.height]);
+        let scale = layout.scale;
+        let to_scene = |r: [f32; 4]| vantage_gui::geom::Rect::new((r[0] - layout.offset.0) / scale, (r[1] - layout.offset.1) / scale, r[2] / scale, r[3] / scale);
+        let selection = view.and_then(|view| self.handled_rect(view)).map(|(r, _)| vantage_gui::geom::Rect::new((r[0] - layout.offset.0) / scale, (r[1] - layout.offset.1) / scale, r[2] / scale, r[3] / scale));
+        let size = view.map_or([0.0; 2], |view| {
+            let [_, _, w, h] = hud::visible_rect(&self.settings, element, view);
+            [w, h]
+        });
+        crate::gui::EditorContext { selection, size, locked: self.is_locked(element), can_undo: !self.undo.is_empty(), can_redo: !self.redo.is_empty(), can_paste: self.look.is_some(), deselected: self.deselected, selected_box: view.map(|view| hud::visible_rect(&self.settings, element, view)).filter(|_| self.settings.is_on(element) && !self.deselected).map(|r| to_scene(r)), hover_box: self.hover_sent.filter(|i| *i != element.index()).zip(view).map(|(i, view)| to_scene(hud::visible_rect(&self.settings, Element::from_index(i), view))), picked: self.picked().len(), grouped: self.settings.hud_groups.iter().any(|g| g.iter().any(|m| m == element.toggle_id())), marquee: self.marquee.map(|start| {
+            let (x0, x1) = (start[0].min(self.marquee_now[0]), start[0].max(self.marquee_now[0]));
+            let (y0, y1) = (start[1].min(self.marquee_now[1]), start[1].max(self.marquee_now[1]));
+            vantage_gui::geom::Rect::new((x0 - layout.offset.0) / scale, (y0 - layout.offset.1) / scale, (x1 - x0) / scale, (y1 - y0) / scale)
+        }), unit: 1.0 / scale }
+    }
+
+    /// The HUDs picked: the one the editor is on, then the others.
+    fn picked(&self) -> Vec<usize> {
+        let mut all = vec![self.panel.selected];
+        all.extend(self.multi.iter().copied().filter(|i| *i != self.panel.selected));
+        all
+    }
+
+    /// `element` and the HUDs it is grouped with that are on.
+    fn group_of(&self, element: Element) -> Vec<usize> {
+        let id = element.toggle_id();
+        let mut all = vec![element.index()];
+        if let Some(group) = self.settings.hud_groups.iter().find(|g| g.iter().any(|m| m == id)) {
+            all.extend(group.iter().filter_map(|m| Element::from_toggle_id(m)).filter(|e| self.settings.is_on(*e)).map(Element::index).filter(|i| *i != element.index()));
+        }
+        all
+    }
+
+    /// Picks `element` (with its group) as a press on it does: the HUDs already picked stay picked when it is one of
+    /// them, so they are moved together; otherwise it is picked alone, with its group.
+    fn pick(&mut self, element: Element) {
+        let picked = self.picked();
+        let group = self.group_of(element);
+        let keep = picked.contains(&element.index()) && picked.len() > 1;
+        self.deselected = false;
+        self.panel.selected = element.index();
+        self.multi = if keep { picked.into_iter().filter(|i| *i != element.index()).collect() } else { group.into_iter().filter(|i| *i != element.index()).collect() };
+    }
+
+    /// Shift on a HUD: picks it (with its group) too, or takes it off the ones picked. Whether the HUD the editor is on
+    /// changed, which the editor's panels then follow.
+    fn toggle_picked(&mut self, element: Element) -> bool {
+        self.deselected = false;
+        let picked = self.picked();
+        if picked.contains(&element.index()) {
+            let rest: Vec<usize> = picked.into_iter().filter(|i| *i != element.index()).collect();
+            let Some((&first, others)) = rest.split_first() else { return false };
+            let changed = first != self.panel.selected;
+            self.panel.selected = first;
+            self.multi = others.to_vec();
+            changed
+        } else {
+            for i in self.group_of(element) {
+                if !self.multi.contains(&i) && i != self.panel.selected {
+                    self.multi.push(i);
+                }
+            }
+            false
+        }
+    }
+
+    /// Moves the HUDs picked with `element` by `delta` GUI pixels, as it was moved. A locked one stays put.
+    fn move_picked(&mut self, element: Element, delta: [f32; 2], view: [f32; 2]) {
+        for index in self.multi.clone() {
+            let other = Element::from_index(index);
+            if other == element || !self.settings.is_on(other) || self.is_locked(other) {
+                continue;
+            }
+            let [x, y] = hud::top_left(&self.settings, other, view);
+            self.settings.style_mut(other).position = Some(hud::place_at(&self.settings, other, view, [x + delta[0], y + delta[1]]));
+        }
+    }
+
+    /// A marquee from `start` to `end` is over: the HUDs it touches that are on and not locked are picked, with their
+    /// groups. A marquee too small to be one picks nothing. Whether the HUD the editor is on changed.
+    fn finish_marquee(&mut self, start: [f32; 2], end: [f32; 2], view: [f32; 2]) -> bool {
+        let (x0, x1) = (start[0].min(end[0]), start[0].max(end[0]));
+        let (y0, y1) = (start[1].min(end[1]), start[1].max(end[1]));
+        if x1 - x0 < 4.0 && y1 - y0 < 4.0 {
+            // A click on nothing lets go of what was picked.
+            let changed = !self.deselected;
+            self.deselected = true;
+            self.multi.clear();
+            return changed;
+        }
+        let mut hits: Vec<usize> = Vec::new();
+        for element in Element::ALL {
+            if !self.settings.is_on(element) || self.is_locked(element) {
+                continue;
+            }
+            let [x, y, w, h] = hud::visible_rect(&self.settings, element, view);
+            if x < x1 && x + w > x0 && y < y1 && y + h > y0 {
+                for i in self.group_of(element) {
+                    if !hits.contains(&i) {
+                        hits.push(i);
+                    }
+                }
+            }
+        }
+        let Some((&first, others)) = hits.split_first() else { return false };
+        let changed = first != self.panel.selected || self.deselected;
+        self.deselected = false;
+        self.panel.selected = first;
+        self.multi = others.to_vec();
+        changed
+    }
+
+    /// Groups the HUDs picked, so a press on one of them picks them all.
+    fn group_picked(&mut self) -> Effect {
+        let ids: Vec<String> = self.picked().iter().map(|i| Element::from_index(*i).toggle_id().to_owned()).collect();
+        if ids.len() < 2 {
+            return Effect::default();
+        }
+        for group in &mut self.settings.hud_groups {
+            group.retain(|member| !ids.contains(member));
+        }
+        self.settings.hud_groups.retain(|group| group.len() > 1);
+        self.settings.hud_groups.push(ids);
+        Effect { save: true, ..Effect::default() }
+    }
+
+    /// Takes the HUD the editor is on, and so the others of its group, out of the group.
+    fn ungroup_picked(&mut self) -> Effect {
+        let id = Element::from_index(self.panel.selected).toggle_id();
+        self.settings.hud_groups.retain(|group| !group.iter().any(|member| member == id));
+        Effect { save: true, ..Effect::default() }
+    }
+
+    /// Remembers the picked HUD's look, to paste onto another.
+    fn copy_look(&mut self) {
+        let element = Element::from_index(self.panel.selected);
+        if self.settings.is_on(element) && !self.deselected {
+            self.look = Some(self.settings.style(element).clone());
+        }
+    }
+
+    /// Gives the picked HUD the look last copied: its colours, text, box and element options, but not where it is, how big
+    /// it is or whether it is on.
+    fn paste_look(&mut self) -> Effect {
+        let element = Element::from_index(self.panel.selected);
+        let Some(look) = self.look.clone().filter(|_| self.settings.is_on(element) && !self.deselected && !self.is_locked(element)) else { return Effect::default() };
+        let target = self.settings.style_mut(element);
+        let kept = target.clone();
+        *target = look;
+        target.enabled = kept.enabled;
+        target.corner = kept.corner;
+        target.position = kept.position;
+        target.scale = kept.scale;
+        target.stretch = kept.stretch;
+        self.settings.sanitize();
+        Effect { save: true, republish: true, ..Effect::default() }
+    }
+
+    /// A right press selects the HUD under the pointer, so the context menu it opens is about that HUD.
+    fn pick_for_menu(&mut self, pointer: Option<(f32, f32)>, pressed: &[String]) -> Effect {
+        if !pressed.iter().any(|k| k == "MouseRight") || self.over_done(pointer) {
+            return Effect::default();
+        }
+        match self.element_at(pointer) {
+            Some(element) if element.index() != self.panel.selected || self.deselected => {
+                self.deselected = false;
+                self.panel.selected = element.index();
+                Effect { republish: true, ..Effect::default() }
+            }
+            _ => Effect::default(),
+        }
+    }
+
+    /// Goes back one step of the editor's history (or forward with `forward`).
+    fn step_history(&mut self, forward: bool) -> Effect {
+        let Some(layout) = (if forward { self.redo.pop() } else { self.undo.pop() }) else { return Effect::default() };
+        let current = std::mem::replace(&mut self.settings.elements, layout);
+        if forward {
+            self.undo.push(current);
+        } else {
+            self.redo.push(current);
+        }
+        self.settings.sanitize();
+        self.committed = Some(self.settings.elements.clone());
+        self.changed_at = None;
+        Effect { save: true, republish: true, ..Effect::default() }
+    }
+
+    /// Commits the editor's changes as steps of its history: a layout that has changed and then rested for a moment
+    /// (not while a HUD is held) becomes one step to undo, and clears what could be redone.
+    fn track_history(&mut self, seconds: f32) -> Effect {
+        let held = self.grab.is_some() || self.resize.is_some() || self.piece_resize.is_some() || self.potion_resize.is_some() || self.potion_drag.is_some();
+        let Some(committed) = self.committed.as_ref() else {
+            self.committed = Some(self.settings.elements.clone());
+            return Effect::default();
+        };
+        if self.settings.elements == *committed {
+            self.changed_at = None;
+            return Effect::default();
+        }
+        if held {
+            self.changed_at = Some(0.0);
+            return Effect::default();
+        }
+        let rested = self.changed_at.unwrap_or(0.0) + if seconds.is_finite() { seconds.clamp(0.0, 0.1) } else { 0.0 };
+        if rested < HISTORY_REST {
+            self.changed_at = Some(rested);
+            return Effect::default();
+        }
+        let before = self.committed.replace(self.settings.elements.clone()).unwrap_or_default();
+        self.undo.push(before);
+        if self.undo.len() > HISTORY_LIMIT {
+            self.undo.remove(0);
+        }
+        self.redo.clear();
+        self.changed_at = None;
+        Effect::default()
+    }
+
+    /// Puts `element` with its middle where the pointer is, for a HUD dragged out of the library.
+    fn place_at_pointer(&mut self, element: Element, pointer: Option<(f32, f32)>) -> Effect {
+        let (Some((px, py)), Some(view)) = (pointer, host_hud::read_viewport()) else { return Effect::default() };
+        let view = [view.width, view.height];
+        let [_, _, w, h] = hud::rect(&self.settings, element, view);
+        self.settings.style_mut(element).position = Some(hud::place_at(&self.settings, element, view, [px - w / 2.0, py - h / 2.0]));
+        self.viewport = Some(view);
+        self.settings_revision += 1;
+        self.save_due = Some(self.clock + SAVE_DELAY);
+        Effect::default()
+    }
+
+    /// The editor's keys: the arrows move the picked HUD a pixel (ten with Shift), Ctrl and Z undo (with Shift, redo),
+    /// Ctrl and Y redo, G is the grid and Delete takes the HUD off the screen. A locked HUD does not move.
+    fn editor_keys(&mut self, pressed: &[String], held: &[String]) -> Effect {
+        if self.gui.wants_text() {
+            return Effect::default();
+        }
+        let has = |key: &str| pressed.iter().any(|k| k == key);
+        let ctrl = held.iter().any(|k| k == "ControlLeft" || k == "ControlRight");
+        let shift = held.iter().any(|k| k == "ShiftLeft" || k == "ShiftRight");
+        if ctrl && has("KeyZ") {
+            return self.step_history(shift);
+        }
+        if ctrl && has("KeyY") {
+            return self.step_history(true);
+        }
+        if ctrl && has("KeyC") {
+            self.copy_look();
+            return Effect::default();
+        }
+        if ctrl && has("KeyV") {
+            return self.paste_look();
+        }
+        if has("KeyG") && !ctrl {
+            self.settings.show_grid = !self.settings.show_grid;
+            return Effect { save: true, republish: true, ..Effect::default() };
+        }
+        let element = Element::from_index(self.panel.selected);
+        if !self.settings.is_on(element) || self.deselected {
+            return Effect::default();
+        }
+        if has("Delete") {
+            self.settings.style_mut(element).enabled = false;
+            self.settings.sanitize();
+            return Effect { save: true, republish: true, ..Effect::default() };
+        }
+        let step = if shift { NUDGE_FAR } else { NUDGE };
+        let axis = |plus: &str, minus: &str| (i32::from(has(plus)) - i32::from(has(minus))) as f32 * step;
+        let delta = [axis("ArrowRight", "ArrowLeft"), axis("ArrowDown", "ArrowUp")];
+        if delta != [0.0, 0.0] && !self.is_locked(element) {
+            if let Some(view) = host_hud::read_viewport() {
+                let view = [view.width, view.height];
+                let [x, y] = hud::top_left(&self.settings, element, view);
+                self.settings.style_mut(element).position = Some(hud::place_at(&self.settings, element, view, [x + delta[0], y + delta[1]]));
+                self.move_picked(element, delta, view);
+                self.viewport = Some(view);
+                self.settings_revision += 1;
+                self.save_due = Some(self.clock + SAVE_DELAY);
+            }
+        }
+        Effect::default()
     }
 
     /// Sends the page of the open tab: the whole document, in a frame of its own.
@@ -3638,7 +4080,7 @@ impl State {
     fn send_patch(&mut self) {
         self.menu_busy = true;
         // The redesigned Mods page is a whole document: it is sent again instead of patched.
-        let sent = if self.settings.new_menu && crate::menu_v2::handles(self.panel.tab_number()) {
+        let sent = if self.settings.new_menu && (crate::menu_v2::handles(self.panel.tab_number()) || self.panel.moving) {
             panel::set_content(&crate::panel::build(&self.settings, &self.panel))
         } else {
             panel::update_content(&crate::panel::patch(&self.settings, &self.panel))
@@ -4911,4 +5353,215 @@ fn core_toggle(panel_open: bool) {
 /// What Mods Core's hand-over did, so it can be shown in chat.
 fn core_take_notes() -> Vec<String> {
     CORE.with_borrow_mut(|menu| menu.take_notes())
+}
+
+#[cfg(test)]
+mod editor_history_tests {
+    use super::*;
+
+    /// Moves `Element::Fps` to `x` across the screen and lets the change rest long enough to be committed.
+    fn move_and_rest(state: &mut State, x: f32) {
+        state.settings.style_mut(Element::Fps).position = Some([x, 0.5]);
+        for _ in 0..30 {
+            state.track_history(0.016);
+        }
+    }
+
+    fn position(state: &State) -> Option<[f32; 2]> {
+        state.settings.style(Element::Fps).position
+    }
+
+    #[test]
+    fn a_change_that_rests_is_one_step_to_undo_and_redo() {
+        let mut state = State::default();
+        state.track_history(0.016);
+        let start = position(&state);
+        move_and_rest(&mut state, 0.25);
+        assert_eq!((state.undo.len(), state.redo.len()), (1, 0));
+        // Undo goes back to where it started, redo forward again.
+        state.step_history(false);
+        assert_eq!(position(&state), start);
+        assert_eq!((state.undo.len(), state.redo.len()), (0, 1));
+        state.step_history(true);
+        assert_eq!(position(&state), Some([0.25, 0.5]));
+        assert_eq!((state.undo.len(), state.redo.len()), (1, 0));
+        // With nothing left to do, a step does nothing.
+        state.step_history(true);
+        assert_eq!(position(&state), Some([0.25, 0.5]));
+    }
+
+    #[test]
+    fn nothing_is_committed_while_a_hud_is_held_and_a_new_change_forgets_what_could_be_redone() {
+        let mut state = State::default();
+        state.track_history(0.016);
+        state.grab = Some((Element::Fps, [0.0, 0.0]));
+        state.settings.style_mut(Element::Fps).position = Some([0.1, 0.1]);
+        for _ in 0..60 {
+            state.track_history(0.016);
+        }
+        assert!(state.undo.is_empty(), "a held HUD is not a step yet");
+        state.grab = None;
+        for _ in 0..30 {
+            state.track_history(0.016);
+        }
+        assert_eq!(state.undo.len(), 1, "let go and rested, it is");
+        state.step_history(false);
+        assert_eq!(state.redo.len(), 1);
+        move_and_rest(&mut state, 0.7);
+        assert!(state.redo.is_empty(), "a new change ends the redo");
+    }
+
+    #[test]
+    fn the_history_keeps_only_the_last_hundred_steps() {
+        let mut state = State::default();
+        state.track_history(0.016);
+        for step in 0..(HISTORY_LIMIT + 20) {
+            move_and_rest(&mut state, 0.01 + step as f32 * 0.005);
+        }
+        assert_eq!(state.undo.len(), HISTORY_LIMIT);
+    }
+
+    #[test]
+    fn a_locked_hud_is_the_one_in_the_lock_list() {
+        let mut state = State::default();
+        assert!(!state.is_locked(Element::Fps));
+        state.settings.locked_huds.push(Element::Fps.toggle_id().to_owned());
+        assert!(state.is_locked(Element::Fps));
+        assert!(!state.is_locked(Element::Cps));
+    }
+
+    #[test]
+    fn a_pasted_look_keeps_the_place_the_size_and_whether_it_is_on() {
+        let mut state = State::default();
+        let (from, to) = (Element::Fps, Element::Cps);
+        state.settings.style_mut(from).opacity = 33.0;
+        state.settings.style_mut(from).rounded = !state.settings.style(to).rounded;
+        state.settings.style_mut(from).position = Some([0.9, 0.9]);
+        state.settings.style_mut(from).scale = 2.0;
+        state.settings.style_mut(to).position = Some([0.1, 0.2]);
+        let (scale, enabled) = (state.settings.style(to).scale, state.settings.style(to).enabled);
+        state.settings.style_mut(from).enabled = true;
+        state.settings.style_mut(to).enabled = true;
+        // Nothing copied, nothing pasted.
+        state.panel.selected = to.index();
+        assert!(!state.paste_look().save);
+        state.panel.selected = from.index();
+        state.copy_look();
+        state.panel.selected = to.index();
+        assert!(state.paste_look().save);
+        let pasted = state.settings.style(to);
+        assert_eq!(pasted.opacity, 33.0);
+        assert_eq!(pasted.rounded, state.settings.style(from).rounded);
+        assert_eq!(pasted.position, Some([0.1, 0.2]), "it stays where it was");
+        assert_eq!(pasted.scale, scale, "and as big");
+        assert!(pasted.enabled || !enabled);
+        // A locked HUD takes no look.
+        state.settings.locked_huds.push(to.toggle_id().to_owned());
+        state.settings.style_mut(to).opacity = 70.0;
+        assert!(!state.paste_look().save);
+        assert_eq!(state.settings.style(to).opacity, 70.0);
+    }
+
+    /// A state with the three HUDs on.
+    fn three_on() -> State {
+        let mut state = State::default();
+        for element in [Element::Fps, Element::Cps, Element::Ping] {
+            state.settings.style_mut(element).enabled = true;
+        }
+        state.panel.selected = Element::Fps.index();
+        state
+    }
+
+    #[test]
+    fn shift_adds_a_hud_to_the_ones_picked_and_takes_it_off_again() {
+        let mut state = three_on();
+        assert_eq!(state.picked(), [Element::Fps.index()]);
+        assert!(!state.toggle_picked(Element::Cps), "the HUD the editor is on does not change");
+        state.toggle_picked(Element::Ping);
+        assert_eq!(state.picked(), [Element::Fps.index(), Element::Cps.index(), Element::Ping.index()]);
+        state.toggle_picked(Element::Cps);
+        assert_eq!(state.picked(), [Element::Fps.index(), Element::Ping.index()]);
+        // Taking the one the editor is on off hands it to the next.
+        assert!(state.toggle_picked(Element::Fps));
+        assert_eq!((state.panel.selected, state.picked().len()), (Element::Ping.index(), 1));
+        // The last one picked stays picked.
+        assert!(!state.toggle_picked(Element::Ping));
+        assert_eq!(state.picked(), [Element::Ping.index()]);
+    }
+
+    #[test]
+    fn a_marquee_picks_the_huds_it_touches_that_are_on_and_not_locked() {
+        let view = [427.0, 240.0];
+        let mut state = three_on();
+        state.settings.locked_huds.push(Element::Ping.toggle_id().to_owned());
+        // Too small to be a marquee, it is a click on nothing: the HUD is let go of, and only once.
+        assert!(state.finish_marquee([10.0, 10.0], [12.0, 12.0], view));
+        assert!(state.deselected && state.handled_rect(view).is_none(), "no frame, no handles");
+        assert!(!state.finish_marquee([10.0, 10.0], [12.0, 12.0], view));
+        // Pressing a HUD picks one again.
+        state.pick(Element::Fps);
+        assert!(!state.deselected && state.picked().len() == 1);
+        state.finish_marquee([10.0, 10.0], [12.0, 12.0], view);
+        assert!(state.deselected);
+        // So does a marquee that touches one, and Shift on one.
+        state.toggle_picked(Element::Fps);
+        assert!(!state.deselected);
+        // Over the whole screen it picks the two that are free; the first is the one the editor is on.
+        state.panel.selected = Element::Ping.index();
+        let changed = state.finish_marquee([0.0, 0.0], [427.0, 240.0], view);
+        let picked = state.picked();
+        assert!(picked.contains(&Element::Fps.index()) && picked.contains(&Element::Cps.index()), "{picked:?}");
+        assert!(!picked.contains(&Element::Ping.index()), "a locked HUD is not picked");
+        assert!(changed, "the HUD the editor is on moved to one of them");
+    }
+
+    #[test]
+    fn a_group_is_picked_whole_and_moves_together_while_a_locked_member_stays() {
+        let view = [427.0, 240.0];
+        let mut state = three_on();
+        state.settings.style_mut(Element::Fps).position = Some([0.2, 0.2]);
+        state.settings.style_mut(Element::Cps).position = Some([0.4, 0.2]);
+        state.settings.style_mut(Element::Ping).position = Some([0.6, 0.2]);
+        // Group the first two; a press on either picks both.
+        state.multi = vec![Element::Cps.index()];
+        assert!(state.group_picked().save);
+        state.multi.clear();
+        state.pick(Element::Cps);
+        assert_eq!((state.panel.selected, state.multi.clone()), (Element::Cps.index(), vec![Element::Fps.index()]));
+        // The third is not in the group, so a press on it picks it alone.
+        state.pick(Element::Ping);
+        assert!(state.multi.is_empty());
+        // Moving the group's HUD moves the other the same way, unless it is locked.
+        state.pick(Element::Fps);
+        let (fps, cps) = (hud::top_left(&state.settings, Element::Fps, view), hud::top_left(&state.settings, Element::Cps, view));
+        state.move_picked(Element::Fps, [10.0, 5.0], view);
+        let moved = hud::top_left(&state.settings, Element::Cps, view);
+        assert!((moved[0] - cps[0] - 10.0).abs() < 1.0 && (moved[1] - cps[1] - 5.0).abs() < 1.0, "{cps:?} to {moved:?}");
+        assert_eq!(hud::top_left(&state.settings, Element::Fps, view), fps, "the HUD that was moved is moved by the caller");
+        state.settings.locked_huds.push(Element::Cps.toggle_id().to_owned());
+        let still = hud::top_left(&state.settings, Element::Cps, view);
+        state.move_picked(Element::Fps, [10.0, 5.0], view);
+        assert_eq!(hud::top_left(&state.settings, Element::Cps, view), still);
+        // Ungrouping frees them.
+        assert!(state.ungroup_picked().save);
+        assert!(state.settings.hud_groups.is_empty());
+        // The HUDs already picked stay picked until another is pressed; then Cps is alone.
+        state.pick(Element::Ping);
+        state.pick(Element::Cps);
+        assert!(state.multi.is_empty());
+    }
+
+    #[test]
+    fn a_press_on_one_of_the_huds_picked_keeps_them_all_picked() {
+        let mut state = three_on();
+        state.toggle_picked(Element::Cps);
+        state.toggle_picked(Element::Ping);
+        state.pick(Element::Ping);
+        assert_eq!(state.panel.selected, Element::Ping.index());
+        assert_eq!(state.picked().len(), 3, "they move together");
+        // A press on one that is not picked picks that one alone.
+        state.settings.style_mut(Element::Armor).enabled = true;
+        state.pick(Element::Armor);
+        assert_eq!(state.picked(), [Element::Armor.index()]);
+    }
 }

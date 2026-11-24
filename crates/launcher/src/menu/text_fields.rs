@@ -15,6 +15,7 @@ impl MenuAction {
             Self::SearchFriends => Some(MenuField::FriendQuery),
             Self::SearchSettings => Some(MenuField::SettingsQuery),
             Self::SearchWorlds => Some(MenuField::WorldQuery),
+            Self::SearchServers => Some(MenuField::ServerQuery),
             Self::GlobalResources(crate::global_resources::Action::Search) => {
                 Some(MenuField::PackQuery)
             }

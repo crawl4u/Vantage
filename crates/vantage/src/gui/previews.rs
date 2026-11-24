@@ -24,6 +24,12 @@ fn sample(element: Element) -> Option<&'static hud::Sample> {
 /// How far the HUD is enlarged in a card: every element shares it, as in the game, and only one too wide to fit shrinks.
 const PREVIEW_SCALE: f32 = 1.15;
 
+/// How far the inventory is enlarged in a card.
+const INVENTORY_SCALE: f32 = 1.9;
+
+/// How far the keys are enlarged in a card: more than the other HUDs, whose own sizes are right as they are.
+const KEYS_SCALE: f32 = 1.75;
+
 /// A row of text in the game, in unscaled GUI pixels, and the room the text keeps from a box's sides.
 const ROW: f32 = 10.0;
 const PAD: f32 = 5.0;
@@ -32,6 +38,10 @@ const PAD_X: f32 = 5.0;
 /// The game font's size for the HUD's text, in unscaled GUI pixels.
 const HUD_TEXT: f32 = 9.0;
 
+
+/// How far, in text sizes, a line is lowered inside its box so the glyphs (which sit high in their line box) are
+/// centred.
+const GLYPH_DROP: f32 = 0.27;
 
 /// What a mod's preview shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,6 +97,7 @@ pub(super) fn look(id: &str) -> Option<Look> {
         "hud_height" => Look::Text(&["Y 320"]),
         "hud_subtitles" => Look::Text(&["Footsteps"]),
         "hud_pvp" => Look::Text(&["Hits 4"]),
+        "gp_wp_on" => Look::Text(&["Waypoint 1 [20m]"]),
         _ => return None,
     })
 }
@@ -109,6 +120,9 @@ fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
         d.rect(r, sample.background, Radii::all(if sample.rounded { 3.0 * k } else { 0.0 }));
     }
     let s = sample.scale.max(0.1);
+    if let Some((colour, width)) = sample.border {
+        d.ring(r, Radii::all(if sample.rounded { 3.0 * k } else { 0.0 }), (width * k).max(0.5), colour);
+    }
     if let Some(marks) = &sample.compass {
         // The strip as the game draws it: a tick over each mark, the marks fading towards the ends of the window.
         let step = 22.0 * s * k;
@@ -141,13 +155,24 @@ fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
     let gap = 3.0 * s * k;
     let line_width = |pieces: &[(String, Rgba)]| pieces.iter().map(|(t, _)| hud::text_width(t) * s * k).sum::<f32>() + gap * pieces.len().saturating_sub(1) as f32;
     let widest = sample.lines.iter().map(|l| line_width(&line_text(l))).fold(0.0_f32, f32::max);
-    let fit = if widest > 0.0 { ((r.w - 2.0 * PAD * s * k) / widest).min(1.0) } else { 1.0 };
+    let icon_room = sample.icon[0] * s * k;
+    let fit = if widest > 0.0 { ((r.w - 2.0 * PAD * s * k - icon_room) / widest).min(1.0) } else { 1.0 };
+    if icon_room > 0.0 {
+        let side = sample.icon[1] * s * k;
+        if let Some(item) = &sample.item {
+            put_item(d, Rect::new(r.x + PAD_X * s * k, r.y + (r.h - side) / 2.0, side, side), item);
+        }
+    }
+    if let Some(tool) = &sample.tool {
+        let side = 12.0 * s * k;
+        put_item(d, Rect::new(r.right() - PAD_X * s * k - side, r.y + sample.pad_y * s * k + (ROW * s * k - side) / 2.0 + 1.0 * s * k, side, side), tool);
+    }
     let size = HUD_TEXT * s * k * fit;
     let block = row * sample.lines.len() as f32;
     let top = r.y + (r.h - block) / 2.0;
     for (i, line) in sample.lines.iter().enumerate() {
         // The game's glyphs sit high in their line box, so the line drops a little to be centred in its row.
-        let y = top + i as f32 * row + (row - size * 1.5) / 2.0 + size * 0.16;
+        let y = top + i as f32 * row + (row - size * 1.5) / 2.0 + size * GLYPH_DROP;
         let cell = |x: f32, w: f32| Rect::new(x, y, w, size * 1.5);
         let mut put = |d: &mut Painter, rect: Rect, text: &str, color: Rgba, align: Align| {
             if sample.shadow {
@@ -165,7 +190,10 @@ fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
             let total = lw + space + rw;
             let bar_x = r.x + (r.w - total) / 2.0 + lw + space / 2.0;
             let _ = bx;
-            d.rect(Rect::new(bar_x - (bw * k).max(1.0) / 2.0, r.y + by * k * fit.max(0.5), (bw * k).max(1.0), bh * k * fit), line.color, Radii::default());
+            // The bar is centred on the text's row and a little taller than the digits, so it shows above and below.
+            let _ = by;
+            let bar_h = (size * 1.15).max(bh * k * fit);
+            d.rect(Rect::new(bar_x - (bw * k).max(1.0) / 2.0, top + i as f32 * row + (row - bar_h) / 2.0, (bw * k).max(1.0), bar_h), line.color, Radii::default());
             put(d, cell(bar_x - space / 2.0 - lw - 2.0, lw + 2.0), left, line.color, Align::End);
             put(d, cell(bar_x + space / 2.0, rw + 4.0 * s * k), right, line.color, Align::Start);
             continue;
@@ -185,6 +213,17 @@ fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
             continue;
         }
         let pieces = line_text(line);
+        if icon_room > 0.0 {
+            // Beside an icon the lines read from the left, from just after it.
+            let left = r.x + PAD_X * s * k + icon_room;
+            let mut x = left;
+            for (text, color) in &pieces {
+                let width = hud::text_width(text) * s * k * fit;
+                put(d, cell(x, width + 4.0 * s * k), text, *color, Align::Start);
+                x += width + gap * fit;
+            }
+            continue;
+        }
         if let [(text, color)] = pieces.as_slice() {
             // A single piece is centred in the whole box by the text itself, so the font's own widths decide the middle.
             put(d, Rect::new(r.x, y, r.w, size * 1.5), text, *color, Align::Centre);
@@ -201,12 +240,131 @@ fn paint_sample(d: &mut Painter, sample: &hud::Sample, area: Rect) {
     d.scene.push(Primitive::PopClip);
 }
 
+/// Draws the game's icon of item `id` in `rect`, placed with the menu's own position and zoom like every other shape.
+fn put_item(d: &mut Painter, rect: Rect, id: &str) {
+    let rect = d.at(rect);
+    d.scene.push(Primitive::Item { rect, id: id.to_owned() });
+}
+
+/// The armour card's pieces, helmet to boots: the item whose icon is drawn from the loaded pack, and a durability left.
+const ARMOR_PIECES: [(&str, &str); 4] = [
+    ("minecraft:diamond_helmet", "344"),
+    ("minecraft:diamond_chestplate", "383"),
+    ("minecraft:diamond_leggings", "286"),
+    ("minecraft:diamond_boots", "347"),
+];
+
+/// Draws the Armor element: each piece's durability and its item icon, in a row, as the game shows them. The icons are
+/// the game's own, so they follow the player's pack.
+fn paint_armor(d: &mut Painter, area: Rect) {
+    const ICON: f32 = 16.0;
+    const GAP: f32 = 3.0;
+    const BETWEEN: f32 = 5.0;
+    let total: f32 = ARMOR_PIECES.iter().map(|(_, n)| hud::text_width(n) + GAP + ICON).sum::<f32>() + BETWEEN * 3.0;
+    let k = (area.w * 0.9 / total.max(1.0)).min(area.h * 0.6 / ICON).min(PREVIEW_SCALE);
+    let mut x = area.centre().x - total * k / 2.0;
+    let top = area.centre().y - ICON * k / 2.0;
+    let size = HUD_TEXT * k;
+    for (item, wear) in ARMOR_PIECES {
+        let width = hud::text_width(wear) * k;
+        let cell = Rect::new(x, top + (ICON * k - size * 1.5) / 2.0 + size * GLYPH_DROP, width + 4.0 * k, size * 1.5);
+        d.text_in(Rect::new(cell.x + 0.6 * k, cell.y + 0.6 * k, cell.w, cell.h), wear, size, [0.0, 0.0, 0.0, 0.55], Align::Start, GAME_FONT);
+        d.text_in(cell, wear, size, [0.33, 0.9, 0.33, 1.0], Align::Start, GAME_FONT);
+        x += width + GAP * k;
+        put_item(d, Rect::new(x, top, ICON * k, ICON * k), item);
+        x += (ICON + BETWEEN) * k;
+    }
+}
+
+/// What the inventory card holds: slot (row-major, nine to a row), the item and how many.
+const INVENTORY_ITEMS: [(usize, &str, u32); 9] = [
+    (0, "minecraft:diamond", 32),
+    (1, "minecraft:enchanted_book", 1),
+    (8, "minecraft:totem_of_undying", 1),
+    (9, "minecraft:lapis_lazuli", 64),
+    (17, "minecraft:elytra", 1),
+    (18, "minecraft:golden_apple", 8),
+    (26, "minecraft:netherite_pickaxe", 1),
+    (4, "minecraft:ender_pearl", 16),
+    (13, "minecraft:bow", 1),
+];
+
+/// Draws the Inventory element: its box of three rows of nine slots with the game's own item icons and stack counts.
+fn paint_inventory(d: &mut Painter, area: Rect) {
+    let (cols, rows, cell, pad) = hud::INVENTORY_GRID;
+    let (background, rounded, shadow) = hud::sample_box(Element::Inventory);
+    let (w, h) = (cols as f32 * cell + pad * 2.0, rows as f32 * cell + pad * 2.0);
+    // The inventory is a wide block of small icons, so it is drawn larger than the other HUDs, centred in the card.
+    let k = (area.w * 0.96 / w).min(area.h * 0.9 / h).min(INVENTORY_SCALE);
+    let r = Rect::new(area.centre().x - w * k / 2.0, area.centre().y - h * k / 2.0, w * k, h * k);
+    d.rect(r, background, Radii::all(if rounded { 3.0 * k } else { 0.0 }));
+    let size = HUD_TEXT * k;
+    for (slot, item, count) in INVENTORY_ITEMS {
+        let (col, row) = ((slot % cols) as f32, (slot / cols) as f32);
+        let x = r.x + (pad + col * cell + 1.0) * k;
+        let y = r.y + (pad + row * cell + 1.0) * k;
+        put_item(d, Rect::new(x, y, 16.0 * k, 16.0 * k), item);
+        if count > 1 {
+            let text = count.to_string();
+            let cell = Rect::new(x + 16.0 * k - hud::text_width(&text) * k, y + 16.0 * k - size * 1.05, hud::text_width(&text) * k + 4.0 * k, size * 1.5);
+            if shadow {
+                d.text_in(Rect::new(cell.x + 0.6 * k, cell.y + 0.6 * k, cell.w, cell.h), &text, size, [0.0, 0.0, 0.0, 0.55], Align::Start, GAME_FONT);
+            }
+            d.text_in(cell, &text, size, [1.0, 1.0, 1.0, 1.0], Align::Start, GAME_FONT);
+        }
+    }
+}
+
+/// Draws Potion status: a box with the Speed effect's icon from the pack, its name and its time.
+fn paint_potion(d: &mut Painter, area: Rect) {
+    const ICON: f32 = 18.0;
+    const NEAR: f32 = 4.0;
+    let (background, rounded, shadow) = hud::sample_box(Element::Potion);
+    let (name, time) = ("Speed", "02:22");
+    let text_w = hud::text_width(name).max(hud::text_width(time));
+    let (w, h) = (PAD_X * 2.0 + ICON + NEAR + text_w, 26.0);
+    let k = (area.w * 0.8 / w).min(area.h * 0.8 / h).min(PREVIEW_SCALE);
+    let r = Rect::new(area.centre().x - w * k / 2.0, area.centre().y - h * k / 2.0, w * k, h * k);
+    d.rect(r, background, Radii::all(if rounded { 3.0 * k } else { 0.0 }));
+    let icon = Rect::new(r.x + PAD_X * k, r.y + (r.h - ICON * k) / 2.0, ICON * k, ICON * k);
+    let rect = d.at(icon);
+    d.scene.push(Primitive::Texture { rect, path: "textures/ui/speed_effect".to_owned() });
+    let size = HUD_TEXT * k;
+    let x = icon.right() + NEAR * k;
+    for (i, text) in [name, time].into_iter().enumerate() {
+        let cell = Rect::new(x, r.y + (r.h - 2.0 * ROW * k) / 2.0 + i as f32 * ROW * k + (ROW * k - size * 1.5) / 2.0 + size * GLYPH_DROP, text_w * k + 4.0 * k, size * 1.5);
+        if shadow {
+            d.text_in(Rect::new(cell.x + 0.6 * k, cell.y + 0.6 * k, cell.w, cell.h), text, size, [0.0, 0.0, 0.0, 0.55], Align::Start, GAME_FONT);
+        }
+        d.text_in(cell, text, size, [1.0, 1.0, 1.0, 1.0], Align::Start, GAME_FONT);
+    }
+}
+
+/// The waypoint's colour in the card: the light blue of a default waypoint.
+const WAYPOINT_BLUE: Rgba = [0.36, 0.63, 1.0, 1.0];
+
+/// Draws a waypoint's label as the game shows it over a marked spot: a dark box outlined in the waypoint's colour,
+/// holding its name and distance in the pack's font.
+fn paint_waypoint(d: &mut Painter, area: Rect) {
+    const PAD: f32 = 4.0;
+    const HEIGHT: f32 = 14.0;
+    let text = "Waypoint 1 [20m]";
+    let w = hud::text_width(text) + PAD * 2.0;
+    let k = (area.w * 0.8 / w).min(area.h * 0.5 / HEIGHT).min(PREVIEW_SCALE * 1.2);
+    let r = Rect::new(area.centre().x - w * k / 2.0, area.centre().y - HEIGHT * k / 2.0, w * k, HEIGHT * k);
+    d.rect(r, BOX, Radii::default());
+    d.ring(r, Radii::default(), (1.0 * k).max(0.8), WAYPOINT_BLUE);
+    let size = HUD_TEXT * k;
+    d.text_in(Rect::new(r.x, r.y + (r.h - size * 1.5) / 2.0 + size * GLYPH_DROP, r.w, size * 1.5), text, size, [1.0, 1.0, 1.0, 1.0], Align::Centre, GAME_FONT);
+}
+
 /// Draws the Keystrokes element at its defaults: its keys at their real places.
 fn paint_keys(d: &mut Painter, area: Rect) {
     let (keys, idle) = hud::sample_keys();
     let right = keys.iter().map(|k| k.rect[0] + k.rect[2]).max().unwrap_or(1) as f32;
     let bottom = keys.iter().map(|k| k.rect[1] + k.rect[3]).max().unwrap_or(1) as f32;
-    let k = (area.w * 0.62 / right).min(area.h * 0.9 / bottom).min(PREVIEW_SCALE);
+    // The keys are drawn larger than the other cards' HUDs: they are a small block that would otherwise look lost.
+    let k = (area.w * 0.7 / right).min(area.h * 0.95 / bottom).min(KEYS_SCALE);
     let (x0, y0) = (area.centre().x - right * k / 2.0, area.centre().y - bottom * k / 2.0);
     for key in keys {
         let [x, y, w, h] = key.rect.map(|v| v as f32 * k);
@@ -230,10 +388,26 @@ pub(super) fn paint(d: &mut Painter, id: &str, area: Rect, ink: Rgba) -> bool {
             paint_keys(d, area);
             return true;
         }
+        if element == Element::Armor {
+            paint_armor(d, area);
+            return true;
+        }
+        if element == Element::Inventory {
+            paint_inventory(d, area);
+            return true;
+        }
+        if element == Element::Potion {
+            paint_potion(d, area);
+            return true;
+        }
         if let Some(sample) = sample(element) {
             paint_sample(d, sample, area);
             return true;
         }
+    }
+    if id == "gp_wp_on" {
+        paint_waypoint(d, area);
+        return true;
     }
     if id == "ch_on" {
         // The crosshair as it is drawn at its default settings, at the size it has in the game.

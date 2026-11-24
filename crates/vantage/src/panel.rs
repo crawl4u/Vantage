@@ -1551,6 +1551,13 @@ impl PanelState {
                 return Effect { republish: true, ..Effect::default() };
             }
         }
+        // The editor's library and the HUD picked in it: the editor's dock edits that element.
+        if let Some(n) = id.strip_prefix("editor_pick_").and_then(|n| n.parse::<usize>().ok()) {
+            if n < Element::COUNT {
+                self.selected = n;
+                return Effect { republish: true, ..Effect::default() };
+            }
+        }
         // The element picker's dropdowns: the Layout and Style pages edit that element.
         if let Some(chosen) = pick_element(id, index) {
             // Armor status has a document of its own on some pages: send it (or the usual one back).
@@ -1570,6 +1577,33 @@ impl PanelState {
             // The move bar's switch for the centre lines.
             "move_guides" => {
                 settings.show_guides = !settings.show_guides;
+                return Effect { save: true, republish: true, ..Effect::default() };
+            }
+            // The editor's grid, which the elements snap to while it shows.
+            "move_grid" => {
+                settings.show_grid = !settings.show_grid;
+                return Effect { save: true, republish: true, ..Effect::default() };
+            }
+            // The editor's buttons for the picked HUD: its settings page, taking it off the screen, and locking it in place.
+            // The editor's tour is over, finished or skipped.
+            "editor_tour_done" => {
+                settings.editor_tour_seen = true;
+                return Effect { save: true, ..Effect::default() };
+            }
+            "editor_gear" => return self.open_settings(self.selected),
+            "editor_remove" => {
+                settings.style_mut(element).enabled = false;
+                settings.sanitize();
+                return Effect { save: true, republish: true, ..Effect::default() };
+            }
+            "editor_lock" => {
+                let id = element.toggle_id().to_owned();
+                match settings.locked_huds.iter().position(|locked| *locked == id) {
+                    Some(at) => {
+                        settings.locked_huds.remove(at);
+                    }
+                    None => settings.locked_huds.push(id),
+                }
                 return Effect { save: true, republish: true, ..Effect::default() };
             }
             "move" | "move_done" => {
@@ -1976,7 +2010,11 @@ fn pick_element(id: &str, index: usize) -> Option<Element> {
 /// The whole menu for the current settings (the bundle, or a changed menu key).
 #[inline(never)]
 pub fn build(settings: &Settings, state: &PanelState) -> String {
-    // While HUD elements are being moved the layout bar of the original document is shown, not a page.
+    // While HUD elements are being moved the toolkit's editor chrome is the panel (the original document's bar when
+    // the redesign is off), not a page.
+    if settings.new_menu && state.moving {
+        return crate::menu_v2::editor_panel();
+    }
     if settings.new_menu && !state.moving {
         if let Some(page) = crate::menu_v2::page(settings, state) {
             return page;

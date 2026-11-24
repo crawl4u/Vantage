@@ -131,8 +131,9 @@ pub struct MenuRuntime {
     storage_query: ui::ChatEditor,
     pack_query: ui::ChatEditor,
     world_query: ui::ChatEditor,
-    /// The world last pressed in the Java-style list and when, to tell a double press.
-    last_world_press: Option<(usize, f64)>,
+    server_query: ui::ChatEditor,
+    /// The world or server last pressed in a Java-style list and when, to tell a double press.
+    last_world_press: Option<(MenuAction, f64)>,
     pack_folder_name: ui::ChatEditor,
     pack_renaming: bool,
     /// Names typed for the open resource pack folder, for the pack worker to rename it to.
@@ -897,6 +898,7 @@ impl MenuRuntime {
             }
             MenuAction::LocalWorld(action) => self.queue_local_action(action),
             MenuAction::SearchWorlds => {}
+            MenuAction::SearchServers => {}
             MenuAction::JoinPlayWorld(index) => {
                 let friends = self.friends.len();
                 if index < friends {

@@ -255,6 +255,7 @@ impl UiPresentationRuntime {
                     | launcher::menu::MenuField::StorageQuery
                     | launcher::menu::MenuField::PackQuery
                     | launcher::menu::MenuField::WorldQuery
+                    | launcher::menu::MenuField::ServerQuery
                     | launcher::menu::MenuField::PackFolderName
                     | launcher::menu::MenuField::SettingsQuery
                     | launcher::menu::MenuField::SkinName

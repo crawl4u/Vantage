@@ -130,6 +130,7 @@ impl MenuRuntime {
             storage_query: field_editor(MenuField::StorageQuery),
             pack_query: field_editor(MenuField::PackQuery),
             world_query: field_editor(MenuField::WorldQuery),
+            server_query: field_editor(MenuField::ServerQuery),
             last_world_press: None,
             pack_folder_name: field_editor(MenuField::PackFolderName),
             pack_renaming: false,

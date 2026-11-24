@@ -541,6 +541,7 @@ impl ModUi {
                 .or_else(vantage_gui::bridge::latest);
             let mut scene = scene_paint::SceneRenderer {
                 scene: bridged.as_deref(),
+                icon,
             };
             let mut field_slot: [&mut dyn CustomRenderer; 3] = [&mut field, &mut items, &mut scene];
             let mut host = RendererChain {

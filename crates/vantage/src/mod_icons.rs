@@ -64,7 +64,7 @@ pub const KINDS: [(&str, Kind); 64] = [
     ("gp_hit_on", Kind::Glyph),
     ("gp_blur_on", Kind::Glyph),
     ("gp_dmg_on", Kind::Art(Art::Lightning01)),
-    ("gp_wp_on", Kind::Glyph),
+    ("gp_wp_on", Kind::Preview),
     ("gp_no_hurt_cam", Kind::Glyph),
     ("gp_toggle_sprint", Kind::Glyph),
     ("gp_toggle_sneak", Kind::Glyph),
@@ -107,8 +107,9 @@ mod tests {
         for (id, name, category) in MODS {
             let preview = kind(id) == Kind::Preview;
             let hud = category == 0;
-            let crosshair = id == "ch_on";
-            assert_eq!(preview, hud || crosshair, "{name}: previews are for HUD mods and the crosshair (docs/mod-icons.md)");
+            // The crosshair and the waypoint label are world overlays with a look of their own.
+            let crosshair = matches!(id, "ch_on" | "gp_wp_on");
+            assert_eq!(preview, hud || crosshair, "{name}: previews are for HUD mods, the crosshair and the waypoint label (docs/mod-icons.md)");
         }
     }
 }

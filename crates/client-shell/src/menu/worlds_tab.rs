@@ -337,15 +337,21 @@ impl MenuRuntime {
     /// Notes a press of `action` at `now` seconds. A second press of the same world of the
     /// Java-style list within [`Self::DOUBLE_PRESS_SECONDS`] returns the action that plays it.
     pub fn world_double_press(&mut self, action: MenuAction, now: f64) -> Option<MenuAction> {
-        let MenuAction::SelectPlayWorld(index) = action else {
-            return None;
+        use launcher::menu::settings_options::menu_style::MenuStyle;
+        // The server lists are Java-style only; the Bedrock ones keep their own presses.
+        let java = self.settings_options.menu_style() == MenuStyle::Java;
+        let play = match action {
+            MenuAction::SelectPlayWorld(index) => MenuAction::JoinPlayWorld(index),
+            MenuAction::SelectSaved(index) if java => MenuAction::PlaySaved(index),
+            MenuAction::SelectFeatured(index) if java => MenuAction::PlayFeatured(index),
+            _ => return None,
         };
         let double = self
             .last_world_press
-            .is_some_and(|(last, at)| last == index && now - at <= Self::DOUBLE_PRESS_SECONDS);
+            .is_some_and(|(last, at)| last == action && now - at <= Self::DOUBLE_PRESS_SECONDS);
         // A double press is used up, so a third does not start another.
-        self.last_world_press = (!double).then_some((index, now));
-        double.then_some(MenuAction::JoinPlayWorld(index))
+        self.last_world_press = (!double).then_some((action, now));
+        double.then_some(play)
     }
 
     /// The press Enter makes on the Java-style world list: playing the world the keyboard
@@ -353,6 +359,20 @@ impl MenuRuntime {
     /// None on any other screen, or when something else owns the key.
     pub fn enter_plays_world(&mut self) -> Option<MenuAction> {
         use launcher::menu::settings_options::menu_style::MenuStyle;
+        // On the Java-style server lists Enter joins the server the keyboard focus is on.
+        if self.screen == MenuScreen::Servers
+            && self.dialog.is_none()
+            && !self.is_connecting()
+            && self.field.is_none()
+            && self.settings_options.menu_style() == MenuStyle::Java
+            && self.input_mode.navigation()
+        {
+            return match self.focused_action() {
+                Some(MenuAction::SelectSaved(index)) => Some(MenuAction::PlaySaved(index)),
+                Some(MenuAction::SelectFeatured(index)) => Some(MenuAction::PlayFeatured(index)),
+                _ => None,
+            };
+        }
         if self.screen != MenuScreen::Play
             || self.dialog.is_some()
             || self.is_connecting()
